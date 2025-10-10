@@ -28,13 +28,13 @@ The Smart Parking Platform is a complete IoT solution for managing parking space
 
 ### Key Features
 
-- **Multi-LNS Support**: Compatible with Actility, Netmore, TTI, and ChirpStack LoRaWAN Network Servers
-- **Real-time Data Processing**: Automatic ingestion, transformation, and analytics pipeline
-- **Device Management**: Complete device lifecycle and configuration management
+- **ChirpStack Integration**: Built-in ChirpStack 4.14.1 LoRaWAN Network Server for complete control
+- **Parking-Specific Services**: Priority-based display control, reservations, and space management
+- **Real-time Data Processing**: Sub-200ms sensor-to-display actuation pipeline
 - **Downlink Control**: Send commands and configuration to parking sensors
-- **RESTful APIs**: Modern FastAPI-based microservices architecture
+- **Bidirectional Control**: Automatic Class C downlink control for parking displays
 - **SSL/TLS**: Automatic certificate management with Let's Encrypt
-- **Scalable**: Docker-based microservices with PostgreSQL backend
+- **Production-Ready**: Docker-based microservices with PostgreSQL backend
 
 ### Technology Stack
 
@@ -308,16 +308,15 @@ ChirpStack (Network Server)
 #### Ingest Service
 - **Port**: 8000 (internal)
 - **URL**: `https://ingest.verdegris.eu`
-- **Purpose**: Receives and normalizes LoRaWAN uplinks from multiple LNS providers
+- **Purpose**: Receives LoRaWAN uplinks from ChirpStack via MQTT integration
 - **Endpoints**:
-  - `POST /uplink?source={actility|netmore|tti|chirpstack}` - Receive uplink
+  - `POST /uplink?source=chirpstack` - Receive uplink from ChirpStack
   - `GET /health` - Health check
 - **Features**:
-  - Multi-LNS support (Actility, Netmore, TTI, ChirpStack)
-  - Automatic source detection
-  - Deduplication
-  - MQTT publishing
-  - Transform service forwarding
+  - ChirpStack MQTT integration
+  - Deduplication based on DevEUI + timestamp
+  - Real-time forwarding to Transform service
+  - Parking sensor detection and routing
 
 #### Transform Service
 - **Port**: 9000 (internal)
@@ -453,11 +452,9 @@ The service automatically detects the format and decodes accordingly.
 
 #### Receive Uplink
 
-**Endpoint**: `POST /uplink?source={lns_type}`
+**Endpoint**: `POST /uplink?source=chirpstack`
 
-**LNS Types**: `actility`, `netmore`, `tti`, `chirpstack`
-
-**ChirpStack Example**:
+**Example Request**:
 ```json
 {
   "deviceInfo": {
