@@ -1,0 +1,2 @@
+# Replay missing uplinks every 10 minutes
+*/10 * * * * python3 /app/tools/verify_and_replay.py >> /var/log/replay.log 2>&1

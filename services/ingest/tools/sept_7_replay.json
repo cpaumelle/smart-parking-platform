@@ -1,0 +1,1570 @@
+[
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T23:59:53.150Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2291",
+      "FPort": 1,
+      "FCntUp": 9685,
+      "LrrRSSI": "-105.0",
+      "LrrSNR": "1.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T23:44:54.090Z",
+      "payload_hex": "None",
+      "FPort": null,
+      "FCntUp": 169,
+      "LrrRSSI": "",
+      "LrrSNR": "",
+      "SpFact": "9",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "1"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T23:44:53.102Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2290",
+      "FPort": 1,
+      "FCntUp": 9684,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "5.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T23:29:53.121Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f228f",
+      "FPort": 1,
+      "FCntUp": 9683,
+      "LrrRSSI": "-97.0",
+      "LrrSNR": "5.75",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T23:14:53.147Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f228e",
+      "FPort": 1,
+      "FCntUp": 9682,
+      "LrrRSSI": "-99.0",
+      "LrrSNR": "6.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T22:59:53.123Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f228d",
+      "FPort": 1,
+      "FCntUp": 9681,
+      "LrrRSSI": "-101.0",
+      "LrrSNR": "3.75",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T22:44:53.177Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f228c",
+      "FPort": 1,
+      "FCntUp": 9680,
+      "LrrRSSI": "-97.0",
+      "LrrSNR": "5.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T22:29:53.251Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f228b",
+      "FPort": 1,
+      "FCntUp": 9679,
+      "LrrRSSI": "-97.0",
+      "LrrSNR": "5.75",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC6",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T22:14:53.228Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f228a",
+      "FPort": 1,
+      "FCntUp": 9678,
+      "LrrRSSI": "-100.0",
+      "LrrSNR": "6.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T21:59:53.271Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2289",
+      "FPort": 1,
+      "FCntUp": 9677,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T21:44:53.256Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2288",
+      "FPort": 1,
+      "FCntUp": 9676,
+      "LrrRSSI": "-106.0",
+      "LrrSNR": "3.5",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T21:29:53.397Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2287",
+      "FPort": 1,
+      "FCntUp": 9675,
+      "LrrRSSI": "-99.0",
+      "LrrSNR": "3.75",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T21:14:53.426Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2286",
+      "FPort": 1,
+      "FCntUp": 9674,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC7",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T20:59:53.329Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2285",
+      "FPort": 1,
+      "FCntUp": 9673,
+      "LrrRSSI": "-96.0",
+      "LrrSNR": "6.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T20:44:53.359Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2284",
+      "FPort": 1,
+      "FCntUp": 9672,
+      "LrrRSSI": "-99.0",
+      "LrrSNR": "5.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC6",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T20:29:53.404Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2283",
+      "FPort": 1,
+      "FCntUp": 9671,
+      "LrrRSSI": "-100.0",
+      "LrrSNR": "6.75",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T20:14:53.415Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2282",
+      "FPort": 1,
+      "FCntUp": 9670,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC6",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T19:59:53.399Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2281",
+      "FPort": 1,
+      "FCntUp": 9669,
+      "LrrRSSI": "-98.0",
+      "LrrSNR": "-1.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T19:44:53.455Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f2280",
+      "FPort": 1,
+      "FCntUp": 9668,
+      "LrrRSSI": "-100.0",
+      "LrrSNR": "5.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T19:29:53.560Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f227f",
+      "FPort": 1,
+      "FCntUp": 9667,
+      "LrrRSSI": "-106.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T19:14:53.483Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f227e",
+      "FPort": 1,
+      "FCntUp": 9666,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T18:59:53.495Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f227d",
+      "FPort": 1,
+      "FCntUp": 9665,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T18:44:53.560Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f227c",
+      "FPort": 1,
+      "FCntUp": 9664,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T18:30:53.543Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f227b",
+      "FPort": 1,
+      "FCntUp": 9663,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T18:29:53.543Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f227b",
+      "FPort": 1,
+      "FCntUp": 9662,
+      "LrrRSSI": "-99.0",
+      "LrrSNR": "5.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T18:14:53.694Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9c0f227a",
+      "FPort": 1,
+      "FCntUp": 9661,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC2",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T17:59:53.619Z",
+      "payload_hex": "02060004a30b00fb648600012f00010000000e9c0f2279",
+      "FPort": 1,
+      "FCntUp": 9660,
+      "LrrRSSI": "-109.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC7",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T17:44:53.609Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9b0f2278",
+      "FPort": 1,
+      "FCntUp": 9659,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.75",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T17:29:53.664Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9b0f2277",
+      "FPort": 1,
+      "FCntUp": 9658,
+      "LrrRSSI": "-109.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC7",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T17:14:53.649Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9b0f2276",
+      "FPort": 1,
+      "FCntUp": 9657,
+      "LrrRSSI": "-99.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T16:59:53.700Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9b0f2275",
+      "FPort": 1,
+      "FCntUp": 9656,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "1.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T16:44:53.729Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9b0f2274",
+      "FPort": 1,
+      "FCntUp": 9655,
+      "LrrRSSI": "-106.0",
+      "LrrSNR": "-2.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T16:29:53.831Z",
+      "payload_hex": "02060004a30b00fb648600012f00010001000e9b0f2273",
+      "FPort": 1,
+      "FCntUp": 9654,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "2.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T16:14:53.816Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9a0f2172",
+      "FPort": 1,
+      "FCntUp": 9653,
+      "LrrRSSI": "-101.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC2",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T15:59:53.783Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9a0f2171",
+      "FPort": 1,
+      "FCntUp": 9652,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T15:44:53.795Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9a0f2170",
+      "FPort": 1,
+      "FCntUp": 9651,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "3.75",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T15:29:53.952Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9a0f216f",
+      "FPort": 1,
+      "FCntUp": 9650,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "5.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T15:14:53.851Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9a0f216e",
+      "FPort": 1,
+      "FCntUp": 9649,
+      "LrrRSSI": "-101.0",
+      "LrrSNR": "3.75",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T14:59:53.906Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9a0f216d",
+      "FPort": 1,
+      "FCntUp": 9648,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T14:44:53.946Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e9a0f216c",
+      "FPort": 1,
+      "FCntUp": 9647,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.75",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T14:29:53.931Z",
+      "payload_hex": "02060004a30b00fb648600012f00000001000e9a0f216b",
+      "FPort": 1,
+      "FCntUp": 9646,
+      "LrrRSSI": "-95.0",
+      "LrrSNR": "-2.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T14:14:53.960Z",
+      "payload_hex": "02060004a30b00fb648600012f00010000000e9a0f206a",
+      "FPort": 1,
+      "FCntUp": 9645,
+      "LrrRSSI": "-109.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T13:59:53.981Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e990f2069",
+      "FPort": 1,
+      "FCntUp": 9644,
+      "LrrRSSI": "-106.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T13:44:54.023Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e990f2068",
+      "FPort": 1,
+      "FCntUp": 9643,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC2",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T13:29:54.126Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e990f2067",
+      "FPort": 1,
+      "FCntUp": 9642,
+      "LrrRSSI": "-106.0",
+      "LrrSNR": "3.75",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T13:14:54.045Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e990f2066",
+      "FPort": 1,
+      "FCntUp": 9641,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T12:59:54.068Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e990f2065",
+      "FPort": 1,
+      "FCntUp": 9640,
+      "LrrRSSI": "-100.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T12:44:54.123Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e990f2064",
+      "FPort": 1,
+      "FCntUp": 9639,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "3.5",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC2",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T12:29:54.337Z",
+      "payload_hex": "02060004a30b00fb648600012f00000001000e990f2063",
+      "FPort": 1,
+      "FCntUp": 9638,
+      "LrrRSSI": "-109.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T12:14:54.146Z",
+      "payload_hex": "02060004a30b00fb648600012f00010000000e990f1f62",
+      "FPort": 1,
+      "FCntUp": 9637,
+      "LrrRSSI": "-109.0",
+      "LrrSNR": "4.75",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC7",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T11:59:54.138Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e980f1f61",
+      "FPort": 1,
+      "FCntUp": 9636,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC6",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T11:44:54.283Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e980f1f60",
+      "FPort": 1,
+      "FCntUp": 9635,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T11:14:54.247Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e980f1f5e",
+      "FPort": 1,
+      "FCntUp": 9633,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T10:59:54.249Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e980f1f5d",
+      "FPort": 1,
+      "FCntUp": 9632,
+      "LrrRSSI": "-97.0",
+      "LrrSNR": "-0.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T10:44:54.437Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e980f1f5c",
+      "FPort": 1,
+      "FCntUp": 9631,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC2",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T10:29:54.377Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e980f1f5b",
+      "FPort": 1,
+      "FCntUp": 9630,
+      "LrrRSSI": "-102.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T10:14:54.610Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e980f1f5a",
+      "FPort": 1,
+      "FCntUp": 9629,
+      "LrrRSSI": "-102.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T09:59:54.338Z",
+      "payload_hex": "02060004a30b00fb648600012f00000001000e980f1f59",
+      "FPort": 1,
+      "FCntUp": 9628,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "2.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T09:44:54.380Z",
+      "payload_hex": "02060004a30b00fb648600012f00010000000e980f1e58",
+      "FPort": 1,
+      "FCntUp": 9627,
+      "LrrRSSI": "-109.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC7",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T09:29:54.477Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e970f1e57",
+      "FPort": 1,
+      "FCntUp": 9626,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "3.5",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T09:14:54.400Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e970f1e56",
+      "FPort": 1,
+      "FCntUp": 9625,
+      "LrrRSSI": "-100.0",
+      "LrrSNR": "5.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T08:59:54.422Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e970f1e55",
+      "FPort": 1,
+      "FCntUp": 9624,
+      "LrrRSSI": "-106.0",
+      "LrrSNR": "3.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T08:44:54.486Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e970f1e54",
+      "FPort": 1,
+      "FCntUp": 9623,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC2",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T08:14:54.567Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000020e970f1e52",
+      "FPort": 1,
+      "FCntUp": 9621,
+      "LrrRSSI": "-102.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T07:59:54.545Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e970f1e51",
+      "FPort": 1,
+      "FCntUp": 9620,
+      "LrrRSSI": "-105.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T07:44:55.624Z",
+      "payload_hex": "None",
+      "FPort": null,
+      "FCntUp": 168,
+      "LrrRSSI": "",
+      "LrrSNR": "",
+      "SpFact": "9",
+      "SubBand": "G1",
+      "Channel": "LC2",
+      "DevAddr": "01F8EDED",
+      "Direction": "1"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T07:44:54.516Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e970f1e50",
+      "FPort": 1,
+      "FCntUp": 9619,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC2",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T07:29:54.561Z",
+      "payload_hex": "02060004a30b00fb648600012f00010001000e970f1e4f",
+      "FPort": 1,
+      "FCntUp": 9618,
+      "LrrRSSI": "-101.0",
+      "LrrSNR": "5.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T07:14:54.636Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d4e",
+      "FPort": 1,
+      "FCntUp": 9617,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "4.75",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC6",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T06:59:54.717Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d4d",
+      "FPort": 1,
+      "FCntUp": 9616,
+      "LrrRSSI": "-106.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T06:44:54.605Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d4c",
+      "FPort": 1,
+      "FCntUp": 9615,
+      "LrrRSSI": "-109.0",
+      "LrrSNR": "5.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC7",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T06:29:54.636Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d4b",
+      "FPort": 1,
+      "FCntUp": 9614,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "5.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T06:14:54.688Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d4a",
+      "FPort": 1,
+      "FCntUp": 9613,
+      "LrrRSSI": "-101.0",
+      "LrrSNR": "5.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T05:59:54.722Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d49",
+      "FPort": 1,
+      "FCntUp": 9612,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T05:44:54.743Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d48",
+      "FPort": 1,
+      "FCntUp": 9611,
+      "LrrRSSI": "-98.0",
+      "LrrSNR": "5.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T05:14:54.775Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d46",
+      "FPort": 1,
+      "FCntUp": 9609,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "5.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T04:59:54.800Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d45",
+      "FPort": 1,
+      "FCntUp": 9608,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T04:44:54.799Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d44",
+      "FPort": 1,
+      "FCntUp": 9607,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "4.75",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC7",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T04:29:54.815Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d43",
+      "FPort": 1,
+      "FCntUp": 9606,
+      "LrrRSSI": "-99.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T04:14:54.851Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d42",
+      "FPort": 1,
+      "FCntUp": 9605,
+      "LrrRSSI": "-99.0",
+      "LrrSNR": "3.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T03:59:54.932Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d41",
+      "FPort": 1,
+      "FCntUp": 9604,
+      "LrrRSSI": "-101.0",
+      "LrrSNR": "3.75",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T03:44:54.916Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d40",
+      "FPort": 1,
+      "FCntUp": 9603,
+      "LrrRSSI": "-98.0",
+      "LrrSNR": "5.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T03:29:55.086Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d3f",
+      "FPort": 1,
+      "FCntUp": 9602,
+      "LrrRSSI": "-99.0",
+      "LrrSNR": "5.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T03:14:54.977Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d3e",
+      "FPort": 1,
+      "FCntUp": 9601,
+      "LrrRSSI": "-100.0",
+      "LrrSNR": "3.5",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC2",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T02:59:54.970Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d3d",
+      "FPort": 1,
+      "FCntUp": 9600,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "5.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T02:44:54.978Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d3c",
+      "FPort": 1,
+      "FCntUp": 9599,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "2.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T02:29:55.030Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d3b",
+      "FPort": 1,
+      "FCntUp": 9598,
+      "LrrRSSI": "-98.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T02:14:55.142Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d3a",
+      "FPort": 1,
+      "FCntUp": 9597,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC7",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T01:59:55.190Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d39",
+      "FPort": 1,
+      "FCntUp": 9596,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.0",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC2",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T01:44:55.080Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d38",
+      "FPort": 1,
+      "FCntUp": 9595,
+      "LrrRSSI": "-102.0",
+      "LrrSNR": "4.25",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC3",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T01:29:55.111Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d37",
+      "FPort": 1,
+      "FCntUp": 9594,
+      "LrrRSSI": "-108.0",
+      "LrrSNR": "4.5",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC2",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T01:15:55.132Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d36",
+      "FPort": 1,
+      "FCntUp": 9593,
+      "LrrRSSI": "-99.0",
+      "LrrSNR": "3.5",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T01:14:55.149Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d36",
+      "FPort": 1,
+      "FCntUp": 9592,
+      "LrrRSSI": "-99.0",
+      "LrrSNR": "4.75",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC0",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T00:59:55.155Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d35",
+      "FPort": 1,
+      "FCntUp": 9591,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "3.25",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T00:44:55.233Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d34",
+      "FPort": 1,
+      "FCntUp": 9590,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "3.75",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T00:29:55.254Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d33",
+      "FPort": 1,
+      "FCntUp": 9589,
+      "LrrRSSI": "-107.0",
+      "LrrSNR": "3.5",
+      "SpFact": "7",
+      "SubBand": "G1",
+      "Channel": "LC1",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T00:15:55.255Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d32",
+      "FPort": 1,
+      "FCntUp": 9588,
+      "LrrRSSI": "-101.0",
+      "LrrSNR": "5.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC4",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  },
+  {
+    "DevEUI_uplink": {
+      "DevEUI": "0004A30B00FB6486",
+      "Time": "2025-09-07T00:14:55.230Z",
+      "payload_hex": "02060004a30b00fb648600012f00000000000e960f1d32",
+      "FPort": 1,
+      "FCntUp": 9587,
+      "LrrRSSI": "-106.0",
+      "LrrSNR": "3.0",
+      "SpFact": "7",
+      "SubBand": "G2",
+      "Channel": "LC5",
+      "DevAddr": "01F8EDED",
+      "Direction": "0"
+    }
+  }
+]

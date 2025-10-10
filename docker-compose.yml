@@ -1,0 +1,341 @@
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: parking-traefik
+    restart: unless-stopped
+    command:
+    - --api.dashboard=true
+    - --providers.docker=true
+    - --providers.docker.exposedbydefault=false
+    - --providers.docker.network=web
+    - --entrypoints.web.address=:80
+    - --entrypoints.websecure.address=:443
+    - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+    - --certificatesresolvers.letsencrypt.acme.email=${TLS_EMAIL}
+    - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    - --entrypoints.web.http.redirections.entrypoint.to=websecure
+    - --entrypoints.web.http.redirections.entrypoint.scheme=https
+    - --log.level=INFO
+    - --providers.docker.watch=true
+    ports:
+    - 80:80
+    - 443:443
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    - traefik_certs:/letsencrypt
+    networks:
+    - web
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN}`)
+    - traefik.http.routers.dashboard.service=api@internal
+    - traefik.http.routers.dashboard.tls.certresolver=letsencrypt
+    - traefik.http.routers.dashboard.entrypoints=websecure
+  postgres-primary:
+    image: postgres:16-alpine
+    container_name: parking-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+    - postgres_data:/var/lib/postgresql/data
+    - ./database/init:/docker-entrypoint-initdb.d
+    ports:
+    - 5432:5432
+    networks:
+    - parking-network
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  pgbouncer:
+    image: pgbouncer/pgbouncer:latest
+    container_name: parking-pgbouncer
+    restart: unless-stopped
+    environment:
+      DATABASES_HOST: postgres-primary
+      DATABASES_PORT: 5432
+      DATABASES_USER: ${POSTGRES_USER}
+      DATABASES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASES_DBNAME: ${POSTGRES_DB}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 25
+    ports:
+    - 6432:6432
+    networks:
+    - parking-network
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+  mosquitto:
+    image: eclipse-mosquitto:2.0-openssl
+    container_name: parking-mosquitto
+    restart: unless-stopped
+    volumes:
+    - ./config/mosquitto:/mosquitto/config
+    - mosquitto_data:/mosquitto/data
+    - mosquitto_logs:/mosquitto/log
+    ports:
+    - 1883:1883
+    - 9001:9001
+    networks:
+    - parking-network
+  chirpstack:
+    image: chirpstack/chirpstack:4.14.1
+    container_name: parking-chirpstack
+    restart: unless-stopped
+    command: --config /etc/chirpstack
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-primary:5432/chirpstack
+    volumes:
+    - ./config/chirpstack:/etc/chirpstack
+    - chirpstack_data:/opt/chirpstack
+    ports:
+    - 1700:1700/udp
+    networks:
+    - parking-network
+    - web
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+    - traefik.enable=true
+    - traefik.docker.network=web
+    - traefik.http.routers.chirpstack.rule=Host(`chirpstack.${DOMAIN}`)
+    - traefik.http.routers.chirpstack.entrypoints=websecure
+    - traefik.http.routers.chirpstack.tls.certresolver=letsencrypt
+    - traefik.http.services.chirpstack.loadbalancer.server.port=8080
+  adminer:
+    build: ./iot-platform-reference/88-tools/adminer-custom
+    container_name: parking-adminer
+    restart: unless-stopped
+    networks:
+    - parking-network
+    - web
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres-primary
+    labels:
+    - traefik.enable=true
+    - traefik.docker.network=web
+    - traefik.http.routers.adminer.rule=Host(`adminer.${DOMAIN}`)
+    - traefik.http.routers.adminer.entrypoints=websecure
+    - traefik.http.routers.adminer.tls.certresolver=letsencrypt
+    - traefik.http.services.adminer.loadbalancer.server.port=8080
+  ingest-service:
+    build: ./services/ingest
+    container_name: parking-ingest
+    restart: unless-stopped
+    environment:
+      INGEST_DB_HOST: parking-postgres
+      INGEST_DB_INTERNAL_PORT: 5432
+      INGEST_DB_NAME: ${POSTGRES_DB}
+      INGEST_DB_USER: ${POSTGRES_USER}
+      INGEST_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      TRANSFORM_URL: http://parking-transform:9000/process-uplink/uplink
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: 1883
+      CHIRPSTACK_APP_ID: ${CHIRPSTACK_APP_ID:-default-app-id}
+    volumes:
+    - ./services/ingest/app:/app
+    networks:
+    - parking-network
+    - web
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    labels:
+    - traefik.enable=true
+    - traefik.docker.network=web
+    - traefik.http.routers.ingest.rule=Host(`ingest.${DOMAIN}`)
+    - traefik.http.routers.ingest.entrypoints=websecure
+    - traefik.http.routers.ingest.tls.certresolver=letsencrypt
+    - traefik.http.services.ingest.loadbalancer.server.port=8000
+  transform-service:
+    build: ./services/transform
+    container_name: parking-transform
+    restart: unless-stopped
+    environment:
+      TRANSFORM_DB_HOST: parking-postgres
+      TRANSFORM_DB_INTERNAL_PORT: 5432
+      TRANSFORM_DB_NAME: ${POSTGRES_DB}
+      TRANSFORM_DB_USER: ${POSTGRES_USER}
+      TRANSFORM_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      CORS_ORIGINS: https://ops.${DOMAIN},https://${DOMAIN}
+    volumes:
+    - ./services/transform/app:/app
+    networks:
+    - parking-network
+    - web
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    labels:
+    - traefik.enable=true
+    - traefik.docker.network=web
+    - traefik.http.routers.transform.rule=Host(`transform.${DOMAIN}`)
+    - traefik.http.routers.transform.entrypoints=websecure
+    - traefik.http.routers.transform.tls.certresolver=letsencrypt
+    - traefik.http.services.transform.loadbalancer.server.port=9000
+  downlink-service:
+    build: ./services/downlink
+    container_name: parking-downlink
+    restart: unless-stopped
+    environment:
+      CHIRPSTACK_API_URL: parking-chirpstack:8080
+      CHIRPSTACK_API_TOKEN: ${CHIRPSTACK_API_TOKEN}
+      CORS_ORIGINS: https://ops.${DOMAIN},https://${DOMAIN}
+    volumes:
+    - ./services/downlink/app:/app
+    networks:
+    - parking-network
+    - web
+    depends_on:
+      chirpstack:
+        condition: service_started
+    labels:
+    - traefik.enable=true
+    - traefik.docker.network=web
+    - traefik.http.routers.downlink.rule=Host(`downlink.${DOMAIN}`)
+    - traefik.http.routers.downlink.entrypoints=websecure
+    - traefik.http.routers.downlink.tls.certresolver=letsencrypt
+    - traefik.http.services.downlink.loadbalancer.server.port=8000
+  parking-display-service:
+    build: ./services/parking-display
+    container_name: parking-display
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@parking-postgres:5432/${POSTGRES_DB}
+      DOWNLINK_SERVICE_URL: http://parking-downlink:8000
+      LOG_LEVEL: INFO
+      PYTHONUNBUFFERED: 1
+    volumes:
+    - ./services/parking-display/app:/app/app
+    networks:
+    - parking-network
+    - web
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      downlink-service:
+        condition: service_started
+    labels:
+    - traefik.enable=true
+    - traefik.docker.network=web
+    - traefik.http.routers.parking-display.rule=Host(`parking.${DOMAIN}`)
+    - traefik.http.routers.parking-display.entrypoints=websecure
+    - traefik.http.routers.parking-display.tls.certresolver=letsencrypt
+    - traefik.http.services.parking-display.loadbalancer.server.port=8000
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8000/health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: parking-filebrowser
+    restart: unless-stopped
+    user: 0:0
+    volumes:
+    - /opt/smart-parking:/srv
+    - filebrowser_db:/database
+    networks:
+    - web
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.filebrowser.rule=Host(`files.${DOMAIN}`)
+    - traefik.http.routers.filebrowser.entrypoints=websecure
+    - traefik.http.routers.filebrowser.tls.certresolver=letsencrypt
+    - traefik.http.services.filebrowser.loadbalancer.server.port=80
+  redis:
+    image: redis:7-alpine
+    container_name: parking-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+    - redis_data:/data
+    networks:
+    - parking-network
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  chirpstack-gateway-bridge:
+    image: chirpstack/chirpstack-gateway-bridge:4
+    container_name: parking-gateway-bridge
+    restart: unless-stopped
+    ports:
+    - 3001:3001
+    volumes:
+    - ./config/chirpstack-gateway-bridge:/etc/chirpstack-gateway-bridge
+    networks:
+    - parking-network
+    depends_on:
+      mosquitto:
+        condition: service_started
+  website:
+    build: /opt/www-verdegris
+    container_name: parking-website
+    restart: unless-stopped
+    networks:
+    - web
+    labels:
+    - traefik.enable=true
+    - traefik.docker.network=web
+    - traefik.http.routers.website-www.rule=Host(`www.${DOMAIN}`)
+    - traefik.http.routers.website-www.entrypoints=websecure
+    - traefik.http.routers.website-www.tls.certresolver=letsencrypt
+    - traefik.http.routers.website-root.rule=Host(`${DOMAIN}`)
+    - traefik.http.routers.website-root.entrypoints=websecure
+    - traefik.http.routers.website-root.tls.certresolver=letsencrypt
+    - traefik.http.services.website.loadbalancer.server.port=80
+  contact-api:
+    build: /opt/www-verdegris/contact-api
+    container_name: parking-contact-api
+    restart: unless-stopped
+    environment:
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      TO_EMAIL: contact@eroundit.eu
+    networks:
+    - web
+    labels:
+    - traefik.enable=true
+    - traefik.docker.network=web
+    - traefik.http.routers.contact-api.rule=Host(`contact.${DOMAIN}`)
+    - traefik.http.routers.contact-api.entrypoints=websecure
+    - traefik.http.routers.contact-api.tls.certresolver=letsencrypt
+    - traefik.http.services.contact-api.loadbalancer.server.port=8001
+volumes:
+  postgres_data: null
+  chirpstack_data: null
+  mosquitto_data: null
+  mosquitto_logs: null
+  traefik_certs: null
+  filebrowser_db: null
+  redis_data: null
+networks:
+  parking-network:
+    external: true
+  web:
+    external: true

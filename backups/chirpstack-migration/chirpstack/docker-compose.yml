@@ -1,0 +1,104 @@
+# ChirpStack Docker Compose Configuration
+# Version: 1.0.2
+# Timestamp: 2025-10-01
+# VM: 110 (chirpstack-sensemy) - 10.44.1.190
+# Database: VM 112 (10.44.1.12:5432)
+# Updated: Added Basic Station support on port 3001 with config file
+
+services:
+  # PostgreSQL client utilities (for migrations)
+  postgres-client:
+    image: postgres:15-alpine
+    command: sleep infinity
+    environment:
+      PGHOST: 10.44.1.12
+      PGPORT: 5432
+      PGDATABASE: chirpstack_db
+      PGUSER: chirpstack
+      PGPASSWORD: secret
+    networks:
+      - chirpstack-net
+
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: chirpstack-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks:
+      - chirpstack-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Mosquitto MQTT broker for device communication
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: chirpstack-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    networks:
+      - chirpstack-net
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ChirpStack Gateway Bridge - converts packet forwarder protocol to MQTT
+  chirpstack-gateway-bridge:
+    image: chirpstack/chirpstack-gateway-bridge:4
+    container_name: chirpstack-gateway-bridge
+    restart: unless-stopped
+    ports:
+      - "1700:1700/udp"
+      - "3001:3001"
+    volumes:
+      - ./chirpstack-gateway-bridge.toml:/etc/chirpstack-gateway-bridge/chirpstack-gateway-bridge.toml
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - chirpstack-net
+
+  # ChirpStack - LoRaWAN Network Server
+  chirpstack:
+    image: chirpstack/chirpstack:4
+    container_name: chirpstack
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    command: -c /etc/chirpstack
+    volumes:
+      - ./chirpstack.toml:/etc/chirpstack/chirpstack.toml
+    depends_on:
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - chirpstack-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  chirpstack-net:
+    driver: bridge
+
+volumes:
+  redis-data:
+  mosquitto-data:
+  mosquitto-log:
+  chirpstack-data:

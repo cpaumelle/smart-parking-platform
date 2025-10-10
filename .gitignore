@@ -1,0 +1,83 @@
+# Environment variables and secrets
+.env
+*.env
+.env.*
+!.env.example
+
+# Docker volumes
+database/data/
+backups/*.sql
+backups/*.sql.gz
+
+# Logs
+logs/*.log
+*.log
+
+# Uploads and temporary files
+uploads/*
+!uploads/.gitkeep
+
+# Traefik certificates and config
+config/traefik/acme.json
+config/traefik/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node modules (if any frontend work)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+.cache/
+
+# OS files
+Thumbs.db
+.Trash-*
+
+# Security
+*.pem
+*.key
+*.crt
+*.cert
+credentials.json
+secrets/
+
+# ChirpStack
+config/chirpstack/*.pem
+config/chirpstack/*.key

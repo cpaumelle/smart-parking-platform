@@ -1,0 +1,46 @@
+"""
+Replay Uplinks from JSON
+Version: 0.1.0
+Last Updated: 2025-08-06 15:30 UTC
+Authors: SenseMy IoT Team
+
+Changelog:
+- Initial version to replay cleaned JSON uplinks from file
+- Posts to ingest API using /uplink?source=actility
+- Respects INGEST_REPLAY_URL if set in environment
+
+Usage:
+  python replay_uplinks_from_json.py uplinks_clean.json
+"""
+
+import sys, json, os
+import requests
+from time import sleep
+
+REPLAY_URL = os.getenv("INGEST_REPLAY_URL", "https://dev.sensemy.cloud/uplink?source=actility")
+
+def replay_uplinks(file_path):
+    try:
+        with open(file_path, "r") as f:
+            data = json.load(f)
+
+        for i, item in enumerate(data):
+            if not isinstance(item, dict) or "DevEUI_uplink" not in item:
+                print(f"❌ Skipping invalid entry #{i}")
+                continue
+
+            payload = json.dumps(item)
+            r = requests.post(REPLAY_URL, data=payload, headers={"Content-Type": "application/json"})
+            status = "✅" if r.status_code == 200 else "❌"
+            print(f"{status} {i+1}/{len(data)} - HTTP {r.status_code} - DevEUI: {item['DevEUI_uplink'].get('DevEUI')}")
+            sleep(0.1)  # light throttling
+
+    except Exception as e:
+        print(f"❌ Failed to replay: {e}")
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python replay_uplinks_from_json.py uplinks_clean.json")
+        sys.exit(1)
+
+    replay_uplinks(sys.argv[1])

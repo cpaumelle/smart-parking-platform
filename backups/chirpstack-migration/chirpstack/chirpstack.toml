@@ -1,0 +1,89 @@
+# ChirpStack Configuration
+[postgresql]
+dsn = "postgres://chirpstack:secret@10.44.1.12:5432/chirpstack_db?sslmode=disable"
+
+[redis]
+servers = ["redis://redis:6379"]
+
+[network]
+net_id = "000000"
+enabled_regions = ["eu868"]
+
+[api]
+bind = "0.0.0.0:8080"
+
+[integration.mqtt]
+server = "tcp://mosquitto:1883"
+json = true
+qos = 0
+clean_session = false
+client_id = "chirpstack_integration"
+event_topic_template = "application/{{.ApplicationID}}/device/{{.DevEUI}}/event/{{.EventType}}"
+command_topic_template = "application/{{.ApplicationID}}/device/{{.DevEUI}}/command/{{.CommandType}}"
+
+[[regions]]
+  name = "eu868"
+  common_name = "EU868"
+
+  [regions.gateway]
+    force_gws_private = false
+
+    [regions.gateway.backend]
+      enabled = "mqtt"
+
+      [regions.gateway.backend.mqtt]
+        event_topic = "gateway/+/event/+"
+        state_topic = "gateway/+/state/+"
+        command_topic = "gateway/{{ gateway_id }}/command/{{ command }}"
+        server = "tcp://mosquitto:1883"
+        qos = 0
+        clean_session = true
+
+  # Channels
+  [[regions.network.channels]]
+    frequency = 868100000
+    min_dr = 0
+    max_dr = 5
+    enabled = true
+
+  [[regions.network.channels]]
+    frequency = 868300000
+    min_dr = 0
+    max_dr = 5
+    enabled = true
+
+  [[regions.network.channels]]
+    frequency = 868500000
+    min_dr = 0
+    max_dr = 5
+    enabled = true
+
+  [[regions.network.channels]]
+    frequency = 867100000
+    min_dr = 0
+    max_dr = 5
+    enabled = true
+
+  [[regions.network.channels]]
+    frequency = 867300000
+    min_dr = 0
+    max_dr = 5
+    enabled = true
+
+  [[regions.network.channels]]
+    frequency = 867500000
+    min_dr = 0
+    max_dr = 5
+    enabled = true
+
+  [[regions.network.channels]]
+    frequency = 867700000
+    min_dr = 0
+    max_dr = 5
+    enabled = true
+
+  [[regions.network.channels]]
+    frequency = 867900000
+    min_dr = 0
+    max_dr = 5
+    enabled = true

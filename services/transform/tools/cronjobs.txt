@@ -1,0 +1,63 @@
+# ────────────────────────────────────────────────────────────────────────────────
+# CRONTAB CONFIGURATION FOR transform-service
+# v 1.0.0 - Smart Parking Platform
+# Purpose: Schedule async enrichment and unpacking tasks inside the container
+# Notes:
+# - All paths are absolute (no reliance on current working directory).
+# - Python path and environment variables must be explicitly defined.
+# - This file is loaded by `crontab /app/cronjobs.txt` in the Dockerfile.
+# - Log output goes to /var/log/cron.log and /var/log/cron_heartbeat.log
+# - Ensure PYTHONPATH and ENV variables are consistent with the container ENV.
+# ────────────────────────────────────────────────────────────────────────────────
+
+# ─── Cron Environment Setup ─────────────────────────────────────────────────────
+# Set full PATH for cron environment (minimal by default)
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Set transform database environment variables used by scripts
+TRANSFORM_DB_HOST=parking-postgres
+TRANSFORM_DB_INTERNAL_PORT=5432
+TRANSFORM_DB_NAME=parking_platform
+TRANSFORM_DB_USER=parking_user
+TRANSFORM_DB_PASSWORD=fd9@kyLwTx
+
+# NOTE:
+# These ENV vars are picked up by the scripts via os.environ.get() in connections.py
+# and MUST be declared here if you expect cron to inject them during runtime.
+
+# ─── Async Enrichment Tasks ─────────────────────────────────────────────────────
+# Format: minute hour day month day-of-week command
+# Redirect all output to /var/log/cron.log (append mode)
+
+# Run enrichment script every 5 minutes (NEW uplinks → CONTEXT_OK or CONTEXT_PENDING)
+*/5 * * * * sh -c 'echo "[CRON SCRIPT] $(date -u) unpack_01_enrich_new" && PYTHONPATH=/app /usr/local/bin/python3 /app/async_tasks/unpack_01_enrich_new.py' >> /var/log/cron.log 2>&1
+
+# Run retry enrichment script at :15 and :45 each hour (retry CONTEXT_PENDING uplinks)
+15,45 * * * * sh -c 'echo "[CRON SCRIPT] $(date -u) unpack_02_enrich_retry_pending" && PYTHONPATH=/app /usr/local/bin/python3 /app/async_tasks/unpack_02_enrich_retry_pending.py' >> /var/log/cron.log 2>&1
+
+# Run enrichment script every 7 minutes (Ready for unpack)
+*/7 * * * * sh -c 'echo "[CRON SCRIPT] $(date -u) unpack_03_ready_for_unpacking.py" && PYTHONPATH=/app /usr/local/bin/python3 /app/async_tasks/unpack_03_ready_for_unpacking.py' >> /var/log/cron.log 2>&1
+
+# Run unpacking script at :10 and :40 each hour (for CONTEXT_OK uplinks marked READY_FOR_UNPACKING)
+10,40 * * * * sh -c 'echo "[CRON SCRIPT] $(date -u) unpack_04_unpack_ready" && PYTHONPATH=/app /usr/local/bin/python3 /app/async_tasks/unpack_04_unpack_ready.py' >> /var/log/cron.log 2>&1
+
+# Run retry-unpacking script every hour at :20 and :50 (to retry FAILED unpack attempts)
+20,50 * * * * sh -c 'echo "[CRON SCRIPT] $(date -u) unpack_05_unpack_retry_failed" && PYTHONPATH=/app /usr/local/bin/python3 /app/async_tasks/unpack_05_unpack_retry_failed.py' >> /var/log/cron.log 2>&1
+
+# Daily offline sweep for gateways (no uplinks in last 24h)
+0 4 * * * sh -c 'echo "[CRON SCRIPT] $(date -u) gateways_06_mark_offline.py" && PYTHONPATH=/app /usr/local/bin/python3 /app/async_tasks/gateways_06_mark_offline.py' >> /var/log/cron.log 2>&1
+
+# ─── Heartbeat Logger ───────────────────────────────────────────────────────────
+# Append a timestamped message to a separate log to confirm cron is alive
+# Useful for debugging if none of the above scripts are triggering
+
+* * * * * echo "🔁 Heartbeat: $(date -u)" >> /var/log/cron_heartbeat.log
+
+# ─── Tips ───────────────────────────────────────────────────────────────────────
+# 1. You can validate current crontab with: crontab -l
+# 2. Test scripts manually using: PYTHONPATH=/app /usr/local/bin/python3 /app/async_tasks/unpack_01_enrich_new.py
+# 3. View log output in container: tail -f /var/log/cron.log
+# 4. View heartbeat log: tail -f /var/log/cron_heartbeat.log
+# 5. If no logs appear, cron may not be running: try service cron start or check Dockerfile setup
+# 6. Any missing ENV (like DB host/password) will cause psycopg2 auth failures or connection errors
+# ────────────────────────────────────────────────────────────────────────────────
