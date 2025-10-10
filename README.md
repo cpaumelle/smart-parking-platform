@@ -161,7 +161,6 @@ ChirpStack (Network Server)
 │   ├── gateway-onboarding/         # Gateway onboarding scripts
 │   │   ├── onboard_kerlink_gateway.sh
 │   │   ├── SETUP.md
-│   │   ├── KERLINK_GATEWAY_SETUP.md
 │   │   └── .env.example
 │   └── dns/
 │       ├── manage_dns.py           # OVH DNS management
@@ -279,17 +278,12 @@ nano .env  # Add ChirpStack API key from https://chirpstack.verdegris.eu
 | **ChirpStack Web** | https://chirpstack.verdegris.eu |
 | **ChirpStack gRPC** | parking-chirpstack:8080 (internal) |
 | **Gateway WebSocket** | wss://chirpstack-gw.verdegris.eu:3002 |
-| **Region** | US915 Sub-band 0 (902.3-903.7 MHz) |
+| **Region** | EU868 (863-870 MHz) |
 | **Gateway Naming** | Parking-Gateway-XXXXXXXX |
 
 ### Documentation
 
 - **[SETUP.md](scripts/gateway-onboarding/SETUP.md)** - Quick setup guide with step-by-step instructions
-- **[KERLINK_GATEWAY_SETUP.md](scripts/gateway-onboarding/KERLINK_GATEWAY_SETUP.md)** - Comprehensive 639-line manual configuration guide
-  - Web interface configuration
-  - SSH command-line configuration
-  - Troubleshooting and diagnostics
-  - US915 frequency plan details
 - **[WEBSOCKET-SETUP.md](scripts/gateway-onboarding/WEBSOCKET-SETUP.md)** - WebSocket connection configuration
 
 ### Usage Examples
@@ -330,7 +324,6 @@ monit restart station
 
 **API key error:**
 - Generate new API key from ChirpStack UI → User → API Keys
-For complete troubleshooting guide, see [KERLINK_GATEWAY_SETUP.md](scripts/gateway-onboarding/KERLINK_GATEWAY_SETUP.md#troubleshooting).
 
 ---
    ```

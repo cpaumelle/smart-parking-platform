@@ -14,7 +14,7 @@ nano .env  # Add your ChirpStack API key
 ## Documentation
 
 - **SETUP.md** - Quick setup guide with step-by-step instructions
-- **KERLINK_GATEWAY_SETUP.md** - Comprehensive manual configuration guide (639 lines)
+
 - **WEBSOCKET-SETUP.md** - WebSocket connection configuration details
 
 ## Scripts
@@ -50,7 +50,7 @@ Usage:
 - **ChirpStack Web:** https://chirpstack.verdegris.eu
 - **ChirpStack gRPC:** parking-chirpstack:8080 (internal Docker)
 - **Gateway WebSocket:** wss://chirpstack-gw.verdegris.eu:3002
-- **Region:** US915 Sub-band 0 (902.3-903.7 MHz)
+- **Region:** EU868 (863-870 MHz)
 
 ## Requirements
 
