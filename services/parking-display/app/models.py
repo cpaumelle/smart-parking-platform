@@ -75,6 +75,23 @@ class CreateSpaceRequest(BaseModel):
     reservation_priority: bool = Field(True)
     space_metadata: Dict[str, Any] = Field(default_factory=dict)
 
+class UpdateSpaceRequest(BaseModel):
+    """Update parking space (all fields optional)"""
+    space_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    space_code: Optional[str] = Field(None, max_length=20)
+    location_description: Optional[str] = None
+    building: Optional[str] = None
+    floor: Optional[str] = None
+    zone: Optional[str] = None
+    occupancy_sensor_deveui: Optional[str] = Field(None, min_length=16, max_length=16)
+    display_device_deveui: Optional[str] = Field(None, min_length=16, max_length=16)
+    auto_actuation: Optional[bool] = None
+    reservation_priority: Optional[bool] = None
+    maintenance_mode: Optional[bool] = None
+    enabled: Optional[bool] = None
+    space_metadata: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+
 # Response models
 class ActuationResponse(BaseModel):
     """Response from actuation request"""
@@ -97,6 +114,52 @@ class SpaceStatusResponse(BaseModel):
     last_display_update: Optional[datetime] = None
     active_reservation: Optional[Dict[str, Any]] = None
     enabled: bool
+
+class SpaceDetailResponse(BaseModel):
+    """Detailed parking space information"""
+    # Space identification
+    space_id: str
+    space_name: str
+    space_code: Optional[str] = None
+    location_description: Optional[str] = None
+
+    # Location
+    building: Optional[str] = None
+    floor: Optional[str] = None
+    zone: Optional[str] = None
+    gps_latitude: Optional[float] = None
+    gps_longitude: Optional[float] = None
+
+    # Device information
+    occupancy_sensor_deveui: Optional[str] = None
+    display_device_deveui: Optional[str] = None
+    sensor_details: Optional[Dict[str, Any]] = None
+    display_details: Optional[Dict[str, Any]] = None
+
+    # State tracking
+    current_state: ParkingState
+    sensor_state: Optional[ParkingState] = None
+    display_state: Optional[ParkingState] = None
+    last_sensor_update: Optional[datetime] = None
+    last_display_update: Optional[datetime] = None
+    state_changed_at: Optional[datetime] = None
+
+    # Configuration
+    auto_actuation: bool
+    reservation_priority: bool
+    enabled: bool
+    maintenance_mode: bool
+
+    # Metadata
+    space_metadata: Dict[str, Any] = Field(default_factory=dict)
+    notes: Optional[str] = None
+
+    # Active reservation
+    active_reservation: Optional[Dict[str, Any]] = None
+
+    # Timestamps
+    created_at: datetime
+    updated_at: datetime
 
 class HealthResponse(BaseModel):
     """Service health status"""

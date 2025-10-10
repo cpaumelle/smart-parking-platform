@@ -706,6 +706,603 @@ The Parking Display Service provides three complementary API groups for comprehe
 
 **Base Path**: `/v1/spaces`
 
+**About Parking Spaces**:
+
+The **Parking Space** is the core entity in the system. Each space represents a physical parking spot with:
+- **Unique identification** (space_id, space_name, space_code)
+- **Geographic location** (building, floor, zone, GPS coordinates)
+- **Assigned devices** (occupancy sensor + display device)
+- **Real-time state** (FREE, OCCUPIED, RESERVED, MAINTENANCE, OUT_OF_ORDER)
+- **Configuration** (auto-actuation, reservation priority, enabled status)
+- **Metadata** (JSON storage for custom attributes)
+
+Spaces tie together sensors, displays, reservations, and actuations into a unified parking management system.
+
+---
+
+##### List All Spaces (with filters)
+
+**Endpoint**: `GET /v1/spaces`
+
+**Description**: Retrieve all parking spaces with optional filtering.
+
+**Query Parameters**:
+- `building` (optional): Filter by building name
+- `floor` (optional): Filter by floor
+- `zone` (optional): Filter by zone name
+- `state` (optional): Filter by current state (FREE, OCCUPIED, RESERVED, etc.)
+- `enabled` (optional): Filter by enabled status (true/false)
+
+**Example**: `GET /v1/spaces?building=Building%20A&floor=Ground&state=FREE`
+
+**Response**:
+```json
+{
+  "spaces": [
+    {
+      "space_id": "550e8400-e29b-41d4-a716-446655440000",
+      "space_name": "Parking Space A1",
+      "space_code": "A1",
+      "building": "Building A",
+      "floor": "Ground",
+      "zone": "North",
+      "current_state": "FREE",
+      "occupancy_sensor_deveui": "58a0cb00001019bc",
+      "display_device_deveui": "58a0cb00001019bd",
+      "enabled": true,
+      "maintenance_mode": false
+    }
+  ],
+  "count": 1
+}
+```
+
+##### Get Single Space Details
+
+**Endpoint**: `GET /v1/spaces/{space_id}`
+
+**Description**: Get comprehensive details about a specific parking space including device information and active reservations.
+
+**Example**: `GET /v1/spaces/550e8400-e29b-41d4-a716-446655440000`
+
+**Response**:
+```json
+{
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "space_name": "Parking Space A1",
+  "space_code": "A1",
+  "location_description": "Ground floor, near main entrance",
+  "building": "Building A",
+  "floor": "Ground",
+  "zone": "North",
+  "gps_latitude": 48.8566,
+  "gps_longitude": 2.3522,
+  "occupancy_sensor_deveui": "58a0cb00001019bc",
+  "display_device_deveui": "58a0cb00001019bd",
+  "sensor_details": {
+    "sensor_type": "occupancy",
+    "model": "Parking Sensor v2",
+    "manufacturer": "LoRa Sensors Inc"
+  },
+  "display_details": {
+    "display_type": "led_matrix",
+    "model": "LED Display v1",
+    "manufacturer": "Display Tech"
+  },
+  "current_state": "RESERVED",
+  "sensor_state": "FREE",
+  "display_state": "RESERVED",
+  "last_sensor_update": "2025-10-10T14:30:00",
+  "last_display_update": "2025-10-10T14:35:00",
+  "state_changed_at": "2025-10-10T14:00:00",
+  "auto_actuation": true,
+  "reservation_priority": true,
+  "enabled": true,
+  "maintenance_mode": false,
+  "space_metadata": {
+    "access_type": "public",
+    "ev_charging": false
+  },
+  "notes": "Premium spot near entrance",
+  "active_reservation": {
+    "reservation_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "reserved_from": "2025-10-10T14:00:00",
+    "reserved_until": "2025-10-10T16:00:00",
+    "external_booking_id": "BOOKING-12345",
+    "external_system": "mobile_app",
+    "status": "active"
+  },
+  "created_at": "2025-10-01T10:00:00",
+  "updated_at": "2025-10-10T14:00:00"
+}
+```
+
+##### Create New Space
+
+**Endpoint**: `POST /v1/spaces`
+
+**Description**: Create a new parking space. Requires sensor and display devices to be pre-registered in device registries.
+
+**Request**:
+```json
+{
+  "space_name": "Parking Space B5",
+  "space_code": "B5",
+  "location_description": "Second floor, west wing",
+  "building": "Building B",
+  "floor": "2",
+  "zone": "West",
+  "occupancy_sensor_deveui": "58a0cb00001019be",
+  "display_device_deveui": "58a0cb00001019bf",
+  "auto_actuation": true,
+  "reservation_priority": true,
+  "space_metadata": {
+    "access_type": "employee",
+    "ev_charging": true
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "status": "created",
+  "space_id": "660f9511-f39c-52e5-b827-557766551111",
+  "space_name": "Parking Space B5"
+}
+```
+
+**Validation**:
+- Sensor DevEUI must exist in `parking_config.sensor_registry`
+- Display DevEUI must exist in `parking_config.display_registry`
+- Space name must be unique
+- Returns 400 error if devices not found
+
+##### Update Space
+
+**Endpoint**: `PUT /v1/spaces/{space_id}` or `PATCH /v1/spaces/{space_id}`
+
+**Description**: Update parking space attributes. All fields are optional - only send fields you want to update.
+
+**Request** (example - updating location and config):
+```json
+{
+  "building": "Building C",
+  "floor": "1",
+  "zone": "East",
+  "maintenance_mode": false,
+  "enabled": true,
+  "notes": "Recently serviced - all systems operational"
+}
+```
+
+**Response**:
+```json
+{
+  "status": "updated",
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "space_name": "Parking Space A1"
+}
+```
+
+**Updatable Fields**:
+- space_name, space_code, location_description
+- building, floor, zone
+- occupancy_sensor_deveui, display_device_deveui (validates devices exist)
+- auto_actuation, reservation_priority
+- maintenance_mode, enabled
+- space_metadata, notes
+
+**Features**:
+- Dynamic field validation
+- Device reassignment with registry validation
+- Automatic timestamp update (updated_at)
+
+##### Delete/Disable Space
+
+**Endpoint**: `DELETE /v1/spaces/{space_id}`
+
+**Description**: Soft delete a parking space by setting enabled=FALSE. Optionally cancel active reservations.
+
+**Query Parameters**:
+- `force` (optional, default: false): If true, cancels active reservations before disabling
+
+**Example**: `DELETE /v1/spaces/550e8400-e29b-41d4-a716-446655440000?force=true`
+
+**Response**:
+```json
+{
+  "status": "deleted",
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "space_name": "Parking Space A1",
+  "reservations_cancelled": 2
+}
+```
+
+**Behavior**:
+- `force=false` (default): Returns 400 error if space has active reservations
+- `force=true`: Cancels all active reservations before disabling space
+- Sets `enabled=FALSE` (soft delete, preserves data)
+- Updates `updated_at` timestamp
+- Space can be re-enabled by updating enabled=TRUE
+
+---
+
+## Services
+
+### Core Infrastructure
+
+#### Traefik (Reverse Proxy)
+- **Image**: `traefik:v3.1`
+- **Ports**: 80 (HTTP), 443 (HTTPS)
+- **URL**: `https://traefik.verdegris.eu`
+- **Features**:
+  - Automatic SSL certificate generation (Let's Encrypt)
+  - HTTP to HTTPS redirect
+  - Dynamic service discovery
+  - Dashboard for monitoring routes
+
+#### PostgreSQL (Database)
+- **Image**: `postgres:16-alpine`
+- **Port**: 5432
+- **Database**: `parking_platform`
+- **Schemas**:
+  - `core`: System configuration, users, roles
+  - `devices`: Sensor registration, device metadata
+  - `spaces`: Parking space definitions
+  - `reservations`: Booking system
+  - `analytics`: Historical data, aggregations
+  - `ingest`: Raw sensor data staging
+- **Additional DB**: `chirpstack` (for LoRaWAN Network Server)
+
+#### PgBouncer (Connection Pooler)
+- **Image**: `pgbouncer/pgbouncer:latest`
+- **Port**: 6432
+- **Pool Mode**: Transaction
+- **Max Connections**: 1000
+
+#### Redis (Cache)
+- **Image**: `redis:7-alpine`
+- **Port**: 6379 (internal)
+- **Features**: Persistence enabled (AOF)
+
+#### Mosquitto (MQTT Broker)
+- **Image**: `eclipse-mosquitto:2.0-openssl`
+- **Ports**: 1883 (MQTT), 9001 (WebSocket)
+- **Usage**: ChirpStack integration events
+
+### LoRaWAN Services
+
+#### ChirpStack (Network Server)
+- **Image**: `chirpstack/chirpstack:4.14.1`
+- **Port**: 1700/udp (LoRaWAN Gateway)
+- **URL**: `https://chirpstack.verdegris.eu`
+- **Features**:
+  - LoRaWAN Network Server
+  - Device management
+  - Application server
+  - Web UI
+
+#### ChirpStack Gateway Bridge
+- **Image**: `chirpstack/chirpstack-gateway-bridge:4`
+- **Port**: 3001
+- **Purpose**: Converts Packet Forwarder protocol to MQTT
+
+### Application Services
+
+> **Note**: Ingest and Downlink services use port 8000 internally; Parking Display uses 8100. This is not a conflict - each service runs in an isolated Docker container. Traefik routes external traffic based on hostname (ingest.verdegris.eu, downlink.verdegris.eu, etc.).
+
+#### Ingest Service
+- **Port**: 8000 (container-internal)
+- **URL**: `https://ingest.verdegris.eu`
+- **Purpose**: Receives LoRaWAN uplinks from ChirpStack via MQTT integration
+- **Endpoints**:
+  - `POST /uplink?source=chirpstack` - Receive uplink from ChirpStack
+  - `GET /health` - Health check
+- **Features**:
+  - ChirpStack MQTT integration
+  - Deduplication based on DevEUI + timestamp
+  - Real-time forwarding to Transform service
+  - Parking sensor detection and routing
+
+#### Transform Service
+- **Port**: 9000 (container-internal)
+- **URL**: `https://transform.verdegris.eu`
+- **Purpose**: Process and transform raw uplinks, provide device/gateway APIs
+- **Endpoints**:
+  - `POST /process-uplink/uplink` - Process uplink data
+  - `GET /v1/locations` - Location hierarchy
+  - `GET /v1/devices` - Device listing and details
+  - `GET /v1/gateways` - Gateway information
+  - `GET /health` - Health check
+
+
+#### Downlink Service
+- **Port**: 8000 (container-internal)
+- **URL**: `https://downlink.verdegris.eu`
+- **Purpose**: Send downlinks and manage ChirpStack resources via gRPC
+- **Endpoints**:
+  - `POST /downlink/send` - Queue downlink to device
+  - `GET /downlink/queue/{dev_eui}` - View queue
+  - `DELETE /downlink/queue/{dev_eui}` - Flush queue
+  - `GET /devices/{dev_eui}` - Device details
+  - `GET /applications` - List applications
+  - `GET /gateways` - List gateways
+  - `GET /health` - Health check
+
+#### Parking Display Service
+- **Port**: 8100 (container-internal)
+- **URL**: `https://parking.verdegris.eu`
+- **Purpose**: Unified parking management service with real-time state management, space administration, and reservation support
+- **API Groups**:
+  - `/v1/actuations` - State management and display actuation
+  - `/v1/spaces` - Parking space administration
+  - `/v1/reservations` - Reservation management
+- **Features**:
+  - Priority-based state engine (Manual > Maintenance > Reservation > Sensor)
+  - Sub-200ms response time for sensor uplinks
+  - Automated downlink control for Class C LoRaWAN displays
+  - Complete audit trail in `parking_operations.actuations` table
+  - Time-based reservations with grace periods
+  - Background task execution for non-blocking actuations
+- **Documentation**: `/opt/smart-parking/PARKING-DISPLAY-SERVICE.md`
+
+### Management Tools
+
+#### Adminer (Database Management)
+- **URL**: `https://adminer.verdegris.eu`
+- **Purpose**: PostgreSQL web interface
+- **Default Server**: `postgres-primary`
+
+#### FileBrowser (File Management)
+- **Image**: `filebrowser/filebrowser:latest`
+- **URL**: `https://files.verdegris.eu`
+- **Purpose**: Browse and manage platform files
+- **Root**: `/opt/smart-parking`
+
+---
+
+## API Documentation
+
+### Downlink Service API
+
+#### Send Downlink
+
+**Endpoint**: `POST /downlink/send`
+
+**Request**:
+```json
+{
+  "dev_eui": "58a0cb00001019bc",
+  "fport": 204,
+  "data": "0003840096030540000500E02100",
+  "confirmed": false
+}
+```
+
+**Data Format**:
+- **HEX**: Even-length string with characters `0-9a-fA-F` (e.g., `0102030405`)
+- **Base64**: Standard base64 encoding (e.g., `AQIDBAUE`)
+
+The service automatically detects the format and decodes accordingly.
+
+**Response**:
+```json
+{
+  "status": "queued",
+  "dev_eui": "58a0cb00001019bc",
+  "f_cnt": null,
+  "fport": 204,
+  "confirmed": false
+}
+```
+
+#### Get Downlink Queue
+
+**Endpoint**: `GET /downlink/queue/{dev_eui}`
+
+**Response**:
+```json
+{
+  "dev_eui": "58a0cb00001019bc",
+  "total_count": 2,
+  "items": [
+    {
+      "f_cnt": 42,
+      "fport": 204,
+      "confirmed": false,
+      "data": "0003840096030540000500e02100",
+      "is_pending": true
+    }
+  ]
+}
+```
+
+#### Flush Queue
+
+**Endpoint**: `DELETE /downlink/queue/{dev_eui}`
+
+**Response**:
+```json
+{
+  "status": "flushed",
+  "dev_eui": "58a0cb00001019bc"
+}
+```
+
+### Ingest Service API
+
+#### Receive Uplink
+
+**Endpoint**: `POST /uplink?source=chirpstack`
+
+**Example Request**:
+```json
+{
+  "deviceInfo": {
+    "devEui": "58a0cb00001019bc"
+  },
+  "rxInfo": [
+    {
+      "gatewayId": "ac1f09fffe0xxxxx",
+      "rssi": -67,
+      "snr": 8.5
+    }
+  ],
+  "txInfo": {
+    "frequency": 868100000,
+    "dr": 5
+  },
+  "data": "AQIDBA=="
+}
+```
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "deveui": "58a0cb00001019bc",
+  "forwarded_to_transform": true,
+  "published_to_mqtt": true
+}
+```
+
+### Transform Service API
+
+#### Get Devices
+
+**Endpoint**: `GET /v1/devices`
+
+**Response**:
+```json
+{
+  "devices": [
+    {
+      "deveui": "58a0cb00001019bc",
+      "device_name": "Parking Sensor 001",
+      "location_name": "Lot A - Row 1",
+      "last_seen": "2025-10-07T18:30:00Z"
+    }
+  ]
+}
+
+---
+
+### Parking Display Service APIs
+
+The Parking Display Service provides three complementary API groups for comprehensive parking management.
+
+---
+
+#### Actuations API
+
+**Purpose**: Real-time parking state management and Class C display control
+
+**Base Path**: `/v1/actuations`
+
+##### Process Sensor Uplink
+
+**Endpoint**: `POST /v1/actuations/sensor-uplink`
+
+**Description**: Main entry point for real-time parking actuation. Receives sensor data from Ingest Service and triggers display updates.
+
+**Request**:
+```json
+{
+  "sensor_deveui": "58a0cb00001019bc",
+  "occupancy_state": "OCCUPIED",
+  "timestamp": "2025-10-10T14:30:00Z",
+  "payload_data": {
+    "battery": 3.6,
+    "temperature": 22.5
+  },
+  "rssi": -67,
+  "snr": 8.5
+}
+```
+
+**Response**:
+```json
+{
+  "status": "processed",
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "space_name": "Parking Space A1",
+  "previous_state": "FREE",
+  "new_state": "OCCUPIED",
+  "reason": "sensor_reading",
+  "processing_time_ms": 103.4,
+  "actuation_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+}
+```
+
+##### Manual Override
+
+**Endpoint**: `POST /v1/actuations/manual`
+
+**Description**: Force a parking space into a specific state (e.g., maintenance mode).
+
+**Request**:
+```json
+{
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "new_state": "MAINTENANCE",
+  "reason": "scheduled_maintenance",
+  "override_duration_minutes": 120,
+  "user_id": "admin@example.com"
+}
+```
+
+**Response**:
+```json
+{
+  "status": "processed",
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "space_name": "Parking Space A1",
+  "previous_state": "FREE",
+  "new_state": "MAINTENANCE",
+  "reason": "scheduled_maintenance",
+  "actuation_id": "c3d4e5f6-a7b8-9012-cdef-123456789012"
+}
+```
+
+##### Get Space Status
+
+**Endpoint**: `GET /v1/actuations/status/{space_id}`
+
+**Description**: Get current state and actuation status for a parking space.
+
+**Response**:
+```json
+{
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "space_name": "Parking Space A1",
+  "current_state": "RESERVED",
+  "sensor_state": "FREE",
+  "last_sensor_update": "2025-10-10T14:30:00",
+  "last_display_update": "2025-10-10T14:35:00",
+  "active_reservation": {
+    "reservation_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "reserved_from": "2025-10-10T14:00:00",
+    "reserved_until": "2025-10-10T16:00:00"
+  },
+  "enabled": true
+}
+```
+
+**State Priority System**:
+1. **Manual Override** (highest) - Admin-forced state
+2. **Maintenance** - Scheduled maintenance mode
+3. **Reservation** - Active time-based reservation
+4. **Sensor Reading** (lowest) - Real-time occupancy from sensor
+
+---
+
+#### Spaces API
+
+**Purpose**: Parking space administration and management
+
+**Base Path**: `/v1/spaces`
+
 ##### List All Spaces
 
 **Endpoint**: `GET /v1/spaces`
