@@ -17,6 +17,7 @@ async def list_spaces(
     zone: Optional[str] = Query(None, description="Filter by zone"),
     state: Optional[str] = Query(None, description="Filter by current state"),
     enabled: Optional[bool] = Query(None, description="Filter by enabled status"),
+    include_archived: bool = Query(False, description="Include archived spaces"),
     db = Depends(get_db_dependency)
 ):
     """List all parking spaces with optional filters"""
@@ -50,6 +51,11 @@ async def list_spaces(
             conditions.append(f"s.enabled = ${param_count}")
             params.append(enabled)
             param_count += 1
+
+
+        # Add archived filter
+        if not include_archived:
+            conditions.append("s.archived = FALSE")
 
         where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
 
@@ -473,7 +479,130 @@ async def update_space(space_id: str, request: UpdateSpaceRequest, db = Depends(
         logger.error(f"Error updating space {space_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/{space_id}")
+@router.post("/{space_id}/archive")
+async def archive_space(
+    space_id: str,
+    archived_by: str = Query(..., description="User archiving the space"),
+    archived_reason: str = Query(..., description="Reason for archiving"),
+    force: bool = Query(False, description="Force archive with active reservations"),
+    db = Depends(get_db_dependency)
+):
+    """Archive parking space (permanent deactivation, preserves historical data)"""
+    try:
+        # Check space exists and not already archived
+        existing = await db.fetchrow(
+            "SELECT space_id, space_name, enabled, archived FROM parking_spaces.spaces WHERE space_id = $1",
+            space_id
+        )
+
+        if not existing:
+            raise HTTPException(status_code=404, detail=f"Space {space_id} not found")
+
+        if existing["archived"]:
+            raise HTTPException(status_code=400, detail=f"Space {space_id} is already archived")
+
+        # Check for active reservations
+        active_reservations = await db.fetchval(
+            "SELECT COUNT(*) FROM parking_spaces.reservations WHERE space_id = $1 AND status = 'active'",
+            space_id
+        )
+
+        if active_reservations > 0 and not force:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Space has {active_reservations} active reservation(s). Use force=true to archive anyway."
+            )
+
+        # Cancel active reservations if force
+        if force and active_reservations > 0:
+            await db.execute("""
+                UPDATE parking_spaces.reservations
+                SET status = 'cancelled',
+                    cancelled_at = NOW(),
+                    cancellation_reason = 'space_archived'
+                WHERE space_id = $1 AND status = 'active'
+            """, space_id)
+            logger.info(f"Cancelled {active_reservations} reservation(s) for archiving space {space_id}")
+
+        # Archive the space
+        result = await db.fetchrow("""
+            UPDATE parking_spaces.spaces
+            SET enabled = FALSE,
+                archived = TRUE,
+                archived_at = NOW(),
+                archived_by = $2,
+                archived_reason = $3,
+                updated_at = NOW()
+            WHERE space_id = $1
+            RETURNING archived_at
+        """, space_id, archived_by, archived_reason)
+
+        logger.info(f"Archived parking space: {existing['space_name']} ({space_id}) by {archived_by}")
+
+        return {
+            "status": "archived",
+            "space_id": str(space_id),
+            "space_name": existing["space_name"],
+            "archived_at": result["archived_at"].isoformat(),
+            "archived_by": archived_by,
+            "archived_reason": archived_reason,
+            "reservations_cancelled": active_reservations if force else 0
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error archiving space {space_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{space_id}/restore")
+async def restore_space(
+    space_id: str,
+    restored_by: str = Query(..., description="User restoring the space"),
+    db = Depends(get_db_dependency)
+):
+    """Restore an archived parking space"""
+    try:
+        # Check space exists and is archived
+        existing = await db.fetchrow(
+            "SELECT space_id, space_name, archived FROM parking_spaces.spaces WHERE space_id = $1",
+            space_id
+        )
+
+        if not existing:
+            raise HTTPException(status_code=404, detail=f"Space {space_id} not found")
+
+        if not existing["archived"]:
+            raise HTTPException(status_code=400, detail=f"Space {space_id} is not archived")
+
+        # Restore the space
+        await db.execute("""
+            UPDATE parking_spaces.spaces
+            SET enabled = TRUE,
+                archived = FALSE,
+                archived_at = NULL,
+                archived_by = NULL,
+                archived_reason = NULL,
+                updated_at = NOW()
+            WHERE space_id = $1
+        """, space_id)
+
+        logger.info(f"Restored parking space: {existing['space_name']} ({space_id}) by {restored_by}")
+
+        return {
+            "status": "restored",
+            "space_id": str(space_id),
+            "space_name": existing["space_name"],
+            "restored_by": restored_by
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error restoring space {space_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def delete_space(
     space_id: str,
     force: bool = Query(False, description="Force delete even with active reservations"),

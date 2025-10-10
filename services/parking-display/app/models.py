@@ -114,6 +114,7 @@ class SpaceStatusResponse(BaseModel):
     last_display_update: Optional[datetime] = None
     active_reservation: Optional[Dict[str, Any]] = None
     enabled: bool
+    archived: bool = False  # NEW
 
 class SpaceDetailResponse(BaseModel):
     """Detailed parking space information"""
@@ -149,6 +150,12 @@ class SpaceDetailResponse(BaseModel):
     reservation_priority: bool
     enabled: bool
     maintenance_mode: bool
+
+    # Archival fields (NEW)
+    archived: bool = False
+    archived_at: Optional[datetime] = None
+    archived_by: Optional[str] = None
+    archived_reason: Optional[str] = None
 
     # Metadata
     space_metadata: Dict[str, Any] = Field(default_factory=dict)

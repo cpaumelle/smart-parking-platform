@@ -732,6 +732,7 @@ Spaces tie together sensors, displays, reservations, and actuations into a unifi
 - `zone` (optional): Filter by zone name
 - `state` (optional): Filter by current state (FREE, OCCUPIED, RESERVED, etc.)
 - `enabled` (optional): Filter by enabled status (true/false)
+- `include_archived` (optional, default: false): Include archived spaces in results
 
 **Example**: `GET /v1/spaces?building=Building%20A&floor=Ground&state=FREE`
 
@@ -898,33 +899,76 @@ Spaces tie together sensors, displays, reservations, and actuations into a unifi
 - Device reassignment with registry validation
 - Automatic timestamp update (updated_at)
 
-##### Delete/Disable Space
+##### Archive Space
 
-**Endpoint**: `DELETE /v1/spaces/{space_id}`
+**Endpoint**: `POST /v1/spaces/{space_id}/archive`
 
-**Description**: Soft delete a parking space by setting enabled=FALSE. Optionally cancel active reservations.
+**Description**: Permanently archive a parking space. Archival is for spaces that are permanently decommissioned (e.g., building demolished, parking lot reconfigured) while preserving historical data for analytics pipelines.
 
 **Query Parameters**:
-- `force` (optional, default: false): If true, cancels active reservations before disabling
+- `archived_by` (required): User or system archiving the space
+- `archived_reason` (required): Reason for archiving (e.g., "Building demolished", "Space reconfigured")
+- `force` (optional, default: false): If true, cancels active reservations before archiving
 
-**Example**: `DELETE /v1/spaces/550e8400-e29b-41d4-a716-446655440000?force=true`
+**Example**:
+```bash
+POST /v1/spaces/550e8400-e29b-41d4-a716-446655440000/archive?archived_by=admin&archived_reason=Building%20demolished&force=true
+```
 
 **Response**:
 ```json
 {
-  "status": "deleted",
+  "status": "archived",
   "space_id": "550e8400-e29b-41d4-a716-446655440000",
   "space_name": "Parking Space A1",
+  "archived_at": "2025-10-10T14:30:00Z",
+  "archived_by": "admin",
+  "archived_reason": "Building demolished",
   "reservations_cancelled": 2
 }
 ```
 
 **Behavior**:
 - `force=false` (default): Returns 400 error if space has active reservations
-- `force=true`: Cancels all active reservations before disabling space
-- Sets `enabled=FALSE` (soft delete, preserves data)
-- Updates `updated_at` timestamp
-- Space can be re-enabled by updating enabled=TRUE
+- `force=true`: Cancels all active reservations before archiving
+- Sets `archived=TRUE` and `enabled=FALSE`
+- Records `archived_at`, `archived_by`, `archived_reason` for audit trail
+- Archived spaces are excluded from default queries (use `include_archived=true` to see them)
+- Preserves all historical data and foreign key relationships for analytics
+
+**Archival vs. Temporary Disable**:
+- **Temporary Disable**: Set `enabled=FALSE` via PATCH endpoint (e.g., for maintenance)
+- **Permanent Archival**: Use this endpoint for permanently decommissioned spaces
+
+##### Restore Archived Space
+
+**Endpoint**: `POST /v1/spaces/{space_id}/restore`
+
+**Description**: Restore a previously archived parking space back to active status.
+
+**Query Parameters**:
+- `restored_by` (required): User or system restoring the space
+
+**Example**:
+```bash
+POST /v1/spaces/550e8400-e29b-41d4-a716-446655440000/restore?restored_by=admin
+```
+
+**Response**:
+```json
+{
+  "status": "restored",
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "space_name": "Parking Space A1",
+  "restored_by": "admin"
+}
+```
+
+**Behavior**:
+- Sets `archived=FALSE` and `enabled=TRUE`
+- Clears `archived_at`, `archived_by`, `archived_reason` fields
+- Returns 400 error if space is not archived
+- Space becomes immediately available for normal operations
 
 ---
 
