@@ -151,7 +151,8 @@ ChirpStack (Network Server)
 │   │       └── main.py
 │   │
 │   ├── analytics/                   # Analytics service (planned)
-│   └── booking-api/                 # Reservation API (planned)
+│   ├── parking-display/              # Parking state management │   ├── analytics/                   # Analytics service (planned) reservations
+│   └── booking-api/                 # Reservation API (legacy/planned)
 │
 ├── ui/                              # Frontend applications
 │   ├── operations/                  # Operations dashboard
@@ -438,6 +439,9 @@ monit restart station
 - **Purpose**: Real-time parking space state management with priority-based actuation
 - **Endpoints**:
   - `POST /v1/actuations/sensor-uplink` - Process sensor uplink and trigger actuation
+  - `GET /v1/reservations` - List active reservations (filter by space_id, status)
+  - `POST /v1/reservations` - Create new parking reservation
+  - `DELETE /v1/reservations/{reservation_id}` - Cancel reservation
   - `POST /v1/actuations/manual` - Manual override to force display state
   - `GET /v1/spaces` - List all parking spaces with current states
   - `GET /v1/spaces/sensor-list` - Sensor DevEUI list for Ingest service caching
@@ -594,6 +598,85 @@ The service automatically detects the format and decodes accordingly.
 ```
 
 ---
+
+### Parking Display Service API
+
+The Parking Display Service provides real-time parking space state management with reservation support.
+
+#### Create Reservation
+
+**Endpoint**: `POST /v1/reservations/`
+
+**Request**:
+```json
+{
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "reserved_from": "2025-10-10T14:00:00Z",
+  "reserved_until": "2025-10-10T16:00:00Z",
+  "external_booking_id": "BOOKING-12345",
+  "external_system": "mobile_app",
+  "external_user_id": "user@example.com",
+  "booking_metadata": {
+    "vehicle_plate": "ABC123",
+    "customer_name": "John Doe"
+  },
+  "reservation_type": "standard",
+  "grace_period_minutes": 15
+}
+```
+
+**Response**:
+```json
+{
+  "status": "created",
+  "reservation_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "reserved_from": "2025-10-10T14:00:00",
+  "reserved_until": "2025-10-10T16:00:00"
+}
+```
+
+#### List Reservations
+
+**Endpoint**: `GET /v1/reservations/`
+
+**Query Parameters**:
+- `space_id` (optional): Filter by parking space UUID
+- `status` (optional): Filter by status (default: "active")
+
+**Response**:
+```json
+{
+  "reservations": [
+    {
+      "reservation_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "space_id": "550e8400-e29b-41d4-a716-446655440000",
+      "space_name": "Parking Space A1",
+      "reserved_from": "2025-10-10T14:00:00",
+      "reserved_until": "2025-10-10T16:00:00",
+      "external_booking_id": "BOOKING-12345",
+      "external_system": "mobile_app",
+      "status": "active"
+    }
+  ],
+  "count": 1
+}
+```
+
+#### Cancel Reservation
+
+**Endpoint**: `DELETE /v1/reservations/{reservation_id}`
+
+**Response**:
+```json
+{
+  "status": "cancelled",
+  "reservation_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+---
+
 
 ## Development
 
@@ -1031,6 +1114,7 @@ Closes #123
   - Sub-200ms actuation response time (verified 103.4ms average)
   - Automated Class C LoRaWAN display control
   - Complete audit trail in parking_operations.actuations table
+  - Time-based reservation API (create, list, cancel endpoints)
   - Time-based reservations with grace periods
   - Fixed JSON serialization for datetime objects
 - ✅ **Ingest Service v1.0.2**: Fixed Browan TABS Motion payload decoder
@@ -1053,6 +1137,6 @@ Closes #123
 
 ---
 
-**Last Updated**: 2025-10-09
+**Last Updated**: 2025-10-10
 **Platform Version**: 1.1.0
 **Maintained By**: Smart Parking Team
