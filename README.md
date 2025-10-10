@@ -399,8 +399,10 @@ For complete troubleshooting guide, see [KERLINK_GATEWAY_SETUP.md](scripts/gatew
 
 ### Application Services
 
+> **Note**: Multiple services use port 8000 internally. This is not a conflict - each service runs in an isolated Docker container. Traefik routes external traffic based on hostname (ingest.verdegris.eu, downlink.verdegris.eu, etc.).
+
 #### Ingest Service
-- **Port**: 8000 (internal)
+- **Port**: 8000 (container-internal)
 - **URL**: `https://ingest.verdegris.eu`
 - **Purpose**: Receives LoRaWAN uplinks from ChirpStack via MQTT integration
 - **Endpoints**:
@@ -413,7 +415,7 @@ For complete troubleshooting guide, see [KERLINK_GATEWAY_SETUP.md](scripts/gatew
   - Parking sensor detection and routing
 
 #### Transform Service
-- **Port**: 9000 (internal)
+- **Port**: 9000 (container-internal)
 - **URL**: `https://transform.verdegris.eu`
 - **Purpose**: Process and transform raw uplinks, provide device/gateway APIs
 - **Endpoints**:
@@ -425,7 +427,7 @@ For complete troubleshooting guide, see [KERLINK_GATEWAY_SETUP.md](scripts/gatew
 
 
 #### Downlink Service
-- **Port**: 8000 (internal)
+- **Port**: 8000 (container-internal)
 - **URL**: `https://downlink.verdegris.eu`
 - **Purpose**: Send downlinks and manage ChirpStack resources via gRPC
 - **Endpoints**:
@@ -438,7 +440,7 @@ For complete troubleshooting guide, see [KERLINK_GATEWAY_SETUP.md](scripts/gatew
   - `GET /health` - Health check
 
 #### Parking Display Service
-- **Port**: 8000 (internal)
+- **Port**: 8000 (container-internal)
 - **URL**: `https://parking.verdegris.eu`
 - **Purpose**: Real-time parking space state management with priority-based actuation
 - **Endpoints**:
@@ -457,7 +459,6 @@ For complete troubleshooting guide, see [KERLINK_GATEWAY_SETUP.md](scripts/gatew
   - Time-based reservations with grace periods
   - Background task execution for non-blocking actuations
 - **Documentation**: `/opt/smart-parking/PARKING-DISPLAY-SERVICE.md`
-- **Port**: 8000 (internal)
 
 ### Management Tools
 
