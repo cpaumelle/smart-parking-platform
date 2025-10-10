@@ -2,7 +2,7 @@
 
 **Target Network:** ChirpStack on Smart Parking Platform (verdegris.eu)
 **Version:** 1.0.0
-**Last Updated:** 2025-10-01
+**Last Updated:** 2025-10-10
 **Compatible Gateways:** Kerlink Wirnet Station, iBTS, iFemtoCell, iStation
 
 ---
@@ -15,103 +15,26 @@ This guide provides step-by-step instructions for configuring Kerlink LoRaWAN ga
 
 | Parameter | Value |
 |-----------|-------|
-| **Server Address** | parking-chirpstack (internal) or VPS public IP (or chirpstack.verdegris.eu) |
+| **Server Address** | chirpstack.verdegris.eu |
 | **Protocol** | Semtech UDP Packet Forwarder |
 | **Port** | 1700 (UDP) |
-| **Region** | US915 |
-| **Sub-band** | 0 (Channels 0-7: 902.3-903.7 MHz) |
+| **Region** | EU868 |
+| **Default Channels** | 868.1, 868.3, 868.5 MHz |
+| **Additional Channels** | Can be configured up to 16 total channels within 863-870 MHz |
+| **Data Rates:** |  DR0-DR5 (minimum), optionally DR0-DR7 or DR0-DR11 |
 
 ---
 
 ## Prerequisites
 
-- Kerlink gateway with firmware v3.x or higher
+- Kerlink gateway with KerOS v6.3 or higher
 - Network connectivity between gateway and ChirpStack server
 - SSH access to gateway (for manual configuration)
 - Gateway admin credentials
 
 ---
 
-## Configuration Methods
-
-There are three methods to configure a Kerlink gateway:
-
-1. **Web Interface** (Easiest - Recommended for beginners)
-2. **SSH Command Line** (Advanced users)
-3. **WMC (Wireless Management Console)** (For fleet management)
-
----
-
-## Method 1: Web Interface Configuration
-
-### Step 1: Access Gateway Web Interface
-
-1. Connect to gateway's network (Ethernet or Wi-Fi)
-2. Open browser and navigate to gateway IP address (default: 192.168.1.1)
-3. Login with admin credentials
-   - Default username: `admin`
-   - Default password: Check gateway label or documentation
-
-### Step 2: Configure Network Server
-
-1. Navigate to: **LoRa > Network Server**
-2. Select: **Packet Forwarder Mode**
-3. Configure server settings:
-
-```
-Network Server Type: Semtech UDP
-Server Address: parking-chirpstack (internal) or VPS public IP
-Server Port (Up): 1700
-Server Port (Down): 1700
-```
-
-4. Click **Save** or **Apply**
-
-### Step 3: Configure Radio Settings
-
-1. Navigate to: **LoRa > Radio Configuration**
-2. Configure region and frequency:
-
-```
-Region: US915
-Frequency Plan: US915
-Sub-band: Sub-band 0 (Channels 0-7)
-```
-
-3. Advanced settings (if available):
-```
-Transmit Power: 27 dBm (adjust based on antenna gain)
-RSSI Offset: 0 dB
-Radio Clock Source: Internal
-```
-
-4. Click **Save** or **Apply**
-
-### Step 4: Set Gateway EUI
-
-1. Navigate to: **System > Gateway ID** or **LoRa > Gateway**
-2. Note the Gateway EUI (this will be used in ChirpStack)
-3. Format: 16 hex characters (example: `0016C001F0000001`)
-4. If not set, use gateway's MAC address with padding:
-   - MAC: `0016C001F000`
-   - Gateway EUI: `0016C001F0000001` (add FFFE in middle for EUI-64)
-
-### Step 5: Verify Configuration
-
-1. Navigate to: **System > Status** or **LoRa > Statistics**
-2. Check connection status:
-   - **Network Server:** Connected
-   - **Packets Received:** Should increment when devices transmit
-   - **Packets Forwarded:** Should match received packets
-
-### Step 6: Restart Gateway (if needed)
-
-1. Navigate to: **System > Reboot**
-2. Click **Reboot** to apply changes
-
----
-
-## Method 2: SSH Configuration (Advanced)
+## SSH Configuration (Advanced)
 
 ### Step 1: SSH into Gateway
 
