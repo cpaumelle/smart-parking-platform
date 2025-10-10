@@ -81,3 +81,4 @@ secrets/
 # ChirpStack
 config/chirpstack/*.pem
 config/chirpstack/*.key
+iot-platform-reference/

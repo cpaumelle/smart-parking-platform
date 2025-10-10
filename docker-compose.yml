@@ -234,13 +234,13 @@ services:
     - traefik.http.routers.parking-display.rule=Host(`parking.${DOMAIN}`)
     - traefik.http.routers.parking-display.entrypoints=websecure
     - traefik.http.routers.parking-display.tls.certresolver=letsencrypt
-    - traefik.http.services.parking-display.loadbalancer.server.port=8000
+    - traefik.http.services.parking-display.loadbalancer.server.port=8100
     healthcheck:
       test:
       - CMD
       - curl
       - -f
-      - http://localhost:8000/health
+      - http://localhost:8100/health
       interval: 30s
       timeout: 10s
       retries: 3

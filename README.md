@@ -399,7 +399,7 @@ For complete troubleshooting guide, see [KERLINK_GATEWAY_SETUP.md](scripts/gatew
 
 ### Application Services
 
-> **Note**: Multiple services use port 8000 internally. This is not a conflict - each service runs in an isolated Docker container. Traefik routes external traffic based on hostname (ingest.verdegris.eu, downlink.verdegris.eu, etc.).
+> **Note**: Ingest and Downlink services use port 8000 internally; Parking Display uses 8100. This is not a conflict - each service runs in an isolated Docker container. Traefik routes external traffic based on hostname (ingest.verdegris.eu, downlink.verdegris.eu, etc.).
 
 #### Ingest Service
 - **Port**: 8000 (container-internal)
@@ -440,7 +440,7 @@ For complete troubleshooting guide, see [KERLINK_GATEWAY_SETUP.md](scripts/gatew
   - `GET /health` - Health check
 
 #### Parking Display Service
-- **Port**: 8000 (container-internal)
+- **Port**: 8100 (container-internal)
 - **URL**: `https://parking.verdegris.eu`
 - **Purpose**: Real-time parking space state management with priority-based actuation
 - **Endpoints**:
