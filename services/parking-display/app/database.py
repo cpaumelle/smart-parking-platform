@@ -5,11 +5,15 @@ import logging
 
 logger = logging.getLogger("database")
 
-# Database configuration
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://parking_user:parking_password@parking-postgres:5432/parking_platform"
-)
+# Database configuration - MUST be set via environment variable
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required. "
+        "Set it in docker-compose.yml or .env file. "
+        "Example: postgresql://user:password@host:5432/dbname"
+    )
 
 # Connection pool
 _pool = None

@@ -7,6 +7,7 @@ Changelog:
 """
 
 import asyncio
+import os
 import httpx
 from typing import Set, Dict, Optional
 import logging
@@ -20,7 +21,7 @@ class ParkingSensorDetector:
     Optimized for O(1) lookup performance in uplink processing
     """
 
-    def __init__(self, parking_service_url: str = "http://parking-display:8000"):
+    def __init__(self, parking_service_url: str = os.getenv("PARKING_DISPLAY_SERVICE_URL", "http://parking-display:8100")):
         self.parking_service_url = parking_service_url
         self.parking_sensors: Set[str] = set()
         self.sensor_to_space: Dict[str, str] = {}  # dev_eui -> space_id
@@ -122,7 +123,7 @@ async def forward_to_parking_display(uplink_data: dict, space_id: str):
         # Send to Parking Display Service
         async with httpx.AsyncClient(timeout=2.0) as client:
             response = await client.post(
-                "http://parking-display:8000/v1/actuations/sensor-uplink",
+                f"{os.getenv('PARKING_DISPLAY_SERVICE_URL', 'http://parking-display:8100')}/v1/actuations/sensor-uplink",
                 json=parking_payload
             )
 

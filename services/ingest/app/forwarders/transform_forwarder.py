@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 TRANSFORM_URL = os.getenv(
     "TRANSFORM_URL",
-    "http://transform-service:9001/process-uplink/uplink"
+    "http://parking-transform:9000/process-uplink/uplink"
 )
 
 async def forward_to_transform(payload: dict):
