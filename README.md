@@ -436,18 +436,11 @@ monit restart station
 #### Parking Display Service
 - **Port**: 8100 (container-internal)
 - **URL**: `https://parking.verdegris.eu`
-- **Purpose**: Real-time parking space state management with priority-based actuation
-- **Endpoints**:
-  - `POST /v1/actuations/sensor-uplink` - Process sensor uplink and trigger actuation
-  - `GET /v1/reservations` - List active reservations (filter by space_id, status)
-  - `POST /v1/reservations` - Create new parking reservation
-  - `DELETE /v1/reservations/{reservation_id}` - Cancel reservation
-  - `POST /v1/actuations/manual` - Manual override to force display state
-  - `GET /v1/spaces` - List all parking spaces with current states
-  - `GET /v1/spaces/sensor-list` - Sensor DevEUI list for Ingest service caching
-  - `POST /v1/reservations` - Create time-based reservation
-  - `GET /v1/actuations/status/{space_id}` - Get current space status
-  - `GET /health` - Health check
+- **Purpose**: Unified parking management service with real-time state management, space administration, and reservation support
+- **API Groups**:
+  - `/v1/actuations` - State management and display actuation
+  - `/v1/spaces` - Parking space administration
+  - `/v1/reservations` - Reservation management
 - **Features**:
   - Priority-based state engine (Manual > Maintenance > Reservation > Sensor)
   - Sub-200ms response time for sensor uplinks
@@ -595,17 +588,183 @@ The service automatically detects the format and decodes accordingly.
     }
   ]
 }
+
+---
+
+### Parking Display Service APIs
+
+The Parking Display Service provides three complementary API groups for comprehensive parking management.
+
+---
+
+#### Actuations API
+
+**Purpose**: Real-time parking state management and Class C display control
+
+**Base Path**: `/v1/actuations`
+
+##### Process Sensor Uplink
+
+**Endpoint**: `POST /v1/actuations/sensor-uplink`
+
+**Description**: Main entry point for real-time parking actuation. Receives sensor data from Ingest Service and triggers display updates.
+
+**Request**:
+```json
+{
+  "sensor_deveui": "58a0cb00001019bc",
+  "occupancy_state": "OCCUPIED",
+  "timestamp": "2025-10-10T14:30:00Z",
+  "payload_data": {
+    "battery": 3.6,
+    "temperature": 22.5
+  },
+  "rssi": -67,
+  "snr": 8.5
+}
+```
+
+**Response**:
+```json
+{
+  "status": "processed",
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "space_name": "Parking Space A1",
+  "previous_state": "FREE",
+  "new_state": "OCCUPIED",
+  "reason": "sensor_reading",
+  "processing_time_ms": 103.4,
+  "actuation_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+}
+```
+
+##### Manual Override
+
+**Endpoint**: `POST /v1/actuations/manual`
+
+**Description**: Force a parking space into a specific state (e.g., maintenance mode).
+
+**Request**:
+```json
+{
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "new_state": "MAINTENANCE",
+  "reason": "scheduled_maintenance",
+  "override_duration_minutes": 120,
+  "user_id": "admin@example.com"
+}
+```
+
+**Response**:
+```json
+{
+  "status": "processed",
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "space_name": "Parking Space A1",
+  "previous_state": "FREE",
+  "new_state": "MAINTENANCE",
+  "reason": "scheduled_maintenance",
+  "actuation_id": "c3d4e5f6-a7b8-9012-cdef-123456789012"
+}
+```
+
+##### Get Space Status
+
+**Endpoint**: `GET /v1/actuations/status/{space_id}`
+
+**Description**: Get current state and actuation status for a parking space.
+
+**Response**:
+```json
+{
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "space_name": "Parking Space A1",
+  "current_state": "RESERVED",
+  "sensor_state": "FREE",
+  "last_sensor_update": "2025-10-10T14:30:00",
+  "last_display_update": "2025-10-10T14:35:00",
+  "active_reservation": {
+    "reservation_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "reserved_from": "2025-10-10T14:00:00",
+    "reserved_until": "2025-10-10T16:00:00"
+  },
+  "enabled": true
+}
+```
+
+**State Priority System**:
+1. **Manual Override** (highest) - Admin-forced state
+2. **Maintenance** - Scheduled maintenance mode
+3. **Reservation** - Active time-based reservation
+4. **Sensor Reading** (lowest) - Real-time occupancy from sensor
+
+---
+
+#### Spaces API
+
+**Purpose**: Parking space administration and management
+
+**Base Path**: `/v1/spaces`
+
+##### List All Spaces
+
+**Endpoint**: `GET /v1/spaces`
+
+**Description**: Retrieve all parking spaces with their current states.
+
+**Response**:
+```json
+{
+  "spaces": [
+    {
+      "space_id": "550e8400-e29b-41d4-a716-446655440000",
+      "space_name": "Parking Space A1",
+      "space_code": "A1",
+      "building": "Building A",
+      "floor": "Ground",
+      "zone": "North",
+      "current_state": "FREE",
+      "occupancy_sensor_deveui": "58a0cb00001019bc",
+      "display_device_deveui": "58a0cb00001019bd",
+      "enabled": true,
+      "maintenance_mode": false
+    }
+  ],
+  "count": 1
+}
+```
+
+##### Get Sensor DevEUI List
+
+**Endpoint**: `GET /v1/spaces/sensor-list`
+
+**Description**: Get list of parking sensor DevEUIs for Ingest Service caching.
+
+**Response**:
+```json
+{
+  "sensors": [
+    "58a0cb00001019bc",
+    "58a0cb00001019bd",
+    "58a0cb00001019be"
+  ],
+  "count": 3
+}
 ```
 
 ---
 
-### Parking Display Service API
+#### Reservations API
 
-The Parking Display Service provides real-time parking space state management with reservation support.
+**Purpose**: Time-based parking reservation management
 
-#### Create Reservation
+**Base Path**: `/v1/reservations`
+
+##### Create Reservation
 
 **Endpoint**: `POST /v1/reservations/`
+
+**Description**: Create a new time-based parking reservation.
 
 **Request**:
 ```json
@@ -636,13 +795,18 @@ The Parking Display Service provides real-time parking space state management wi
 }
 ```
 
-#### List Reservations
+##### List Reservations
 
 **Endpoint**: `GET /v1/reservations/`
+
+**Description**: List reservations with optional filters.
 
 **Query Parameters**:
 - `space_id` (optional): Filter by parking space UUID
 - `status` (optional): Filter by status (default: "active")
+  - Values: `active`, `cancelled`, `completed`, `expired`, `no_show`
+
+**Example**: `GET /v1/reservations/?space_id=550e8400-e29b-41d4-a716-446655440000&status=active`
 
 **Response**:
 ```json
@@ -663,9 +827,13 @@ The Parking Display Service provides real-time parking space state management wi
 }
 ```
 
-#### Cancel Reservation
+##### Cancel Reservation
 
 **Endpoint**: `DELETE /v1/reservations/{reservation_id}`
+
+**Description**: Cancel an active reservation.
+
+**Example**: `DELETE /v1/reservations/a1b2c3d4-e5f6-7890-abcd-ef1234567890`
 
 **Response**:
 ```json
@@ -674,6 +842,9 @@ The Parking Display Service provides real-time parking space state management wi
   "reservation_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
+
+---
+
 
 ---
 
