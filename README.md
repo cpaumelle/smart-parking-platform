@@ -11,6 +11,7 @@ A comprehensive IoT platform for smart parking management, built on LoRaWAN tech
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
+- [Gateway Onboarding](#gateway-onboarding)
 - [Services](#services)
 - [API Documentation](#api-documentation)
 - [Development](#development)
@@ -157,6 +158,11 @@ ChirpStack (Network Server)
 │   └── admin/                       # Admin interface
 │
 ├── scripts/                         # Utility scripts
+│   ├── gateway-onboarding/         # Gateway onboarding scripts
+│   │   ├── onboard_kerlink_gateway.sh
+│   │   ├── SETUP.md
+│   │   ├── KERLINK_GATEWAY_SETUP.md
+│   │   └── .env.example
 │   └── dns/
 │       ├── manage_dns.py           # OVH DNS management
 │       └── ovh.conf                # OVH API credentials
@@ -239,6 +245,94 @@ ChirpStack (Network Server)
 
    # Trigger device uplink
    # Watch for incoming data
+   ```
+
+---
+
+## Gateway Onboarding
+
+### Automated Gateway Setup
+
+The platform includes automated scripts for onboarding Kerlink LoRaWAN gateways. This streamlines gateway registration and configuration with ChirpStack.
+
+**Quick Start:**
+```bash
+cd /opt/smart-parking/scripts/gateway-onboarding
+cp .env.example .env
+nano .env  # Add ChirpStack API key from https://chirpstack.verdegris.eu
+./onboard_kerlink_gateway.sh
+```
+
+### Features
+
+- ✅ **Factory Reset Option** - Clean gateway state before onboarding
+- ✅ **Automatic Discovery** - Detects Gateway EUI, hostname, system info
+- ✅ **Basic Station Installation** - Installs Basic Station 3.4.1 + Lorad
+- ✅ **ChirpStack Registration** - Automatic registration via gRPC API
+- ✅ **Configuration Validation** - Verifies LNS URL, process status, logs
+- ✅ **Comprehensive Error Handling** - SSH timeouts, IP changes, password resets
+
+### Configuration
+
+| Parameter | Value |
+|-----------|-------|
+| **ChirpStack Web** | https://chirpstack.verdegris.eu |
+| **ChirpStack gRPC** | parking-chirpstack:8080 (internal) |
+| **Gateway WebSocket** | wss://chirpstack-gw.verdegris.eu:3002 |
+| **Region** | US915 Sub-band 0 (902.3-903.7 MHz) |
+| **Gateway Naming** | Parking-Gateway-XXXXXXXX |
+
+### Documentation
+
+- **[SETUP.md](scripts/gateway-onboarding/SETUP.md)** - Quick setup guide with step-by-step instructions
+- **[KERLINK_GATEWAY_SETUP.md](scripts/gateway-onboarding/KERLINK_GATEWAY_SETUP.md)** - Comprehensive 639-line manual configuration guide
+  - Web interface configuration
+  - SSH command-line configuration
+  - Troubleshooting and diagnostics
+  - US915 frequency plan details
+- **[WEBSOCKET-SETUP.md](scripts/gateway-onboarding/WEBSOCKET-SETUP.md)** - WebSocket connection configuration
+
+### Usage Examples
+
+**Standard onboarding:**
+```bash
+./onboard_kerlink_gateway.sh
+```
+
+**With factory reset:**
+```bash
+./onboard_kerlink_gateway.sh --factory-reset
+```
+
+**What the script does:**
+1. SSH into gateway and detect EUI
+2. Download and install Basic Station 3.4.1
+3. Configure LNS WebSocket URL
+4. Register gateway in ChirpStack via gRPC
+5. Start Basic Station and verify connection
+
+### Requirements
+
+- SSH access to gateway (default user: `admin`)
+- ChirpStack API key with Admin permissions
+- Gateway must be network-accessible from VPS
+- `sshpass` installed: `apt install sshpass`
+
+### Troubleshooting
+
+**Gateway not connecting:**
+```bash
+ssh admin@GATEWAY_IP
+tail -f /var/log/messages | grep station
+cat /user/basic_station/etc/tc.uri
+monit restart station
+```
+
+**API key error:**
+- Generate new API key from ChirpStack UI → User → API Keys
+For complete troubleshooting guide, see [KERLINK_GATEWAY_SETUP.md](scripts/gateway-onboarding/KERLINK_GATEWAY_SETUP.md#troubleshooting).
+
+---
    ```
 
 ---
