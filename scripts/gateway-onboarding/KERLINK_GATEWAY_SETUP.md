@@ -99,7 +99,7 @@ Modify or add the following section:
 
 ### Step 6: Configure Radio Settings (if needed)
 
-Add or modify the `SX1301_conf` section for US915:
+Add or modify the `SX1301_conf` section for EU868:
 
 ```json
 {
@@ -220,8 +220,8 @@ For managing multiple Kerlink gateways:
 2. Click: **+ Create**
 3. Fill in details:
 ```
-Name: US915 Sub-band 0
-Region: US915
+Name: EU868 Sub-band 0
+Region: EU868
 Channels: 0-7 (902.3 - 903.7 MHz)
 Network Server: Default
 ```
@@ -237,7 +237,7 @@ Network Server: Default
 Gateway Name: kerlink-gateway-001 (descriptive name)
 Gateway Description: Kerlink Wirnet Station - Location XYZ
 Gateway ID (EUI): 0016C001F0000001 (from gateway)
-Gateway Profile: US915 Sub-band 0
+Gateway Profile: EU868 Sub-band 0
 Network Server: Default
 Gateway Discovery: Enabled (optional)
 Gateway Altitude: 10 (meters above sea level)
@@ -310,12 +310,12 @@ iptables -L -n | grep 1700
 **Solutions:**
 
 1. **Check radio configuration:**
-   - Verify frequency plan matches region (US915)
+   - Verify frequency plan matches region (EU868)
    - Ensure sub-band is correct (sub-band 0)
    - Check antenna connection
 
 2. **Verify device settings:**
-   - Device must be configured for US915
+   - Device must be configured for EU868
    - Device must use sub-band 0 channels
    - Device must be registered in ChirpStack
 
@@ -516,7 +516,7 @@ reboot
 
 ---
 
-## Frequency Plan Details (US915 Sub-band 0)
+## Frequency Plan Details (EU868 Sub-band 0)
 
 ### Uplink Channels (8 channels)
 
@@ -552,7 +552,7 @@ reboot
 - **ChirpStack Docs:** https://www.chirpstack.io/docs/
 - **Semtech Packet Forwarder:** https://github.com/Lora-net/packet_forwarder
 - **LoRaWAN Regional Parameters:** https://lora-alliance.org/resource_hub/
-- **US915 Frequency Plan:** https://www.thethingsnetwork.org/docs/lorawan/frequencies-by-country/
+- **EU868 Frequency Plan:** https://www.thethingsnetwork.org/docs/lorawan/frequencies-by-country/
 
 ---
 
