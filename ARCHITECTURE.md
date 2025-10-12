@@ -92,8 +92,10 @@ Internet (verdegris.eu)
 ├── services/                       # Application services
 │   ├── ingest/                    # LoRaWAN data ingestion (from IoT platform)
 │   ├── transform/                 # Data transformation (from IoT platform)
-│   ├── analytics/                 # Analytics engine (from IoT platform)
-│   └── booking-api/               # Parking reservation API (new)
+│   ├── downlink/                  # ChirpStack downlink control (new)
+│   ├── parking-display/           # Parking management API (new)
+│   ├── analytics/                 # Analytics engine (placeholder)
+│   └── booking-api/               # Legacy placeholder (replaced by parking-display)
 │
 ├── ui/                            # Frontend applications
 │   ├── operations/                # Ops dashboard (from IoT platform)
@@ -116,11 +118,12 @@ Internet (verdegris.eu)
 
 ### Schemas:
 - **core** - System configuration, users, roles
-- **devices** - Sensor registration, device metadata
-- **spaces** - Parking space definitions, locations
-- **reservations** - Booking system, availability
-- **analytics** - Historical data, aggregations
-- **ingest** - Raw sensor data staging
+- **devices** - Sensor registration, device metadata (from IoT platform)
+- **ingest** - Raw sensor data staging and uplink processing
+- **analytics** - Historical data, aggregations (from IoT platform)
+- **parking_config** - Parking sensor and display device registry
+- **parking_spaces** - Parking space definitions, locations, and reservations
+- **parking_operations** - Actuation audit trail and operational logs
 
 ### Additional Databases:
 - **chirpstack** - LoRaWAN network server data (separate DB)
@@ -140,24 +143,49 @@ Internet (verdegris.eu)
 - [x] PostgreSQL + PgBouncer deployed
 - [x] ChirpStack + Mosquitto deployed
 
-### Phase 2: IoT Platform Integration (In Progress)
-- [ ] Clone sensemy-iot-platform (dev-v4.0.2)
-- [ ] Review service structure and dependencies
-- [ ] Adapt ingest service for parking sensors
-- [ ] Adapt transform service for parking data model
-- [ ] Adapt analytics service for parking metrics
-- [ ] Adapt operations UI for parking operations
-- [ ] Update docker-compose.yml with new services
-- [ ] Configure service environment variables
-- [ ] Test service connectivity and data flow
+### Phase 2: IoT Platform Integration (✅ Complete)
+- [x] Clone sensemy-iot-platform (dev-v4.0.2)
+- [x] Review service structure and dependencies
+- [x] Adapt ingest service for parking sensors
+- [x] Adapt transform service for parking data model
+- [x] Update docker-compose.yml with new services
+- [x] Configure service environment variables
+- [x] Test service connectivity and data flow
+- [x] Implement downlink service for Class C device control
 
-### Phase 3: Parking-Specific Features (In Progress)
-- [x] Design reservation system data model
-- [x] Implement reservation API endpoints (create, list, cancel)
-- [ ] Create admin UI for parking management
-- [ ] Integrate payment processing
-- [ ] Build availability prediction algorithms
-- [ ] Implement notification system
+**Services Deployed:**
+- Ingest Service (https://ingest.verdegris.eu) - LoRaWAN uplink processing with parking sensor detection
+- Transform Service (https://transform.verdegris.eu) - Data transformation pipeline
+- Downlink Service (https://downlink.verdegris.eu) - ChirpStack downlink control
+
+### Phase 3: Parking Management API (✅ Complete)
+- [x] Design parking space and reservation data model
+- [x] Implement parking display service with state engine
+- [x] Create parking space management API
+- [x] Implement reservation system API (create, list, cancel, availability check)
+- [x] Build priority-based actuation logic (Manual > Maintenance > Reservation > Sensor)
+- [x] Implement automated Class C display control with downlink
+- [x] Create complete actuation audit trail with performance metrics
+- [x] Add grace period handling for reservations
+- [x] Implement sensor-to-display auto-detection and linking
+
+**Parking Display Service Deployed:**
+- API: https://parking.verdegris.eu
+- Features: Real-time state management, reservations, manual overrides, maintenance mode
+- Performance: <200ms sensor-to-display actuation pipeline
+- Database: 3 dedicated schemas (parking_config, parking_spaces, parking_operations)
+
+**API Endpoints Available:**
+- `/v1/spaces` - Parking space CRUD and listing
+- `/v1/reservations` - Reservation management and availability
+- `/v1/actuations` - Manual state control and audit logs
+
+### Phase 4: Future Enhancements (Deferred)
+These items are explicitly **out of scope** for the current platform phase:
+- [ ] Create admin UI for parking management (use API directly)
+- [ ] Integrate payment processing (external systems via API)
+- [ ] Build availability prediction algorithms (future analytics)
+- [ ] Implement notification system (external systems via webhooks)
 
 ---
 
@@ -188,26 +216,30 @@ Internet (verdegris.eu)
 |---------|-----|--------|
 | ChirpStack | https://chirpstack.verdegris.eu | ✅ Working |
 | Traefik Dashboard | https://traefik.verdegris.eu | ✅ Working |
-| Adminer | http://151.80.58.99:8180 | ⚠️ Direct port (Traefik issue) |
-| Ingest API | https://ingest.verdegris.eu | 🔄 Pending |
-| Transform API | https://transform.verdegris.eu | 🔄 Pending |
-| Analytics API | https://analytics.verdegris.eu | 🔄 Pending |
-| Booking API | https://api.verdegris.eu | 🔄 Pending |
-| Operations UI | https://ops.verdegris.eu | 🔄 Pending |
-| Admin UI | https://admin.verdegris.eu | 🔄 Pending |
+| Adminer | https://adminer.verdegris.eu | ✅ Working |
+| Ingest API | https://ingest.verdegris.eu | ✅ Working |
+| Transform API | https://transform.verdegris.eu | ✅ Working |
+| Downlink API | https://downlink.verdegris.eu | ✅ Working |
+| Parking Display API | https://parking.verdegris.eu | ✅ Working |
+| File Browser | https://files.verdegris.eu | ✅ Working |
+| Website | https://verdegris.eu | ✅ Working |
+| Contact API | https://contact.verdegris.eu | ✅ Working |
 
 ### Internal Ports (Container-to-Container)
 | Service | Port | Protocol |
 |---------|------|----------|
 | PostgreSQL | 5432 | TCP |
 | PgBouncer | 6432 | TCP |
+| Redis | 6379 | TCP |
 | MQTT | 1883 | TCP |
 | MQTT WebSocket | 9001 | TCP |
 | ChirpStack Gateway | 1700 | UDP |
+| ChirpStack Gateway Bridge | 3001 | TCP |
 | Ingest | 8000 | HTTP |
 | Transform | 9000 | HTTP |
-| Analytics | 7000 | HTTP |
-| Booking API | 4000 | HTTP |
+| Downlink | 8000 | HTTP |
+| Parking Display | 8100 | HTTP |
+| Contact API | 8001 | HTTP |
 
 ---
 
@@ -426,6 +458,7 @@ sudo docker compose exec -T postgres-primary psql -U parking_user parking_platfo
 | 2025-10-07 | 1.1 | DNS management integration |
 | 2025-10-07 | 1.2 | Traefik + SSL deployment |
 | 2025-10-07 | 1.3 | IoT platform integration planning |
+| 2025-10-10 | 2.0 | Updated to reflect actual implementation - Phase 2 & 3 complete |
 
 ---
 

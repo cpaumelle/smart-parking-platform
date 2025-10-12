@@ -23,6 +23,8 @@ from unpackers.network.netvox_r716 import unpack as unpack_netvox_r716
 
 from unpackers.monitoring.imbuildings_pc1 import unpack as unpack_imbuildings_pc1
 
+from unpackers.displays.kuando_busylight import unpack as unpack_kuando_busylight
+
 UNPACKER_REGISTRY = {
     "browan_tbhh100": unpack_browan_tbhh100,
     "milesight_am103": unpack_milesight_am103,
@@ -37,6 +39,7 @@ UNPACKER_REGISTRY = {
     "atim_acw_lw8": unpack_atim_acw_lw8,
     "netvox_r716": unpack_netvox_r716,
     "imbuildings_pc1": unpack_imbuildings_pc1,
+    "kuando_busylight": unpack_kuando_busylight,
     "milesight_am103": unpack_milesight_am103, 
 }
 

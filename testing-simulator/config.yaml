@@ -1,0 +1,106 @@
+---
+# ChirpStack Configuration
+chirpstack:
+  api_url: "http://localhost:8080/api"
+  api_token: "YOUR_CHIRPSTACK_API_TOKEN"
+  tenant_id: "YOUR_TENANT_ID"
+  application_id: "YOUR_APPLICATION_ID"
+
+# Simulation Configuration
+simulation:
+  num_parking_spaces: 100
+  sensor_dev_eui_prefix: "PARK"  # Will generate: PARK00000001, PARK00000002, etc.
+  busylight_dev_eui_prefix: "BUSY"  # Will generate: BUSY00000001, BUSY00000002, etc.
+  
+  # Timing parameters (in seconds)
+  sensor_update_interval: 60  # How often sensors check and report status
+  sensor_update_jitter: 10    # Random variation in update timing
+  
+  # LoRaWAN parameters
+  lorawan:
+    sensor_fport: 2
+    busylight_fport: 15
+    data_rate: "SF7BW125"
+    frequency: 868100000  # EU868 default channel
+    
+# Parking Behavior Simulation
+behavior:
+  # Average parking duration in minutes
+  avg_parking_duration: 45
+  parking_duration_std: 15
+  
+  # Probability of a car arriving per minute (per empty space)
+  arrival_rate: 0.01
+  
+  # Initial occupancy (0.0 to 1.0)
+  initial_occupancy: 0.3
+  
+  # Reserved spaces (indices of spaces that are reserved)
+  reserved_spaces: [0, 1, 2, 3, 4]
+  
+# Busylight Color Scheme
+colors:
+  available:
+    name: "Green"
+    payload: "0064000FF00"  # Solid green
+  occupied:
+    name: "Red"
+    payload: "6400000FF00"  # Solid red
+  reserved:
+    name: "Orange"
+    payload: "FFA5000FF00"  # Solid orange
+  expiring_soon:
+    name: "Blinking Orange"
+    payload: "FFA5007F7F"   # Blinking orange
+  maintenance:
+    name: "Blue"
+    payload: "0000640FF00"  # Solid blue
+  unknown:
+    name: "Blinking White"
+    payload: "FFFFFF7F7F"   # Blinking white
+
+# Scenario Configuration
+scenarios:
+  rush_hour:
+    enabled: true
+    start_hour: 8
+    end_hour: 10
+    arrival_multiplier: 5.0
+  
+  lunch_time:
+    enabled: true
+    start_hour: 12
+    end_hour: 14
+    arrival_multiplier: 2.0
+    
+  evening_exodus:
+    enabled: true
+    start_hour: 17
+    end_hour: 19
+    departure_multiplier: 3.0
+
+# Monitoring and Logging
+monitoring:
+  dashboard_enabled: true
+  dashboard_port: 5000
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_file: "parking_simulation.log"
+  metrics_interval: 30  # seconds
+  
+# Testing Scenarios
+test_scenarios:
+  - name: "Normal Operation"
+    duration: 3600  # 1 hour
+    failure_rate: 0.0
+    
+  - name: "High Load"
+    duration: 1800  # 30 minutes
+    arrival_multiplier: 10.0
+    
+  - name: "Network Issues"
+    duration: 900  # 15 minutes
+    packet_loss_rate: 0.15
+    
+  - name: "Sensor Failures"
+    duration: 1200  # 20 minutes
+    failure_rate: 0.05

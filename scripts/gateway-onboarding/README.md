@@ -53,6 +53,7 @@ Usage:
 - **Region:** EU868 (863-870 MHz)
 
 ## Requirements
+- **KerOS Version:** 6.3+ compatible (uses Basic Station 3.4.1 with klk_bs_config)
 
 - SSH access to gateway (default: admin user)
 - ChirpStack API key with Admin permissions
@@ -106,13 +107,13 @@ Optional (have sensible defaults):
 ```bash
 # On gateway, check logs
 ssh admin@GATEWAY_IP
-tail -f /var/log/messages | grep station
+## Region Configuration
 
-# Check configuration
-cat /user/basic_station/etc/tc.uri
+Configured for **EU868** (863-870 MHz) - standard European ISM band.
 
-# Restart service
-monit restart station
+- Default channels: 868.1, 868.3, 868.5 MHz
+- Additional channels configurable within 863-870 MHz range
+- Automatic configuration via ChirpStack Gateway Profile
 
 # Check process
 ps | grep station

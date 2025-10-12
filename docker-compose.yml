@@ -106,13 +106,26 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  chirpstack-mobile-proxy:
+    image: nginx:alpine
+    container_name: parking-chirpstack-mobile
+    restart: unless-stopped
+    volumes:
+    - ./config/traefik/nginx-inject.conf:/etc/nginx/nginx.conf:ro
+    - ./config/traefik/mobile-menu.js:/etc/nginx/static/mobile-menu.js:ro
+    networks:
+    - parking-network
+    - web
+    depends_on:
+    - chirpstack
     labels:
     - traefik.enable=true
     - traefik.docker.network=web
     - traefik.http.routers.chirpstack.rule=Host(`chirpstack.${DOMAIN}`)
     - traefik.http.routers.chirpstack.entrypoints=websecure
     - traefik.http.routers.chirpstack.tls.certresolver=letsencrypt
-    - traefik.http.services.chirpstack.loadbalancer.server.port=8080
+    - traefik.http.services.chirpstack.loadbalancer.server.port=8081
   adminer:
     build: ./iot-platform-reference/88-tools/adminer-custom
     container_name: parking-adminer
@@ -171,7 +184,7 @@ services:
       TRANSFORM_DB_NAME: ${POSTGRES_DB}
       TRANSFORM_DB_USER: ${POSTGRES_USER}
       TRANSFORM_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      CORS_ORIGINS: https://ops.${DOMAIN},https://${DOMAIN}
+      CORS_ORIGINS: https://ops.${DOMAIN},https://${DOMAIN},https://devices.${DOMAIN}
     volumes:
     - ./services/transform/app:/app
     networks:
@@ -194,7 +207,7 @@ services:
     environment:
       CHIRPSTACK_API_URL: parking-chirpstack:8080
       CHIRPSTACK_API_TOKEN: ${CHIRPSTACK_API_TOKEN}
-      CORS_ORIGINS: https://ops.${DOMAIN},https://${DOMAIN}
+      CORS_ORIGINS: https://ops.${DOMAIN},https://${DOMAIN},https://devices.${DOMAIN}
     volumes:
     - ./services/downlink/app:/app
     networks:
@@ -327,6 +340,49 @@ services:
     - traefik.http.routers.contact-api.entrypoints=websecure
     - traefik.http.routers.contact-api.tls.certresolver=letsencrypt
     - traefik.http.services.contact-api.loadbalancer.server.port=8001
+  # SenseMy Platform Device Manager UI
+  device-manager-ui:
+    build: ./iot-platform-reference/10-ui-frontend/sensemy-platform
+    container_name: parking-device-manager
+    restart: unless-stopped
+    networks:
+      - parking-network
+      - web
+    depends_on:
+      - transform-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.devices.rule=Host(`devices.${DOMAIN}`)"
+      - "traefik.http.routers.devices.entrypoints=websecure"
+      - "traefik.http.routers.devices.tls.certresolver=letsencrypt"
+      - "traefik.http.services.devices.loadbalancer.server.port=80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  kuando-ui:
+    image: nginx:alpine
+    container_name: parking-kuando-ui
+    restart: unless-stopped
+    volumes:
+      - ./services/kuando-ui/index.html:/usr/share/nginx/html/index.html:ro
+      - ./services/kuando-ui/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - parking-network
+      - web
+    depends_on:
+      - downlink-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.kuando.rule=Host(`kuando.${DOMAIN}`)"
+      - "traefik.http.routers.kuando.entrypoints=websecure"
+      - "traefik.http.routers.kuando.tls.certresolver=letsencrypt"
+      - "traefik.http.services.kuando.loadbalancer.server.port=80"
 volumes:
   postgres_data: null
   chirpstack_data: null
@@ -340,3 +396,4 @@ networks:
     external: true
   web:
     external: true
+

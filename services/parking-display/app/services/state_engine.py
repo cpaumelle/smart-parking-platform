@@ -114,7 +114,9 @@ class ParkingStateEngine:
                 s.reservation_priority,
                 s.maintenance_mode,
                 s.enabled,
-                dr.display_codes
+                dr.display_codes,
+                dr.fport,
+                dr.confirmed_downlinks
             FROM parking_spaces.spaces s
             LEFT JOIN parking_config.display_registry dr ON s.display_device_id = dr.display_id
             WHERE s.space_id = $1 AND s.enabled = TRUE

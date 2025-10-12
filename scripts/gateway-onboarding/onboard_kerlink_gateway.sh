@@ -44,7 +44,9 @@ done
 ENV_FILE="${SCRIPT_DIR}/.env"
 if [ -f "$ENV_FILE" ]; then
     echo -e "${GREEN}✓ Loading configuration from .env${NC}"
-    export $(grep -v '^#' "$ENV_FILE" | xargs)
+    set -a
+    source <(grep -v '^#' "$ENV_FILE" | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
+    set +a
 else
     echo -e "${RED}✗ No .env file found at ${ENV_FILE}${NC}"
     echo -e "${YELLOW}  Please create .env from .env.example${NC}"
@@ -79,9 +81,13 @@ if [ -z "$CHIRPSTACK_API_KEY" ]; then
 fi
 echo -e "${GREEN}✓ Using API key from .env${NC}"
 
-# Prompt for gateway IP (or use from env)
-if [ -z "$GATEWAY_IP" ]; then
-    echo ""
+# Prompt for gateway IP (use env as default suggestion)
+echo ""
+if [ -n "$GATEWAY_IP" ]; then
+    read -p "Enter the gateway IP address [${GATEWAY_IP}]: " INPUT_IP
+    # If user provides input, use it; otherwise keep the default from .env
+    GATEWAY_IP="${INPUT_IP:-$GATEWAY_IP}"
+else
     read -p "Enter the gateway IP address (e.g., 192.168.1.100): " GATEWAY_IP
 fi
 
@@ -89,6 +95,7 @@ if [ -z "$GATEWAY_IP" ]; then
     echo -e "${RED}Error: Gateway IP is required${NC}"
     exit 1
 fi
+echo -e "${GREEN}✓ Using gateway IP: ${GATEWAY_IP}${NC}"
 
 echo ""
 echo -e "${YELLOW}Testing connectivity to gateway...${NC}"
@@ -98,10 +105,10 @@ if ! ping -c 1 -W 2 "$GATEWAY_IP" > /dev/null 2>&1; then
 fi
 echo -e "${GREEN}✓ Gateway is reachable${NC}"
 
-# Prompt for root password (or use from env)
+# Prompt for admin password (or use from env)
 if [ -z "$GATEWAY_PASSWORD" ]; then
     echo ""
-    read -s -p "Enter root password for the gateway: " GATEWAY_PASSWORD
+    read -s -p "Enter admin password for the gateway: " GATEWAY_PASSWORD
     echo ""
 fi
 
@@ -115,29 +122,103 @@ GATEWAY_USER="${GATEWAY_DEFAULT_USER:-admin}"
 echo ""
 echo -e "${YELLOW}Connecting to gateway...${NC}"
 
-# Function to run SSH command
+# Check if SSH key exists, if not generate one
+SSH_KEY_PATH="$HOME/.ssh/id_ed25519"
+if [ ! -f "$SSH_KEY_PATH" ]; then
+    echo -e "${YELLOW}No ED25519 SSH key found. Generating one...${NC}"
+    ssh-keygen -t ed25519 -f "$SSH_KEY_PATH" -N "" -C "$(whoami)@$(hostname)"
+    echo -e "${GREEN}✓ SSH key generated at $SSH_KEY_PATH${NC}"
+fi
+
+# Function to run SSH command with key-based auth
 run_ssh_cmd() {
-    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${GATEWAY_USER}@$GATEWAY_IP "$1" 2>&1 | { grep -v "Warning: Permanently added" || true; }
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${GATEWAY_USER}@$GATEWAY_IP "$1" 2>&1 | { grep -v "Warning: Permanently added" || true; }
 }
 
-# Test SSH connection with better error handling
-echo -e "${YELLOW}Testing SSH authentication...${NC}"
-SSH_TEST=$(SSHPASS="$GATEWAY_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${GATEWAY_USER}@$GATEWAY_IP "echo 'Connection successful'" 2>&1)
+# Test SSH connection with key-based authentication first
+echo -e "${YELLOW}Testing SSH key-based authentication...${NC}"
+set +e  # Temporarily disable exit on error for SSH test
+SSH_TEST=$(ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes ${GATEWAY_USER}@$GATEWAY_IP "echo 'Connection successful'" 2>&1)
 SSH_EXIT=$?
+set -e  # Re-enable exit on error
 
 if [ $SSH_EXIT -ne 0 ]; then
-    echo -e "${RED}Error: Failed to connect via SSH${NC}"
-    echo -e "${YELLOW}Debug info:${NC}"
-    echo "$SSH_TEST" | grep -v "Warning: Permanently added"
+    echo -e "${YELLOW}Key-based authentication failed. SSH key needs to be added to gateway.${NC}"
     echo ""
-    echo -e "${YELLOW}Common issues:${NC}"
-    echo "  1. Wrong password"
-    echo "  2. SSH not enabled on gateway"
-    echo "  3. Firewall blocking port 22"
-    echo "  4. sshpass not installed (run: apt install sshpass)"
-    exit 1
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}SSH Key Setup Required${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo ""
+    echo -e "${YELLOW}Copy the ENTIRE line below (the actual public key, NOT the fingerprint):${NC}"
+    echo ""
+    echo -e "${GREEN}--- START OF SSH PUBLIC KEY ---${NC}"
+    cat "${SSH_KEY_PATH}.pub"
+    echo ""
+    echo -e "${GREEN}--- END OF SSH PUBLIC KEY ---${NC}"
+    echo ""
+    echo -e "${YELLOW}To add this key to your Kerlink gateway:${NC}"
+    echo "  1. Open browser to: http://${GATEWAY_IP}"
+    echo "  2. Login with admin credentials"
+    echo "  3. Navigate to: System → SSH Keys (or Security → SSH Keys)"
+    echo "  4. Copy the ENTIRE line between the START and END markers above"
+    echo "  5. Paste it into the Kerlink UI"
+    echo "  6. Save the configuration"
+    echo ""
+    echo -e "${RED}IMPORTANT: Copy the key string (starts with 'ssh-ed25519'), NOT the fingerprint!${NC}"
+    echo ""
+    read -p "Press ENTER after adding the SSH key to the gateway UI..."
+    echo ""
+
+    # Test again after user confirms
+    echo -e "${YELLOW}Re-testing SSH key-based authentication...${NC}"
+    set +e  # Temporarily disable exit on error
+    SSH_TEST=$(ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes ${GATEWAY_USER}@$GATEWAY_IP "echo 'Connection successful'" 2>&1)
+    SSH_EXIT=$?
+    set -e  # Re-enable exit on error
+
+    if [ $SSH_EXIT -ne 0 ]; then
+        echo -e "${RED}Key-based authentication still failing. Trying password authentication...${NC}"
+        echo ""
+
+        # Fallback to password-based authentication
+        if [ -z "$GATEWAY_PASSWORD" ]; then
+            read -s -p "Enter admin password for the gateway: " GATEWAY_PASSWORD
+            echo ""
+        fi
+
+        # Override run_ssh_cmd to use password auth
+        run_ssh_cmd() {
+            SSHPASS="$GATEWAY_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${GATEWAY_USER}@$GATEWAY_IP "$1" 2>&1 | { grep -v "Warning: Permanently added" || true; }
+        }
+
+        # Test password auth
+        echo -e "${YELLOW}Testing SSH password authentication...${NC}"
+        set +e  # Temporarily disable exit on error
+        SSH_TEST=$(SSHPASS="$GATEWAY_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${GATEWAY_USER}@$GATEWAY_IP "echo 'Connection successful'" 2>&1)
+        SSH_EXIT=$?
+        set -e  # Re-enable exit on error
+
+        if [ $SSH_EXIT -ne 0 ]; then
+            echo -e "${RED}Error: Failed to connect via SSH${NC}"
+            echo -e "${YELLOW}Debug info:${NC}"
+            echo "$SSH_TEST" | grep -v "Warning: Permanently added"
+            echo ""
+            echo -e "${YELLOW}Common issues:${NC}"
+            echo "  1. Wrong password"
+            echo "  2. SSH key not properly added to gateway"
+            echo "  3. SSH not enabled on gateway"
+            echo "  4. Firewall blocking port 22"
+            echo "  5. sshpass not installed (run: apt install sshpass)"
+            exit 1
+        fi
+        echo -e "${GREEN}✓ SSH password authentication successful${NC}"
+        echo -e "${YELLOW}Note: Password authentication is working, but key-based auth is recommended.${NC}"
+    else
+        echo -e "${GREEN}✓ SSH key-based authentication successful${NC}"
+    fi
+else
+    echo -e "${GREEN}✓ SSH key-based authentication successful${NC}"
 fi
-echo -e "${GREEN}✓ SSH connection established${NC}"
 
 # Step 0: Optional Factory Reset
 if [ "$FACTORY_RESET" = true ]; then
@@ -304,21 +385,18 @@ echo -e "  Hostname: ${GREEN}$GATEWAY_HOSTNAME${NC}"
 echo -e "  Kernel: ${GREEN}$KERNEL_VERSION${NC}"
 echo -e "  Architecture: ${GREEN}$ARCH${NC}"
 
-# Prompt for gateway name with hostname as default
+# Use hostname as gateway name automatically
 echo ""
 if [ -n "$GATEWAY_HOSTNAME" ] && [ "$GATEWAY_HOSTNAME" != "N/A" ]; then
-    DEFAULT_NAME="$GATEWAY_HOSTNAME"
+    GATEWAY_NAME="$GATEWAY_HOSTNAME"
 else
-    DEFAULT_NAME="${GATEWAY_NAME_PREFIX}-${GATEWAY_EUI: -8}"
+    GATEWAY_NAME="${GATEWAY_NAME_PREFIX}-${GATEWAY_EUI: -8}"
 fi
 
-read -p "Enter a name for this gateway (default: ${DEFAULT_NAME}): " GATEWAY_NAME
-if [ -z "$GATEWAY_NAME" ]; then
-    GATEWAY_NAME="$DEFAULT_NAME"
-fi
+# Use empty description by default
+GATEWAY_DESC=""
 
-# Prompt for gateway description
-read -p "Enter gateway description (optional): " GATEWAY_DESC
+echo -e "${GREEN}✓ Gateway name: ${GATEWAY_NAME}${NC}"
 
 echo ""
 echo -e "${YELLOW}Configuration Summary:${NC}"
@@ -336,83 +414,77 @@ if [[ "$CONFIRM" != "yes" && "$CONFIRM" != "y" ]]; then
 fi
 
 echo ""
-echo -e "${YELLOW}Step 2/6: Checking Basic Station installation...${NC}"
+echo -e "${YELLOW}Step 2/6: Checking Basic Station installation (Keros 6.x)...${NC}"
 
-# Check if Basic Station is already installed
-BS_INSTALLED=$(run_ssh_cmd "[ -f /user/basic_station/bin/klk_bs_config ] && echo 'yes' || echo 'no'")
+# Check if Basic Station is already installed (Keros 6.x uses dpkg)
+BS_VERSION=$(run_ssh_cmd "dpkg -l | grep -w basicstation | awk '{print \$3}'" 2>/dev/null || echo "not found")
 
-if [ "$BS_INSTALLED" == "yes" ]; then
-    BS_VERSION=$(run_ssh_cmd "opkg list-installed | grep basicstation | awk '{print \$3}'" || echo "unknown")
-    echo -e "${GREEN}✓ Basic Station already installed (version: $BS_VERSION)${NC}"
-    echo ""
-    read -p "Reinstall/update Basic Station and Lorad packages? (yes/no): " REINSTALL
+if [ "$BS_VERSION" != "not found" ]; then
+    echo -e "${GREEN}✓ Basic Station installed (version: $BS_VERSION)${NC}"
 
-    if [[ "$REINSTALL" != "yes" && "$REINSTALL" != "y" ]]; then
-        echo -e "${YELLOW}⊘ Skipping Basic Station installation${NC}"
-    else
-        echo -e "${YELLOW}  Downloading Basic Station and Lorad packages...${NC}"
-        BASICSTATION_URL="https://wikikerlink.fr/wirnet-productline/lib/exe/fetch.php?media=resources_multi_hardware:basicstation_3.4.1_klkgw.ipk"
-        LORAD_URL="https://wikikerlink.fr/wirnet-productline/lib/exe/fetch.php?media=resources_multi_hardware:lorad-hotfix_2.5.1_klkgw.ipk"
-        run_ssh_cmd "cd /tmp && wget -q "$BASICSTATION_URL" -O basicstation_3.4.1_klkgw.ipk"
-        run_ssh_cmd "cd /tmp && wget -q "$LORAD_URL" -O lorad-hotfix_2.5.1_klkgw.ipk"
-        echo -e "${YELLOW}  Remounting filesystem as read-write...${NC}"
-        run_ssh_cmd "mount -o remount,rw /.update"
-        echo -e "${YELLOW}  Installing Lorad package...${NC}"
-        run_ssh_cmd "opkg install /tmp/lorad-hotfix_2.5.1_klkgw.ipk"
-        echo -e "${YELLOW}  Installing Basic Station package...${NC}"
-        run_ssh_cmd "opkg install /tmp/basicstation_3.4.1_klkgw.ipk"
-        echo -e "${YELLOW}  Cleaning up temporary files...${NC}"
-        run_ssh_cmd "rm -f /tmp/basicstation_3.4.1_klkgw.ipk /tmp/lorad-hotfix_2.5.1_klkgw.ipk"
+    # Check lorad
+    LORAD_VERSION=$(run_ssh_cmd "dpkg -l | grep -w lorad | awk '{print \$3}'" 2>/dev/null || echo "not found")
+    if [ "$LORAD_VERSION" != "not found" ]; then
+        echo -e "${GREEN}✓ Lorad installed (version: $LORAD_VERSION)${NC}"
     fi
-else
-    echo -e "${YELLOW}  Downloading Basic Station and Lorad packages...${NC}"
-    BASICSTATION_URL="https://wikikerlink.fr/wirnet-productline/lib/exe/fetch.php?media=resources_multi_hardware:basicstation_3.4.1_klkgw.ipk"
-    LORAD_URL="https://wikikerlink.fr/wirnet-productline/lib/exe/fetch.php?media=resources_multi_hardware:lorad-hotfix_2.5.1_klkgw.ipk"
-    run_ssh_cmd "cd /tmp && wget -q "$BASICSTATION_URL" -O basicstation_3.4.1_klkgw.ipk"
-    run_ssh_cmd "cd /tmp && wget -q "$LORAD_URL" -O lorad-hotfix_2.5.1_klkgw.ipk"
-    echo -e "${YELLOW}  Remounting filesystem as read-write...${NC}"
-    run_ssh_cmd "mount -o remount,rw /.update"
-    echo -e "${YELLOW}  Installing Lorad package...${NC}"
-    run_ssh_cmd "opkg install /tmp/lorad-hotfix_2.5.1_klkgw.ipk"
-    echo -e "${YELLOW}  Installing Basic Station package...${NC}"
-    run_ssh_cmd "opkg install /tmp/basicstation_3.4.1_klkgw.ipk"
-    echo -e "${YELLOW}  Cleaning up temporary files...${NC}"
-    run_ssh_cmd "rm -f /tmp/basicstation_3.4.1_klkgw.ipk /tmp/lorad-hotfix_2.5.1_klkgw.ipk"
-fi
 
-echo -e "${GREEN}✓ Basic Station and Lorad packages installed${NC}"
-echo ""
-echo -e "${YELLOW}Step 3/6: Configuring and starting Basic Station...${NC}"
-echo -e "${YELLOW}  Verifying Basic Station installation...${NC}"
-CONFIG_EXISTS=$(run_ssh_cmd "[ -f /user/basic_station/bin/klk_bs_config ] && echo 'yes' || echo 'no'")
-if [ "$CONFIG_EXISTS" != "yes" ]; then
-    echo -e "${RED}✗ klk_bs_config not found after installation${NC}"
-    echo -e "${YELLOW}  Please check gateway installation manually${NC}"
+    # Check service status
+    BS_STATUS=$(run_ssh_cmd "systemctl is-active basicstation" 2>/dev/null || echo "inactive")
+    echo -e "  Basic Station service: ${BLUE}$BS_STATUS${NC}"
+else
+    echo -e "${RED}✗ Basic Station not found${NC}"
+    echo -e "${YELLOW}  On Keros 6.x, Basic Station should be pre-installed${NC}"
+    echo -e "${YELLOW}  Try: apt-get install basicstation lorad${NC}"
     exit 1
 fi
-echo -e "${GREEN}✓ Basic Station binaries found${NC}"
 
-# Create station.conf from example if needed
-echo -e "${YELLOW}  Preparing configuration files...${NC}"
-run_ssh_cmd "if [ ! -f /user/basic_station/etc/station.conf ]; then cp /user/basic_station/etc/station.conf.example /user/basic_station/etc/station.conf; fi"
+echo ""
+echo -e "${YELLOW}Step 3/6: Configuring Basic Station for ChirpStack...${NC}"
 
-# Configure Basic Station with LNS URL
+# Stop Basic Station service before reconfiguring
+echo -e "${YELLOW}  Stopping Basic Station service...${NC}"
+run_ssh_cmd "echo '$GATEWAY_PASSWORD' | sudo -S sh -c 'systemctl stop basicstation'"
+sleep 2
+
+# Backup existing configuration
+echo -e "${YELLOW}  Backing up existing configuration...${NC}"
+run_ssh_cmd "echo '$GATEWAY_PASSWORD' | sudo -S sh -c 'cp /etc/station/tc.uri /etc/station/tc-bak.uri 2>/dev/null || true'"
+run_ssh_cmd "echo '$GATEWAY_PASSWORD' | sudo -S sh -c 'cp /etc/station/tc.trust /etc/station/tc-bak.trust 2>/dev/null || true'"
+
+# Configure LNS URL
 echo -e "${YELLOW}  Configuring LNS WebSocket URL...${NC}"
-run_ssh_cmd "/user/basic_station/bin/klk_bs_config --enable --lns-uri \"$LNS_URL\""
+run_ssh_cmd "echo '$GATEWAY_PASSWORD' | sudo -S sh -c \"echo '$LNS_URL' > /etc/station/tc.uri\""
 
-# Verify tc.uri was created and contains correct URL
-TC_URI=$(run_ssh_cmd "cat /user/basic_station/etc/tc.uri 2>/dev/null" || echo "")
-if [ -z "$TC_URI" ]; then
-    echo -e "${RED}✗ tc.uri file not created${NC}"
+# Remove trust file if exists (not needed for non-SSL ws://)
+run_ssh_cmd "echo '$GATEWAY_PASSWORD' | sudo -S sh -c 'rm -f /etc/station/tc.trust'"
+
+# Create/update station.conf
+echo -e "${YELLOW}  Updating station.conf...${NC}"
+run_ssh_cmd "echo '$GATEWAY_PASSWORD' | sudo -S sh -c \"echo '[DEFAULT]' > /etc/station/station.conf\""
+run_ssh_cmd "echo '$GATEWAY_PASSWORD' | sudo -S sh -c \"echo 'log_level = DEBUG' >> /etc/station/station.conf\""
+
+# Verify configuration
+TC_URI=$(run_ssh_cmd "cat /etc/station/tc.uri" 2>/dev/null || echo "")
+if [ "$TC_URI" != "$LNS_URL" ]; then
+    echo -e "${RED}✗ Failed to configure LNS URL${NC}"
     exit 1
 fi
 echo -e "${GREEN}✓ LNS URL configured: ${TC_URI}${NC}"
 
-# Start monit monitoring
-echo -e "${YELLOW}  Starting monit monitoring...${NC}"
-run_ssh_cmd "monit monitor station"
-sleep 2
-echo -e "${GREEN}✓ Basic Station configured and started${NC}"
+# Restart Basic Station service
+echo -e "${YELLOW}  Starting Basic Station service...${NC}"
+run_ssh_cmd "echo '$GATEWAY_PASSWORD' | sudo -S sh -c 'systemctl restart basicstation'"
+sleep 3
+
+# Verify service is running
+BS_STATUS=$(run_ssh_cmd "systemctl is-active basicstation" 2>/dev/null || echo "inactive")
+if [ "$BS_STATUS" == "active" ]; then
+    echo -e "${GREEN}✓ Basic Station service is running${NC}"
+else
+    echo -e "${YELLOW}⚠ Basic Station service status: ${BS_STATUS}${NC}"
+    echo -e "${YELLOW}  Checking service logs...${NC}"
+    run_ssh_cmd "systemctl status basicstation --no-pager | tail -10"
+fi
 
 echo ""
 echo -e "${YELLOW}Step 4/6: Registering gateway in ChirpStack...${NC}"

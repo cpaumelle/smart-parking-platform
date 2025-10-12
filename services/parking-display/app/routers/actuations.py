@@ -42,7 +42,9 @@ async def handle_sensor_uplink(
                 s.auto_actuation,
                 s.reservation_priority,
                 s.maintenance_mode,
-                dr.display_codes
+                dr.display_codes,
+                dr.fport,
+                dr.confirmed_downlinks
             FROM parking_spaces.spaces s
             JOIN parking_config.display_registry dr ON s.display_device_id = dr.display_id
             WHERE s.occupancy_sensor_deveui = $1
@@ -63,10 +65,10 @@ async def handle_sensor_uplink(
 
         space_id = str(space["space_id"])
 
-        # Update sensor state in database (fire and forget)
-        asyncio.create_task(update_sensor_state(
+        # Update sensor state in database (synchronous for data consistency)
+        await update_sensor_state(
             space_id, request.occupancy_state, request.timestamp, db
-        ))
+        )
 
         # Determine display state using state engine
         state_result = await ParkingStateEngine.determine_display_state(
@@ -96,6 +98,8 @@ async def handle_sensor_uplink(
             new_state=state_result["display_state"],
             display_deveui=space["display_device_deveui"],
             display_codes=space["display_codes"],
+            fport=space["fport"],
+            confirmed_downlinks=space["confirmed_downlinks"],
             trigger_type=TriggerType.SENSOR_UPLINK,
             trigger_source=request.sensor_deveui,
             trigger_data=request.model_dump(mode='json'),
@@ -138,7 +142,9 @@ async def manual_actuation(
                 s.space_name,
                 s.current_state,
                 s.display_device_deveui,
-                dr.display_codes
+                dr.display_codes,
+                dr.fport,
+                dr.confirmed_downlinks
             FROM parking_spaces.spaces s
             JOIN parking_config.display_registry dr ON s.display_device_id = dr.display_id
             WHERE s.space_id = $1 AND s.enabled = TRUE
@@ -168,6 +174,8 @@ async def manual_actuation(
             new_state=request.new_state,
             display_deveui=space["display_device_deveui"],
             display_codes=space["display_codes"],
+            fport=space["fport"],
+            confirmed_downlinks=space["confirmed_downlinks"],
             trigger_type=TriggerType.MANUAL_OVERRIDE,
             trigger_source=request.user_id or "api",
             trigger_data=request.model_dump(mode='json'),
@@ -196,6 +204,8 @@ async def execute_immediate_actuation(
     new_state: ParkingState,
     display_deveui: str,
     display_codes: dict,
+    fport: int,
+    confirmed_downlinks: bool,
     trigger_type: TriggerType,
     trigger_source: str,
     trigger_data: dict,
@@ -229,9 +239,9 @@ async def execute_immediate_actuation(
 
             downlink_result = await downlink_client.send_downlink(
                 dev_eui=display_deveui,
-                fport=1,
+                fport=fport,  # Use fport from display registry (e.g., 15 for Kuando)
                 data=display_code,
-                confirmed=False  # Class C devices, no need for confirmation
+                confirmed=confirmed_downlinks  # Use setting from display registry
             )
 
             # 3. Update actuation log with downlink result
