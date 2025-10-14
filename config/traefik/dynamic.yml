@@ -1,0 +1,6 @@
+http:
+  middlewares:
+    admin-auth:
+      basicAuth:
+        usersFile: /config/.htpasswd
+        realm: "Smart Parking Admin"

@@ -41,6 +41,8 @@ async def receive_uplink(req: Request, db: AsyncSession = Depends(get_db_session
         source = payload.get("source", "unknown")
         fport = payload.get("fport")
         gateway_eui = payload.get("gateway_eui")
+        if gateway_eui:
+            gateway_eui = gateway_eui.strip().upper()
 
         # ✅ Insert uplink
         new_uplink = IngestUplink(

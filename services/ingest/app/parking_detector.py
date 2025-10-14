@@ -1,6 +1,7 @@
 """parking_detector.py - Parking Sensor Detection and Forwarding
-Version: 1.0.2 - 2025-10-09 12:05 UTC
+Version: 1.0.3 - 2025-10-13 17:10 UTC
 Changelog:
+- v1.0.3: Use uppercase DevEUIs to match ChirpStack format
 - v1.0.2: Removed debug logging, verified working end-to-end pipeline
 - v1.0.1: Fixed payload decoder to use bytes.fromhex() instead of base64.b64decode()
 - v1.0.0: Initial implementation with cache, background refresh, Browan decoder
@@ -39,9 +40,9 @@ class ParkingSensorDetector:
                 if response.status_code == 200:
                     data = response.json()
 
-                    # Atomic update of cache
-                    new_sensors = set(data.get("sensor_deveuis", []))
-                    new_mapping = data.get("sensor_to_space", {})
+                    # Atomic update of cache - keep uppercase as received from ChirpStack
+                    new_sensors = {dev_eui.upper() for dev_eui in data.get("sensor_deveuis", [])}
+                    new_mapping = {dev_eui.upper(): space_id for dev_eui, space_id in data.get("sensor_to_space", {}).items()}
 
                     self.parking_sensors = new_sensors
                     self.sensor_to_space = new_mapping
@@ -59,11 +60,11 @@ class ParkingSensorDetector:
 
     def is_parking_sensor(self, dev_eui: str) -> bool:
         """Fast O(1) lookup for parking sensor detection"""
-        return dev_eui.lower() in self.parking_sensors
+        return dev_eui.upper() in self.parking_sensors
 
     def get_space_id(self, dev_eui: str) -> Optional[str]:
         """Get space ID for parking sensor"""
-        return self.sensor_to_space.get(dev_eui.lower())
+        return self.sensor_to_space.get(dev_eui.upper())
 
     def needs_refresh(self) -> bool:
         """Check if cache needs refresh"""
@@ -81,7 +82,7 @@ parking_detector = ParkingSensorDetector()
 
 async def refresh_parking_cache_task():
     """Background task to refresh parking sensor cache"""
-    logger.info("Starting parking sensor cache refresh task (parking_detector.py v1.0.2)")
+    logger.info("Starting parking sensor cache refresh task (parking_detector.py v1.0.3)")
 
     # Initial refresh
     await parking_detector.refresh_cache()
@@ -97,8 +98,8 @@ async def refresh_parking_cache_task():
 async def forward_to_parking_display(uplink_data: dict, space_id: str):
     """Forward parking sensor data to Parking Display Service"""
     try:
-        dev_eui = uplink_data.get("devEUI", "").lower()
-        
+        dev_eui = uplink_data.get("devEUI", "").upper()
+
         # Extract occupancy state from payload
         occupancy_state = extract_occupancy_from_payload(uplink_data)
 
@@ -143,7 +144,7 @@ def extract_occupancy_from_payload(uplink_data: dict) -> str:
     Returns: FREE or OCCUPIED
     """
     try:
-        dev_eui = uplink_data.get("devEUI", "").lower()
+        dev_eui = uplink_data.get("devEUI", "").upper()
         payload_hex = uplink_data.get("data", "")
 
         if not payload_hex:

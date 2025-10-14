@@ -1,8 +1,7 @@
 # main.py - transform
-# Version: 0.1.6 - 2025-08-03 08:05 UTC
+# Version: 0.1.9 - 2025-10-13
 # Changelog:
-# - Use .env CORS_ORIGINS variable for dynamic origin configuration
-# - Added verbose request logging middleware for debugging frontend API requests
+# - Added parking spaces router
 
 from fastapi import FastAPI, Request
 from starlette.middleware.cors import CORSMiddleware
@@ -19,6 +18,8 @@ from routers.uplinks import router as uplink_router
 from routers.locations import router as locations_router
 from routers.devices import router as devices_router
 from routers.gateways import router as gateways_router
+from routers.chirpstack_devices import router as chirpstack_router
+from routers.spaces import router as spaces_router
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -26,7 +27,7 @@ logger = logging.getLogger("transform-service")
 
 app = FastAPI(
     title="Transform Service",
-    version="0.1.6",
+    version="0.1.9",
 )
 
 # CORS
@@ -39,9 +40,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ──────────────────────────────────────────────────────
 # Middleware: log method, path, body, and status code
-# ──────────────────────────────────────────────────────
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     body = await request.body()
@@ -60,3 +59,5 @@ app.include_router(uplink_router, prefix="/process-uplink")
 app.include_router(locations_router, prefix="/v1/locations")
 app.include_router(devices_router, prefix="/v1/devices")
 app.include_router(gateways_router, prefix="/v1/gateways")
+app.include_router(chirpstack_router, prefix="/v1/chirpstack", tags=["ChirpStack"])
+app.include_router(spaces_router, prefix="/v1")

@@ -15,4 +15,6 @@ command_topic_template="gateway/{{ .GatewayID }}/command/#"
   type="generic"
 
     [integration.mqtt.auth.generic]
+    username="mqttadmin"
+    password="2+ipv5qiYG4RGSrgtmlPvCAA5g55OoGhoaBwhSKCJlY="
     server="tcp://mosquitto:1883"

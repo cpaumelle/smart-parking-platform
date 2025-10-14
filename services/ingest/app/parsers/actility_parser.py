@@ -31,7 +31,7 @@ def parse_actility(payload: dict):
         "received_at": received_at,
         "fport": fport,
         "uplink_metadata": payload,
-        "gateway_eui": gateway_eui,
+        "gateway_eui": gateway_eui.upper() if gateway_eui else None,
         "gateway_rssi": rssi,
         "gateway_snr": snr,
     }

@@ -13,7 +13,7 @@ import sys
 
 from parking_sensor import ParkingSensor, ParkingState
 from busylight import Busylight
-from chirpstack_client import ChirpStackClient, MockChirpStackClient
+from chirpstack_mqtt_client import ChirpStackMQTTClient, MockChirpStackClient
 
 
 class ParkingSimulator:
@@ -35,7 +35,13 @@ class ParkingSimulator:
             self.chirpstack = MockChirpStackClient(self.config)
         else:
             print("[Simulator] Connecting to ChirpStack...")
-            self.chirpstack = ChirpStackClient(self.config)
+            self.chirpstack = ChirpStackMQTTClient(self.config)
+            if not self.chirpstack.connect():
+                print("[Simulator] WARNING: MQTT connection failed!")
+                print("[Simulator] Continuing in mock mode...")
+                self.mock_mode = True
+                self.chirpstack.disconnect()
+                self.chirpstack = MockChirpStackClient(self.config)
             if not self.chirpstack.test_connection():
                 print("[Simulator] WARNING: ChirpStack connection failed!")
                 print("[Simulator] Continuing in mock mode...")

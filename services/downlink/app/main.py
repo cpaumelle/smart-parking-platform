@@ -21,10 +21,11 @@ app = FastAPI(
     description="REST API for sending downlinks and managing ChirpStack resources"
 )
 
-# CORS
+# CORS - Restricted to allowed origins
+cors_origins = os.getenv("CORS_ORIGINS", "").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[origin.strip() for origin in cors_origins if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

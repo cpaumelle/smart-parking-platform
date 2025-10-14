@@ -6,3 +6,4 @@ httpx
 python-dateutil
 asyncpg
 python-dotenv
+python-multipart

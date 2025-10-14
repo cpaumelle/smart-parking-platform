@@ -1,10 +1,10 @@
 ---
 # ChirpStack Configuration
 chirpstack:
-  api_url: "http://localhost:8080/api"
-  api_token: "YOUR_CHIRPSTACK_API_TOKEN"
-  tenant_id: "YOUR_TENANT_ID"
-  application_id: "YOUR_APPLICATION_ID"
+  api_url: "http://parking-chirpstack:8080/api"
+  api_token: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjaGlycHN0YWNrIiwiaXNzIjoiY2hpcnBzdGFjayIsInN1YiI6ImJhZTQ3ZWUzLTIxYjEtNGVjZi1hOTZhLTdjMDQ4YTU0ZTU5NCIsInR5cCI6ImtleSJ9.7c5sUooBX5T4xNdb1t5pfoHHJ2KbUFnhXdKUHzcnPOE"
+  tenant_id: "97e4f067-b35e-4e4d-9ba8-94d484474d9b"  # Get from ChirpStack UI or API
+  application_id: "345b028b-9f0a-4c56-910c-6a05dc2dc22f"  # Get from ChirpStack UI or API
 
 # Simulation Configuration
 simulation:
@@ -42,19 +42,19 @@ behavior:
 colors:
   available:
     name: "Green"
-    payload: "0064000FF00"  # Solid green
+    payload: "00640000FF"  # Solid green
   occupied:
     name: "Red"
-    payload: "6400000FF00"  # Solid red
+    payload: "64000000FF"  # Solid red
   reserved:
     name: "Orange"
-    payload: "FFA5000FF00"  # Solid orange
+    payload: "FFA5000000"  # Solid orange
   expiring_soon:
     name: "Blinking Orange"
     payload: "FFA5007F7F"   # Blinking orange
   maintenance:
     name: "Blue"
-    payload: "0000640FF00"  # Solid blue
+    payload: "00006400FF"  # Solid blue
   unknown:
     name: "Blinking White"
     payload: "FFFFFF7F7F"   # Blinking white
@@ -104,3 +104,10 @@ test_scenarios:
   - name: "Sensor Failures"
     duration: 1200  # 20 minutes
     failure_rate: 0.05
+
+# MQTT Configuration (for real ChirpStack integration)
+mqtt:
+  broker: "mosquitto"  # Use "localhost" if running outside Docker
+  port: 1883
+  username: null  # Set if MQTT requires auth
+  password: null  # Set if MQTT requires auth

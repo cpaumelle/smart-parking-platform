@@ -53,9 +53,7 @@ sudo git commit -m "$(cat <<'EOF'
 
 <body>
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
+🤖 A Verdegris solution
 EOF
 )"
 
@@ -69,9 +67,7 @@ sudo git push origin main
 
 <body>
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
+🤖 A Verdegris solution
 ```
 
 **Commit Types**:
@@ -196,9 +192,8 @@ docs: update reservation API documentation
 - Added API documentation section
 - Updated changelog
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 A Verdegris solution
 
-Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -312,9 +307,6 @@ sudo git reset --hard HEAD~1
    - Check documentation renders correctly
    - Test API endpoints if code changed
 
-6. **Include Claude Code attribution**:
-   - Always add the Claude Code footer to commits
-   - Maintains transparency about AI assistance
 
 ---
 
@@ -365,5 +357,5 @@ sudo git push origin main
 ---
 
 **Last Updated**: 2025-10-10
-**Maintainer**: Claude Code
+**Maintainer**: Vedegris
 **Repository**: https://github.com/cpaumelle/smart-parking-platform

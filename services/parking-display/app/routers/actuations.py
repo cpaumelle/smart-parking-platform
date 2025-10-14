@@ -47,7 +47,7 @@ async def handle_sensor_uplink(
                 dr.confirmed_downlinks
             FROM parking_spaces.spaces s
             JOIN parking_config.display_registry dr ON s.display_device_id = dr.display_id
-            WHERE s.occupancy_sensor_deveui = $1
+            WHERE UPPER(s.occupancy_sensor_deveui) = UPPER($1)
               AND s.enabled = TRUE
         """
 
@@ -284,6 +284,11 @@ async def execute_immediate_actuation(
 async def update_sensor_state(space_id: str, sensor_state: ParkingState, timestamp, db):
     """Update sensor state tracking (non-blocking)"""
     try:
+        # Convert to naive UTC datetime for asyncpg (TIMESTAMPTZ columns expect naive UTC)
+        if timestamp and hasattr(timestamp, 'tzinfo') and timestamp.tzinfo is not None:
+            # Remove timezone info - asyncpg + TIMESTAMPTZ handles it
+            timestamp = timestamp.replace(tzinfo=None)
+
         await db.execute("""
             UPDATE parking_spaces.spaces
             SET sensor_state = $1,

@@ -38,12 +38,12 @@ def parse_tti(payload: dict):
             gateway_eui = rx_metadata[0].get("gateway_ids", {}).get("eui")
 
         return {
-            "deveui": deveui,
+            "deveui": deveui.upper() if deveui else None,
             "payload": payload_hex,
             "received_at": received_at,
             "fport": fport,
             "uplink_metadata": payload,
-            "gateway_eui": gateway_eui,
+            "gateway_eui": gateway_eui.upper() if gateway_eui else None,
         }
 
     except Exception as e:

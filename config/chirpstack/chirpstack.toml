@@ -13,6 +13,8 @@ enabled_regions = ["eu868"]
 bind = "0.0.0.0:8080"
 
 [integration.mqtt]
+username = "mqttadmin"
+password = "2+ipv5qiYG4RGSrgtmlPvCAA5g55OoGhoaBwhSKCJlY="
 server = "tcp://mosquitto:1883"
 json = true
 qos = 0
@@ -32,6 +34,8 @@ common_name = "EU868"
     enabled = "mqtt"
     
       [regions.gateway.backend.mqtt]
+      username = "mqttadmin"
+      password = "2+ipv5qiYG4RGSrgtmlPvCAA5g55OoGhoaBwhSKCJlY="
       event_topic = "gateway/+/event/+"
       state_topic = "gateway/+/state/+"
       command_topic = "gateway/{{ gateway_id }}/command/{{ command }}"

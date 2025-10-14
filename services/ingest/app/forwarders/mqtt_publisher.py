@@ -8,6 +8,8 @@ logger = logging.getLogger(__name__)
 
 MQTT_BROKER = os.getenv("MQTT_BROKER", "10.44.1.110")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_USERNAME = os.getenv("MQTT_USERNAME")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 
 # Global MQTT client
 mqtt_client = None
@@ -18,6 +20,12 @@ def init_mqtt():
     logger.info(f"🔄 Attempting MQTT connection to {MQTT_BROKER}:{MQTT_PORT}...")
     try:
         mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+
+        # Set authentication if credentials provided
+        if MQTT_USERNAME and MQTT_PASSWORD:
+            mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+            logger.info(f"🔐 MQTT authentication enabled for user: {MQTT_USERNAME}")
+
         mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
         mqtt_client.loop_start()
         logger.info(f"✅ MQTT client connected to {MQTT_BROKER}:{MQTT_PORT}")

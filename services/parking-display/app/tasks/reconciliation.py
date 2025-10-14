@@ -4,7 +4,7 @@ Periodically verifies and corrects display states across all parking spaces
 """
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict
 import sys
 sys.path.append("/app")
@@ -44,7 +44,7 @@ class StateReconciliation:
     
     async def reconcile_all_spaces(self):
         """Check and reconcile all enabled parking spaces"""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         async with get_db() as db:
             try:
@@ -80,8 +80,8 @@ class StateReconciliation:
                     await self.reconcile_space(space, db)
                 
                 self.stats["total_checks"] += len(spaces)
-                
-                elapsed = (datetime.utcnow() - start_time).total_seconds()
+
+                elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
                 logger.info(
                     f"✅ Reconciliation complete: {len(spaces)} spaces checked in {elapsed:.1f}s "
                     f"(sent: {self.stats['reconciliations_sent']}, "
@@ -109,18 +109,26 @@ class StateReconciliation:
             
             expected_state = state_result["display_state"]
             last_display_update = space["last_display_update"]
-            
+
+            # Convert naive datetimes from database to UTC-aware
+            if last_display_update and last_display_update.tzinfo is None:
+                last_display_update = last_display_update.replace(tzinfo=timezone.utc)
+
+            last_uplink_at = space["last_uplink_at"]
+            if last_uplink_at and last_uplink_at.tzinfo is None:
+                last_uplink_at = last_uplink_at.replace(tzinfo=timezone.utc)
+
             # Decide if reconciliation is needed
             should_reconcile = False
             reconcile_reason = None
-            
+
             # Reason 1: No recent display update (>15 minutes)
-            if not last_display_update or (datetime.utcnow() - last_display_update) > timedelta(minutes=15):
+            if not last_display_update or (datetime.now(timezone.utc) - last_display_update) > timedelta(minutes=15):
                 should_reconcile = True
                 reconcile_reason = "stale_display_update"
-            
+
             # Reason 2: Display hasn't been seen recently (>20 minutes)
-            elif space["last_uplink_at"] and (datetime.utcnow() - space["last_uplink_at"]) > timedelta(minutes=20):
+            elif last_uplink_at and (datetime.now(timezone.utc) - last_uplink_at) > timedelta(minutes=20):
                 should_reconcile = True
                 reconcile_reason = "display_not_seen"
             

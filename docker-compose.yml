@@ -17,12 +17,14 @@ services:
     - --entrypoints.web.http.redirections.entrypoint.scheme=https
     - --log.level=INFO
     - --providers.docker.watch=true
+    - --providers.file.filename=/config/dynamic.yml
     ports:
     - 80:80
     - 443:443
     volumes:
     - /var/run/docker.sock:/var/run/docker.sock:ro
     - traefik_certs:/letsencrypt
+    - ./config/traefik:/config:ro
     networks:
     - web
     labels:
@@ -31,6 +33,7 @@ services:
     - traefik.http.routers.dashboard.service=api@internal
     - traefik.http.routers.dashboard.tls.certresolver=letsencrypt
     - traefik.http.routers.dashboard.entrypoints=websecure
+    - traefik.http.routers.dashboard.middlewares=admin-auth@file
   postgres-primary:
     image: postgres:16-alpine
     container_name: parking-postgres
@@ -43,7 +46,7 @@ services:
     - postgres_data:/var/lib/postgresql/data
     - ./database/init:/docker-entrypoint-initdb.d
     ports:
-    - 5432:5432
+    - "127.0.0.1:5432:5432"
     networks:
     - parking-network
     healthcheck:
@@ -67,7 +70,7 @@ services:
       MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 25
     ports:
-    - 6432:6432
+    - "127.0.0.1:6432:6432"
     networks:
     - parking-network
     depends_on:
@@ -82,8 +85,8 @@ services:
     - mosquitto_data:/mosquitto/data
     - mosquitto_logs:/mosquitto/log
     ports:
-    - 1883:1883
-    - 9001:9001
+    - "127.0.0.1:1883:1883"
+    - "127.0.0.1:9001:9001"
     networks:
     - parking-network
   chirpstack:
@@ -141,6 +144,7 @@ services:
     - traefik.http.routers.adminer.rule=Host(`adminer.${DOMAIN}`)
     - traefik.http.routers.adminer.entrypoints=websecure
     - traefik.http.routers.adminer.tls.certresolver=letsencrypt
+    - traefik.http.routers.adminer.middlewares=admin-auth@file
     - traefik.http.services.adminer.loadbalancer.server.port=8080
   ingest-service:
     build: ./services/ingest
@@ -155,8 +159,11 @@ services:
       TRANSFORM_URL: http://parking-transform:9000/process-uplink/uplink
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
+      MQTT_USERNAME: mqttadmin
+      MQTT_PASSWORD: 2+ipv5qiYG4RGSrgtmlPvCAA5g55OoGhoaBwhSKCJlY=
       CHIRPSTACK_APP_ID: ${CHIRPSTACK_APP_ID:-default-app-id}
       PARKING_DISPLAY_SERVICE_URL: http://parking-display:8100
+      CORS_ORIGINS: https://chirpstack.${DOMAIN},https://ingest.${DOMAIN}
     volumes:
     - ./services/ingest/app:/app
     networks:
@@ -232,6 +239,7 @@ services:
       DOWNLINK_SERVICE_URL: http://parking-downlink:8000
       LOG_LEVEL: INFO
       PYTHONUNBUFFERED: 1
+      CORS_ORIGINS: https://devices.${DOMAIN},https://parking.${DOMAIN}
     volumes:
     - ./services/parking-display/app:/app/app
     networks:
@@ -265,7 +273,8 @@ services:
     restart: unless-stopped
     user: 0:0
     volumes:
-    - /opt/smart-parking:/srv
+    - /opt/smart-parking:/srv/smart-parking
+    - /opt/www-verdegris:/srv/www-verdegris
     - filebrowser_db:/database
     networks:
     - web
@@ -274,6 +283,7 @@ services:
     - traefik.http.routers.filebrowser.rule=Host(`files.${DOMAIN}`)
     - traefik.http.routers.filebrowser.entrypoints=websecure
     - traefik.http.routers.filebrowser.tls.certresolver=letsencrypt
+    - traefik.http.routers.filebrowser.middlewares=admin-auth@file
     - traefik.http.services.filebrowser.loadbalancer.server.port=80
   redis:
     image: redis:7-alpine
