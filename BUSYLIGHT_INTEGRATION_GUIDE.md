@@ -2,6 +2,10 @@
 
 ## Smart Parking Solution with ChirpStack
 
+**Document Version:** 2.0  
+**Last Updated:** October 2025  
+**Based on:** Firmware 5.8+, Hardware 1.2+, v4.0.3 Technical Documentation
+
 ---
 
 ## Device Overview
@@ -14,8 +18,9 @@
 
 - **LoRaWAN Class:** C (continuous receive windows for immediate downlinks)
 - **Frequency Bands:** EU863-870, US902-928, AU915-928 MHz
-- **MAC Version:** 1.0.2 or 1.0.3
+- **MAC Version:** 1.0.3
 - **Regional Parameters:** Revision B
+- **FPort:** 15 (for all color commands and control)
 - **LED:** Multi-color RGB with customizable brightness and flashing
 - **Visibility:** 360-degree
 - **Power:** USB powered (3m/9ft cord with adapter included)
@@ -34,25 +39,42 @@ Class C devices keep their receive windows open continuously (except when transm
 
 ## Payload Format
 
-### Downlink Payload Structure (5 bytes)
+### Downlink Payload Structure (5-6 bytes)
 
-The Busylight accepts a **5-byte payload** on **FPort 15**:
+The Busylight accepts a **5-byte or 6-byte payload** on **FPort 15**:
 
 ```
 Byte 0: Red (0-255)
-Byte 1: Green (0-255)
-Byte 2: Blue (0-255)
-Byte 3: On-time (0-255)
-Byte 4: Off-time (0-255)
+Byte 1: Blue (0-255)
+Byte 2: Green (0-255)
+Byte 3: On-time (0-255, in 1/10 second units)
+Byte 4: Off-time (0-255, in 1/10 second units)
+Byte 5: [Optional] Auto-reply trigger (0x01)
 ```
+
+**⚠️ IMPORTANT - Firmware 5.8+ Byte Order:**
+- Byte 0 = Red
+- Byte 1 = **Blue** (swapped from earlier firmware)
+- Byte 2 = **Green** (swapped from earlier firmware)
 
 ### Timing Explanation
 
-- **On-time & Off-time:** Control blinking pattern
-- **255** = Maximum duration
-- **0** = Minimum duration
+- **Byte 3 & 4:** Control blinking pattern in **1/10 second units**
+  - Value of **10** = 1 second
+  - Value of **255** = 25.5 seconds (maximum)
+  - Value of **0** = minimum duration
 - **Solid light:** Set on-time=255, off-time=0
-- **Blinking:** Set equal values (e.g., on-time=127, off-time=127)
+- **Blinking (1 sec on/off):** Set on-time=10, off-time=10
+
+### Optional 6th Byte (Firmware 5.8+)
+
+Adding a 6th byte `0x01` triggers an automatic uplink reply after the device processes the downlink. Useful for confirmation.
+
+```
+Example: 00 FF 00 FF 00 01
+         ^  ^  ^  ^  ^  ^
+         R  B  G  On Of Reply
+```
 
 ### Payload Examples
 
@@ -156,7 +178,7 @@ Navigate to: **Device Profiles** → **Add device profile**
 **Settings:**
 
 - **Name:** `Busylight-Parking-ClassC`
-- **LoRaWAN MAC version:** 1.0.2 or 1.0.3
+- **LoRaWAN MAC version:** 1.0.3
 - **Regional parameters revision:** B
 - **Device class:** **Class-C**
 - **Supports OTAA:** Yes (recommended)
@@ -298,22 +320,29 @@ class BusylightController:
             'Content-Type': 'application/json'
         }
 
-    def create_payload(self, red: int, green: int, blue: int, 
-                       ontime: int = 255, offtime: int = 0) -> str:
+    def create_payload(self, red: int, blue: int, green: int,
+                       ontime: int = 255, offtime: int = 0,
+                       auto_reply: bool = False) -> str:
         """
-        Create base64 encoded payload for Busylight
+        Create base64 encoded payload for Busylight (Firmware 5.8+)
+
+        ⚠️ IMPORTANT: Byte order is R-B-G (Blue and Green swapped vs older firmware)
 
         Args:
             red: 0-255
-            green: 0-255
             blue: 0-255
-            ontime: 0-255 (255 = solid)
-            offtime: 0-255 (0 = no off time)
+            green: 0-255
+            ontime: 0-255 (in 1/10 second units, 255 = 25.5 sec solid)
+            offtime: 0-255 (in 1/10 second units, 0 = no off time)
+            auto_reply: If True, adds 6th byte to trigger uplink confirmation
 
         Returns:
             Base64 encoded payload string
         """
-        payload = bytes([red, green, blue, ontime, offtime])
+        if auto_reply:
+            payload = bytes([red, blue, green, ontime, offtime, 0x01])
+        else:
+            payload = bytes([red, blue, green, ontime, offtime])
         return base64.b64encode(payload).decode('utf-8')
 
     def send_downlink(self, dev_eui: str, payload_b64: str, 
@@ -342,8 +371,8 @@ class BusylightController:
         response.raise_for_status()
         return response.json()
 
-    def set_color(self, dev_eui: str, red: int, green: int, blue: int,
-                  solid: bool = True) -> dict:
+    def set_color(self, dev_eui: str, red: int, blue: int, green: int,
+                  solid: bool = True, auto_reply: bool = False) -> dict:
         """
         Set Busylight to a specific color
 
@@ -358,32 +387,33 @@ class BusylightController:
             API response
         """
         if solid:
-            payload = self.create_payload(red, green, blue, 255, 0)
+            payload = self.create_payload(red, blue, green, 255, 0, auto_reply)
         else:
-            payload = self.create_payload(red, green, blue, 127, 127)
+            # Blinking: 1 second on, 1 second off (10 = 1 sec in 1/10 units)
+            payload = self.create_payload(red, blue, green, 10, 10, auto_reply)
 
         return self.send_downlink(dev_eui, payload)
 
     # Predefined parking colors
     def set_available(self, dev_eui: str) -> dict:
         """Green - Parking available"""
-        return self.set_color(dev_eui, 0, 100, 0)
+        return self.set_color(dev_eui, red=0, blue=0, green=100)
 
     def set_occupied(self, dev_eui: str) -> dict:
         """Red - Parking occupied"""
-        return self.set_color(dev_eui, 100, 0, 0)
+        return self.set_color(dev_eui, red=100, blue=0, green=0)
 
     def set_reserved(self, dev_eui: str) -> dict:
         """Orange - Parking reserved"""
-        return self.set_color(dev_eui, 255, 165, 0)
+        return self.set_color(dev_eui, red=255, blue=0, green=165)
 
     def set_expiring_soon(self, dev_eui: str) -> dict:
         """Blinking Orange - Reservation expiring"""
-        return self.set_color(dev_eui, 255, 165, 0, solid=False)
+        return self.set_color(dev_eui, red=255, blue=0, green=165, solid=False)
 
     def set_maintenance(self, dev_eui: str) -> dict:
         """Blue - Under maintenance"""
-        return self.set_color(dev_eui, 0, 0, 100)
+        return self.set_color(dev_eui, red=0, blue=100, green=0)
 
     def set_off(self, dev_eui: str) -> dict:
         """Turn off the light"""
@@ -431,8 +461,11 @@ class BusylightController {
     /**
      * Create base64 encoded payload
      */
-    createPayload(red, green, blue, ontime = 255, offtime = 0) {
-        const buffer = Buffer.from([red, green, blue, ontime, offtime]);
+    createPayload(red, blue, green, ontime = 255, offtime = 0, autoReply = false) {
+        const bytes = autoReply
+            ? [red, blue, green, ontime, offtime, 0x01]
+            : [red, blue, green, ontime, offtime];
+        const buffer = Buffer.from(bytes);
         return buffer.toString('base64');
     }
 
@@ -456,17 +489,17 @@ class BusylightController {
     /**
      * Set color
      */
-    async setColor(devEui, red, green, blue, solid = true) {
-        const payload = solid 
-            ? this.createPayload(red, green, blue, 255, 0)
-            : this.createPayload(red, green, blue, 127, 127);
+    async setColor(devEui, red, blue, green, solid = true, autoReply = false) {
+        const payload = solid
+            ? this.createPayload(red, blue, green, 255, 0, autoReply)
+            : this.createPayload(red, blue, green, 10, 10, autoReply);
 
         return await this.sendDownlink(devEui, payload);
     }
 
     // Parking-specific methods
     async setAvailable(devEui) {
-        return await this.setColor(devEui, 0, 100, 0);
+        return await this.setColor(devEui, 0, 0, 100);
     }
 
     async setOccupied(devEui) {
@@ -474,15 +507,15 @@ class BusylightController {
     }
 
     async setReserved(devEui) {
-        return await this.setColor(devEui, 255, 165, 0);
+        return await this.setColor(devEui, 255, 0, 165);
     }
 
     async setExpiringSoon(devEui) {
-        return await this.setColor(devEui, 255, 165, 0, false);
+        return await this.setColor(devEui, 255, 0, 165, false);
     }
 
     async setMaintenance(devEui) {
-        return await this.setColor(devEui, 0, 0, 100);
+        return await this.setColor(devEui, 0, 100, 0);
     }
 
     async setOff(devEui) {
@@ -660,9 +693,9 @@ class BusylightMQTT:
         # Process uplink and send appropriate downlink
         print(f"Received from {dev_eui}: {payload}")
 
-    def send_color(self, dev_eui: str, red: int, green: int, blue: int):
-        """Send color command via MQTT"""
-        payload_bytes = bytes([red, green, blue, 255, 0])
+    def send_color(self, dev_eui: str, red: int, blue: int, green: int):
+        """Send color command via MQTT (Firmware 5.8+ byte order: R-B-G)"""
+        payload_bytes = bytes([red, blue, green, 255, 0])
         payload_b64 = base64.b64encode(payload_bytes).decode()
 
         message = {
@@ -829,6 +862,7 @@ The Kuando Busylight IoT is an excellent Class C display device for parking solu
 
 ---
 
-**Document Version:** 1.0  
+**Document Version:** 2.0  
 **Last Updated:** October 2025  
-**For Support:** Contact Plenom or request technical documentation from busylight.com
+**Based on:** v4.0.3 Technical Documentation (Firmware 5.8, Hardware 1.2)  
+**For Support:** support@plenom.com or busylight.com/support

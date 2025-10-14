@@ -30,13 +30,16 @@ The Smart Parking Platform is a complete IoT solution for managing parking space
 ### Key Features
 
 - **ChirpStack Integration**: Built-in ChirpStack 4.14.1 LoRaWAN Network Server for complete control
+- **Kuando Busylight Class C Displays**: Visual parking indicators with immediate (<5s) response time
 - **Parking-Specific Services**: Priority-based display control, reservations, and space management
 - **Real-time Data Processing**: Sub-200ms sensor-to-display actuation pipeline
-- **Downlink Control**: Send commands and configuration to parking sensors
+- **Downlink Control**: Send commands and configuration to parking sensors and displays
 - **Bidirectional Control**: Automatic Class C downlink control for parking displays
+- **Device Manager UI**: Web-based interface for device and parking space management
+- **Testing Simulator**: Comprehensive MQTT-based simulator with 50+ test devices
+- **Enterprise Security**: MQTT authentication, Traefik auth, CORS restrictions, firewall hardening
 - **SSL/TLS**: Automatic certificate management with Let's Encrypt
 - **Production-Ready**: Docker-based microservices with PostgreSQL backend
-
 ### Technology Stack
 
 | Layer | Technology |
@@ -331,6 +334,227 @@ monit restart station
 
 ---
 
+
+---
+
+#### Device Management & Parking Registries
+
+**Purpose**: Manage device registration for parking sensors and displays
+
+**Base URL**: `https://transform.verdegris.eu`
+
+##### Device Parking Registration Status
+
+**Endpoint**: `GET /v1/devices/{deveui}/parking-registration`
+
+**Description**: Check if a device is registered as a parking sensor or display.
+
+**Example**: `GET /v1/devices/58a0cb00001019bc/parking-registration`
+
+**Response**:
+```json
+{
+  "dev_eui": "58a0cb00001019bc",
+  "is_parking_sensor": true,
+  "is_display": false,
+  "sensor_info": {
+    "sensor_type": "occupancy",
+    "device_model": "TABS Motion",
+    "manufacturer": "Browan",
+    "is_parking_related": true,
+    "enabled": true
+  },
+  "display_info": null
+}
+```
+
+##### Register as Parking Sensor
+
+**Endpoint**: `POST /v1/devices/{deveui}/register-as-sensor`
+
+**Description**: Register a device as a parking sensor (Class A occupancy sensor). This adds the device to `parking_config.sensor_registry` and makes it available for assignment to parking spaces.
+
+**Request**:
+```json
+{
+  "dev_eui": "58a0cb00001019bc",
+  "sensor_type": "occupancy",
+  "device_model": "TABS Motion",
+  "manufacturer": "Browan",
+  "is_parking_related": true
+}
+```
+
+**Response**:
+```json
+{
+  "status": "success",
+  "message": "Device 58a0cb00001019bc registered as parking sensor"
+}
+```
+
+**Sensor Types**:
+- `occupancy` - Standard occupancy detection
+- `motion` - Motion-based detection
+- `ultrasonic` - Ultrasonic distance sensor
+- `magnetic` - Magnetic loop sensor
+
+##### Register as Display
+
+**Endpoint**: `POST /v1/devices/{deveui}/register-as-display`
+
+**Description**: Register a device as a parking display (Class C LED/indicator device). This adds the device to `parking_config.display_registry` and makes it available for assignment to parking spaces.
+
+**Request**:
+```json
+{
+  "dev_eui": "70b3d57ed0067001",
+  "display_type": "led_matrix",
+  "device_model": "WiFi LoRa 32 V3",
+  "manufacturer": "Heltec"
+}
+```
+
+**Response**:
+```json
+{
+  "status": "success",
+  "message": "Device 70b3d57ed0067001 registered as display"
+}
+```
+
+**Display Types**:
+- `led_matrix` - LED matrix display
+- `kuando_busylight` - Kuando Busylight IoT
+- `indicator_light` - Simple indicator light
+- `e-paper` - E-paper display
+
+##### Unregister Parking Sensor
+
+**Endpoint**: `DELETE /v1/devices/{deveui}/unregister-sensor`
+
+**Description**: Remove device from parking sensor registry (sets `is_parking_related = false`).
+
+**Response**:
+```json
+{
+  "status": "success",
+  "message": "Device 58a0cb00001019bc unregistered from parking sensors"
+}
+```
+
+##### Unregister Display
+
+**Endpoint**: `DELETE /v1/devices/{deveui}/unregister-display`
+
+**Description**: Remove device from parking display registry.
+
+**Response**:
+```json
+{
+  "status": "success",
+  "message": "Device 70b3d57ed0067001 unregistered from displays"
+}
+```
+
+##### Get Available Sensors
+
+**Endpoint**: `GET /v1/devices/sensors/available`
+
+**Description**: List all parking sensors with availability status (Class A devices).
+
+**Response**:
+```json
+[
+  {
+    "dev_eui": "58a0cb00001019bc",
+    "sensor_type": "occupancy",
+    "device_model": "TABS Motion",
+    "manufacturer": "Browan",
+    "is_available": false,
+    "assigned_to": "Parking Space A1-001"
+  },
+  {
+    "dev_eui": "58a0cb00001196f3",
+    "sensor_type": "occupancy",
+    "device_model": "TABS Motion",
+    "manufacturer": "Browan",
+    "is_available": true,
+    "assigned_to": null
+  }
+]
+```
+
+##### Get Available Displays
+
+**Endpoint**: `GET /v1/devices/displays/available`
+
+**Description**: List all parking displays with availability status (Class C devices).
+
+**Response**:
+```json
+[
+  {
+    "dev_eui": "70b3d57ed0067001",
+    "display_type": "led_matrix",
+    "device_model": "WiFi LoRa 32 V3",
+    "manufacturer": "Heltec",
+    "is_available": false,
+    "assigned_to": "Parking Space A1-001"
+  },
+  {
+    "dev_eui": "202020410a1c0702",
+    "display_type": "kuando_busylight",
+    "device_model": "Busylight IoT Omega LoRaWAN",
+    "manufacturer": "Kuando/Plenom",
+    "is_available": true,
+    "assigned_to": null
+  }
+]
+```
+
+**Note**: Devices show as `is_available: false` when assigned to an active (non-archived) parking space. The `assigned_to` field shows which space currently uses the device.
+
+---
+
+#### Frontend Management UI
+
+**URL**: `https://devices.verdegris.eu`
+
+**Purpose**: Web interface for complete device and parking space management.
+
+##### Features
+
+**Device Management**:
+- View all LoRaWAN devices from ChirpStack
+- Configure device name, type, and location
+- **Parking System Registration** section with checkboxes:
+  - ✅ **Parking Sensor (Class A)** - Mark device as occupancy sensor
+  - ✅ **Parking Display (Class C)** - Mark device as LED/indicator display
+  - Dropdown selectors for sensor type and display type
+- Real-time device status and metadata
+
+**Parking Spaces Management**:
+- Create new parking spaces with:
+  - Space identification (name, code)
+  - Location details (building, floor, zone)
+  - **Dropdown selectors** for sensor and display assignment (shows only available devices)
+  - Auto-actuation and reservation settings
+- Edit existing spaces
+- Archive/restore spaces
+- Filter by building, floor, zone, state
+- Real-time state display with color-coded badges
+
+**Key UI Improvements** (2025-10-13):
+- ✅ Device assignment uses dropdowns instead of text input
+- ✅ Shows only available (unassigned) devices in dropdowns
+- ✅ Displays currently assigned device in edit mode
+- ✅ 1-to-1 enforcement: prevents assigning same device to multiple spaces
+- ✅ Parking registration checkboxes in device configuration modal
+- ✅ Class A (sensor) and Class C (display) device type indicators
+
+---
+
 ## Services
 
 ### Core Infrastructure
@@ -462,6 +686,19 @@ monit restart station
 - **URL**: `https://files.verdegris.eu`
 - **Purpose**: Browse and manage platform files
 - **Root**: `/opt/smart-parking`
+
+#### Device Manager UI (kuando-ui)
+- **Image**: `nginx:alpine`
+- **URL**: `https://devices.verdegris.eu`
+- **Purpose**: Complete device and parking space management interface
+- **Features**:
+  - View all LoRaWAN devices from ChirpStack
+  - Register devices as parking sensors (Class A) or displays (Class C)
+  - Manage parking spaces with dropdown device assignment
+  - Real-time state monitoring with color-coded badges
+  - Filter spaces by building, floor, zone, state
+  - Archive/restore parking spaces
+  - 1-to-1 device assignment enforcement
 
 ---
 
@@ -1104,6 +1341,19 @@ POST /v1/spaces/550e8400-e29b-41d4-a716-446655440000/restore?restored_by=admin
 - **Purpose**: Browse and manage platform files
 - **Root**: `/opt/smart-parking`
 
+#### Device Manager UI (kuando-ui)
+- **Image**: `nginx:alpine`
+- **URL**: `https://devices.verdegris.eu`
+- **Purpose**: Complete device and parking space management interface
+- **Features**:
+  - View all LoRaWAN devices from ChirpStack
+  - Register devices as parking sensors (Class A) or displays (Class C)
+  - Manage parking spaces with dropdown device assignment
+  - Real-time state monitoring with color-coded badges
+  - Filter spaces by building, floor, zone, state
+  - Archive/restore parking spaces
+  - 1-to-1 device assignment enforcement
+
 ---
 
 ## API Documentation
@@ -1565,6 +1815,72 @@ The Parking Display Service provides three complementary API groups for comprehe
 - **Documentation**: Inline comments for complex logic, API docs via FastAPI
 - **Logging**: Use structured logging with INFO level by default
 
+### Testing Simulator
+
+**Location**: `/opt/smart-parking/testing-simulator/`
+
+The platform includes a comprehensive MQTT-based testing simulator for development and integration testing.
+
+**Features:**
+- 50+ pre-configured test devices (sensors and displays)
+- Simulated uplink generation with realistic payloads
+- Automated device creation in ChirpStack
+- Bulk import/export capabilities
+- Interactive CLI for manual testing
+- Automated test scenarios
+
+**Key Components:**
+
+| Script | Purpose |
+|--------|---------|  
+| `simulator.py` | Main simulator with device classes |
+| `create_test_devices.py` | Bulk create devices in ChirpStack database |
+| `bulk_import_grpc.py` | Create devices via ChirpStack gRPC API |
+| `chirpstack_mqtt_client.py` | MQTT client for uplink injection |
+| `cleanup_test_devices.py` | Remove simulator devices from database |
+| `interactive_cli.py` | Interactive testing interface |
+
+**Quick Start:**
+
+```bash
+cd /opt/smart-parking/testing-simulator
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Create test devices in ChirpStack
+python3 create_test_devices.py
+
+# Start simulator with default config
+python3 simulator.py
+
+# Interactive mode
+python3 interactive_cli.py
+```
+
+**Test Device Types:**
+- **Browan TABS Motion** (occupancy sensors)
+- **Heltec WiFi LoRa 32 V3** (LED displays)
+- **Kuando Busylight IoT** (Class C RGB indicators)
+
+**Configuration:**
+
+Edit `config.yaml` to customize:
+- Device count and types
+- Uplink intervals and payload patterns
+- ChirpStack connection settings
+- MQTT broker credentials
+
+**Documentation:**
+- `MQTT_SIMULATOR_GUIDE.md` - Complete simulator usage guide
+- `CREATE_TEST_DEVICES_GUIDE.md` - Device provisioning instructions
+- `DEVICE_QUICK_REFERENCE.txt` - Quick reference for test device EUIs
+- `CHIRPSTACK_DATABASE_SCHEMA.md` - Database schema documentation
+
+
 ---
 
 ## Deployment
@@ -1792,6 +2108,95 @@ WHERE received_at < NOW() - INTERVAL '30 days';
 
 ## Security
 
+**Last Security Audit:** 2025-10-13 | **Status:** ✅ Hardened
+
+### Access Control
+
+- **PostgreSQL**: Password authentication, internal network only (127.0.0.1)
+- **MQTT Broker**: Username/password authentication required (credentials in config/mosquitto/MQTT-CREDENTIALS.txt)
+- **Traefik Dashboard**: HTTP Basic authentication (credentials in config/traefik/ADMIN-CREDENTIALS.txt)
+- **Adminer**: Password-protected database access
+- **FileBrowser**: Authentication required
+- **ChirpStack**: API token authentication
+- **Services**: Internal Docker network isolation
+- **CORS**: Restricted to whitelisted origins (see CORS-CONFIG.md)
+
+### MQTT Broker Security
+
+**Authentication:**
+- Username/password required for all connections
+- Credentials: `mqttadmin` / [see MQTT-CREDENTIALS.txt]
+- Password file: `/opt/smart-parking/config/mosquitto/passwd` (hashed)
+
+**Network Isolation:**
+- Bound to localhost only (127.0.0.1:1883, 127.0.0.1:9001)
+- Not accessible from internet
+- Only internal Docker services can connect
+
+**Test:**
+```bash
+# From server - should work with credentials
+mosquitto_sub -h localhost -u mqttadmin -P YOUR_PASSWORD -t "application/#"
+
+# From external host - should fail
+mosquitto_sub -h verdegris.eu -p 1883 -t "test"  # Connection refused
+```
+
+### Traefik Dashboard Authentication
+
+**Access:** `https://traefik.verdegris.eu/dashboard/`
+
+**Authentication:**
+- HTTP Basic Auth enforced via dynamic configuration
+- Username: `admin`
+- Password: [see config/traefik/ADMIN-CREDENTIALS.txt]
+- Credentials stored in `.htpasswd` (bcrypt hashed)
+
+**Configuration:**
+- File: `config/traefik/dynamic.yml`
+- Applied via Docker label in docker-compose.yml
+- No anonymous access permitted
+
+### CORS Policy
+
+All API services use **restricted CORS** (no wildcard origins):
+
+| Service | Allowed Origins |
+|---------|----------------|
+| Ingest | chirpstack.verdegris.eu, ingest.verdegris.eu |
+| Transform | ops.verdegris.eu, verdegris.eu, devices.verdegris.eu |
+| Downlink | ops.verdegris.eu, verdegris.eu, devices.verdegris.eu |
+| Parking Display | devices.verdegris.eu, parking.verdegris.eu |
+
+**Documentation:** See `CORS-CONFIG.md` for full details and testing procedures.
+
+### Firewall Configuration
+
+**UFW Status:** Active (default deny incoming)
+
+**Allowed Ports:**
+```bash
+sudo ufw allow 22/tcp     # SSH (server administration)
+sudo ufw allow 80/tcp     # HTTP (redirects to HTTPS)
+sudo ufw allow 443/tcp    # HTTPS (all web services)
+sudo ufw allow 1700/udp   # LoRaWAN gateway protocol
+sudo ufw allow 3001/tcp   # BasicStation (ChirpStack Gateway Bridge)
+sudo ufw enable
+```
+
+**Blocked Ports (localhost binding + firewall):**
+- `1883` (MQTT) - Bound to 127.0.0.1, not accessible externally
+- `9001` (MQTT WebSocket) - Bound to 127.0.0.1, not accessible externally
+- `5432` (PostgreSQL) - Bound to 127.0.0.1, not accessible externally
+- `6432` (PgBouncer) - Bound to 127.0.0.1, not accessible externally
+
+**Defense in Depth:**
+1. Localhost binding prevents external connections
+2. Firewall blocks undocumented ports (default deny)
+3. Authentication required for all exposed services
+
+**Documentation:** See `FIREWALL-CONFIG.md` for complete port analysis and verification commands.
+
 ### Access Control
 
 - **PostgreSQL**: Password authentication, internal network only
@@ -1910,14 +2315,118 @@ Closes #123
 
 ## Support
 
-- **Documentation**: `/opt/smart-parking/ARCHITECTURE.md`
-- **Integration Guide**: `/opt/smart-parking/INTEGRATION_PLAN.md`
-- **Issues**: [Create an issue](https://github.com/your-repo/issues)
-- **Email**: admin@verdegris.eu
+### Documentation
 
----
+- **[README.md](/opt/smart-parking/README.md)** - This file (main platform documentation)
+- **[ARCHITECTURE.md](/opt/smart-parking/ARCHITECTURE.md)** - Detailed system architecture
+- **[INTEGRATION_PLAN.md](/opt/smart-parking/INTEGRATION_PLAN.md)** - IoT platform integration guide
+- **[PARKING-DISPLAY-SERVICE.md](/opt/smart-parking/PARKING-DISPLAY-SERVICE.md)** - Parking display service documentation
+
+### Device Integration Guides
+
+- **[BUSYLIGHT_INTEGRATION_GUIDE.md](/opt/smart-parking/BUSYLIGHT_INTEGRATION_GUIDE.md)** - Kuando Busylight Class C integration
+- **[BUSYLIGHT_TROUBLESHOOTING.md](/opt/smart-parking/BUSYLIGHT_TROUBLESHOOTING.md)** - Busylight troubleshooting guide
+
+### Security Documentation
+
+- **[SECURITY-AUDIT-2025-10-13.md](/opt/smart-parking/SECURITY-AUDIT-2025-10-13.md)** - Security audit report
+- **[CORS-CONFIG.md](/opt/smart-parking/CORS-CONFIG.md)** - CORS configuration and testing
+- **[FIREWALL-CONFIG.md](/opt/smart-parking/FIREWALL-CONFIG.md)** - Firewall configuration and port analysis
+
+### Development Tools
+
+- **[CLAUDE.md](/opt/smart-parking/CLAUDE.md)** - Development guide for Claude Code
+- **[testing-simulator/](/opt/smart-parking/testing-simulator/)** - MQTT-based testing simulator
+
+### Contact
 
 ## Changelog
+
+### Version 1.3.0 (2025-10-14)
+
+- ✅ **Kuando Busylight Integration**: Complete Class C display device support
+  - Comprehensive integration guide (BUSYLIGHT_INTEGRATION_GUIDE.md)
+  - Python and Node.js code examples
+  - Color schemes for parking states (2-state, 4-state, 6-state)
+  - Payload format documentation (5-byte RGB control)
+  - Troubleshooting guide (BUSYLIGHT_TROUBLESHOOTING.md)
+  - Immediate (<5s) response time via Class C downlinks
+
+- ✅ **Security Hardening** (Security Audit 2025-10-13):
+  - MQTT broker authentication (username/password required)
+  - Traefik dashboard authentication (HTTP Basic Auth)
+  - CORS restrictions (whitelisted origins only, no wildcards)
+  - Firewall hardening (port 3001 for BasicStation, localhost binding for MQTT/DB)
+  - Port binding restrictions (1883, 9001, 5432, 6432 bound to 127.0.0.1)
+  - Security documentation (SECURITY-AUDIT, CORS-CONFIG, FIREWALL-CONFIG)
+  - Defense in depth: localhost binding + firewall + authentication
+
+- ✅ **Testing Simulator**: Comprehensive MQTT-based test framework
+  - 50+ pre-configured test devices (sensors and displays)
+  - Automated device creation in ChirpStack database
+  - Bulk import/export via gRPC API
+  - Interactive CLI for manual testing
+  - Realistic uplink generation with configurable payloads
+  - Simulator documentation (MQTT_SIMULATOR_GUIDE, CREATE_TEST_DEVICES_GUIDE)
+
+- ✅ **Device Manager UI Enhancements**:
+  - Device registration checkboxes (Parking Sensor, Parking Display)
+  - Dropdown selectors for device assignment (replaces text input)
+  - Shows only available (unassigned) devices
+  - Real-time availability status tracking
+  - Class A (sensor) and Class C (display) type indicators
+
+- ✅ **Documentation Updates**:
+  - Updated README.md with all recent features
+  - Added security section with authentication details
+  - Added testing simulator section
+  - Comprehensive device integration guides
+  - Updated service URLs and features
+
+
+### Version 1.2.0 (2025-10-13)
+
+- ✅ **Device Management & Parking Registries**: Complete device registration system
+  - Device parking registration API endpoints (register/unregister sensors and displays)
+  - GET /v1/devices/{deveui}/parking-registration - Check device registration status
+  - POST /v1/devices/{deveui}/register-as-sensor - Register Class A parking sensors
+  - POST /v1/devices/{deveui}/register-as-display - Register Class C display devices
+  - DELETE endpoints for unregistering devices
+  - GET /v1/devices/sensors/available - List available sensors with assignment status
+  - GET /v1/devices/displays/available - List available displays with assignment status
+  - 1-to-1 device assignment enforcement (prevents double-booking devices)
+
+- ✅ **Parking Spaces Management UI**: Enhanced web interface at https://devices.verdegris.eu
+  - Dropdown selectors for device assignment (replaces free-text input)
+  - Shows only available (unassigned) devices in creation mode
+  - Displays currently assigned device in edit mode
+  - Real-time availability status and space assignment tracking
+  - Color-coded state badges (FREE=green, OCCUPIED=red, RESERVED=yellow)
+  - Filter spaces by building, floor, zone, state
+  - Archive/restore space functionality
+
+- ✅ **Device Configuration Modal**: Parking System Registration
+  - Added "Parking System Registration" section with checkboxes
+  - Checkbox: "Parking Sensor (Class A)" with sensor type dropdown
+  - Checkbox: "Parking Display (Class C)" with display type dropdown
+  - Automatic device registration when saving configuration
+  - Loads existing registration status on modal open
+  - Supports multiple sensor types: occupancy, motion, ultrasonic, magnetic
+  - Supports multiple display types: LED matrix, Kuando Busylight, indicator light, e-paper
+
+- ✅ **Automated Display Control**: Background reconciliation task
+  - Runs every 10 minutes checking all enabled spaces
+  - Automatically sends downlinks to Class C displays
+  - Handles new space creation, state changes, and stale updates
+  - Detects device rejoins and resynchronizes state
+  - Sub-200ms actuation pipeline maintained
+
+- ✅ **Documentation**: Updated README.md
+  - Added comprehensive Device Management & Parking Registries section
+  - Documented all new API endpoints with examples
+  - Added Frontend Management UI feature descriptions
+  - Updated changelog with version 1.2.0 features
+
 
 ### Version 1.1.0 (2025-10-09)
 
@@ -1949,6 +2458,6 @@ Closes #123
 
 ---
 
-**Last Updated**: 2025-10-10
-**Platform Version**: 1.1.0
+**Last Updated**: 2025-10-14
+**Platform Version**: 1.3.0
 **Maintained By**: Smart Parking Team

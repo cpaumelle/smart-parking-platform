@@ -970,10 +970,22 @@ After successful join:
 
 **Current Version:** Check device status uplink for `sw_rev`
 
+**Firmware 5.8+ (v4.0.3) - Latest:**
+- **sw_rev 58+:** Latest stable firmware with new features
+- **Hardware 1.2+:** Required for firmware 5.8
+- **Key changes from earlier versions:**
+  - **Byte order changed:** R-G-B → R-B-G (Blue and Green swapped)
+  - **New 6th byte:** Optional auto-reply trigger (0x01)
+  - **New command 0x06:** Enable/disable auto uplink
+  - **Timing units clarified:** Byte 3-4 are in 1/10 second units
+  - **Updated watchdog default:** 0xF0=240 (~5 days)
+  - **Power consumption data:** Official measurements provided
+
 **Known Issues by Version:**
 
 - **Early versions (<50):** ADR handling issues
-- **Version 53+:** Stable, recommended
+- **Version 53-57:** Stable, but uses old R-G-B byte order
+- **Version 58+:** Latest with R-B-G byte order (firmware 5.8)
 
 **How to Check:**
 
@@ -1423,6 +1435,7 @@ Check 4: Downlinks still working but no response?
 - Class C performance tuning
 - Connection stability fixes
 - Real-world deployment scenarios
+- **Added firmware 5.8 notes** (v4.0.3 documentation)
 
 **v1.0 (Initial)**
 
@@ -1431,6 +1444,24 @@ Check 4: Downlinks still working but no response?
 
 ---
 
+
+---
+
+## Firmware Compatibility Note
+
+**⚠️ CRITICAL: Check Your Firmware Version!**
+
+If you have **firmware 5.8+ (sw_rev 58+)**, the byte order for colors is **R-B-G**.
+If you have **older firmware (sw_rev <58)**, the byte order may be **R-G-B**.
+
+To check your firmware:
+1. View device uplink in ChirpStack Events
+2. Look for `sw_rev` field
+3. Compare with integration guide
+
+**See BUSYLIGHT_INTEGRATION_GUIDE.md for correct byte order and updated code examples.**
+
+---
 ## Contributing
 
 Found a new issue or solution? Please contribute:
