@@ -240,6 +240,7 @@ services:
       LOG_LEVEL: INFO
       PYTHONUNBUFFERED: 1
       CORS_ORIGINS: https://devices.${DOMAIN},https://parking.${DOMAIN}
+      RECONCILIATION_INTERVAL_MINUTES: 1
     volumes:
     - ./services/parking-display/app:/app/app
     networks:

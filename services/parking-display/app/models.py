@@ -47,6 +47,13 @@ class ReservationRequest(BaseModel):
     reservation_type: str = Field("standard", description="Reservation type")
     grace_period_minutes: int = Field(15, ge=0, le=60, description="No-show grace period")
 
+    @field_validator("reserved_from", "reserved_until")
+    def make_naive_datetime(cls, v):
+        """Strip timezone info to work with timestamp without timezone columns"""
+        if v and v.tzinfo is not None:
+            return v.replace(tzinfo=None)
+        return v
+
     @field_validator("reserved_until")
     def validate_time_range(cls, v, info):
         if "reserved_from" in info.data and v <= info.data["reserved_from"]:

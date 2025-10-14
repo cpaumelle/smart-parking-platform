@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 import logging
+import json
 import sys
 sys.path.append("/app")
 
 from app.database import get_db_dependency
 from app.models import ReservationRequest
+from app.tasks.reconciliation import trigger_space_reconciliation
 
 router = APIRouter()
 logger = logging.getLogger("reservations")
@@ -41,12 +43,15 @@ async def create_reservation(request: ReservationRequest, db = Depends(get_db_de
             request.external_booking_id,
             request.external_system,
             request.external_user_id,
-            request.booking_metadata,
+            json.dumps(request.booking_metadata) if request.booking_metadata else None,
             request.reservation_type,
             request.grace_period_minutes
         )
 
         logger.info(f"Created reservation {reservation_id} for space {request.space_id}")
+
+        # Trigger immediate reconciliation to update display instantly
+        await trigger_space_reconciliation(request.space_id)
 
         return {
             "status": "created",
@@ -128,6 +133,15 @@ async def list_reservations(
 async def cancel_reservation(reservation_id: str, db = Depends(get_db_dependency)):
     """Cancel a reservation"""
     try:
+        # Get space_id before cancelling (needed for reconciliation trigger)
+        space_id = await db.fetchval(
+            "SELECT space_id FROM parking_spaces.reservations WHERE reservation_id = $1 AND status = 'active'",
+            reservation_id
+        )
+
+        if not space_id:
+            raise HTTPException(status_code=404, detail="Reservation not found or already cancelled")
+
         # Update reservation status
         result = await db.execute("""
             UPDATE parking_spaces.reservations
@@ -137,10 +151,10 @@ async def cancel_reservation(reservation_id: str, db = Depends(get_db_dependency
             WHERE reservation_id = $1 AND status = 'active'
         """, reservation_id)
 
-        if result == "UPDATE 0":
-            raise HTTPException(status_code=404, detail="Reservation not found or already cancelled")
-
         logger.info(f"Cancelled reservation {reservation_id}")
+
+        # Trigger immediate reconciliation to update display instantly
+        await trigger_space_reconciliation(str(space_id))
 
         return {
             "status": "cancelled",

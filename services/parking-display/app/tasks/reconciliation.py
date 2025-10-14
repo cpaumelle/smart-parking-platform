@@ -56,13 +56,14 @@ class StateReconciliation:
                         s.current_state,
                         s.sensor_state,
                         s.display_device_deveui,
-                        dr.display_codes,
-                        dr.fport,
-                        dr.confirmed_downlinks,
                         s.auto_actuation,
+                        s.reservation_priority,
                         s.maintenance_mode,
                         s.last_display_update,
                         s.last_sensor_update,
+                        dr.display_codes,
+                        dr.fport,
+                        dr.confirmed_downlinks,
                         dr.last_uplink_at,
                         dr.last_dev_addr,
                         dr.last_fcnt
@@ -99,11 +100,12 @@ class StateReconciliation:
             space_id = str(space["space_id"])
             space_name = space["space_name"]
             dev_eui = space["display_device_deveui"]
+            current_state = space["current_state"]
             
-            # Determine expected display state
+            # Determine expected display state using state engine
             state_result = await ParkingStateEngine.determine_display_state(
                 space_id=space_id,
-                sensor_state=ParkingState(space["current_state"]),
+                sensor_state=ParkingState(space["sensor_state"]) if space["sensor_state"] else None,
                 db_connection=db
             )
             
@@ -114,7 +116,7 @@ class StateReconciliation:
             if last_display_update and last_display_update.tzinfo is None:
                 last_display_update = last_display_update.replace(tzinfo=timezone.utc)
 
-            last_uplink_at = space["last_uplink_at"]
+            last_uplink_at = space.get("last_uplink_at")
             if last_uplink_at and last_uplink_at.tzinfo is None:
                 last_uplink_at = last_uplink_at.replace(tzinfo=timezone.utc)
 
@@ -122,23 +124,23 @@ class StateReconciliation:
             should_reconcile = False
             reconcile_reason = None
 
-            # Reason 1: No recent display update (>15 minutes)
-            if not last_display_update or (datetime.now(timezone.utc) - last_display_update) > timedelta(minutes=15):
+            # Reason 1: MOST IMPORTANT - Expected state differs from current state
+            if expected_state.value != current_state:
+                should_reconcile = True
+                reconcile_reason = f"state_mismatch (current: {current_state}, expected: {expected_state.value})"
+
+            # Reason 2: No recent display update (>15 minutes)
+            elif not last_display_update or (datetime.now(timezone.utc) - last_display_update) > timedelta(minutes=15):
                 should_reconcile = True
                 reconcile_reason = "stale_display_update"
 
-            # Reason 2: Display hasn't been seen recently (>20 minutes)
+            # Reason 3: Display hasn't been seen recently (>20 minutes)
             elif last_uplink_at and (datetime.now(timezone.utc) - last_uplink_at) > timedelta(minutes=20):
                 should_reconcile = True
                 reconcile_reason = "display_not_seen"
             
-            # Reason 3: Sensor state differs from current state (potential missed actuation)
-            elif space["sensor_state"] and space["sensor_state"] != space["current_state"]:
-                should_reconcile = True
-                reconcile_reason = "state_mismatch"
-            
             if should_reconcile:
-                logger.info(f"🔧 Reconciling {space_name}: {reconcile_reason} (expected: {expected_state.value})")
+                logger.info(f"🔧 Reconciling {space_name}: {reconcile_reason}")
                 
                 # Send downlink
                 display_code = ParkingStateEngine.get_display_code(expected_state, space["display_codes"])
@@ -155,7 +157,7 @@ class StateReconciliation:
                     trigger_type="reconciliation",
                     trigger_source="periodic_task",
                     trigger_data={"reason": reconcile_reason},
-                    previous_state=space["current_state"],
+                    previous_state=current_state,
                     new_state=expected_state,
                     display_deveui=dev_eui,
                     display_code=display_code,
@@ -178,16 +180,19 @@ class StateReconciliation:
                 )
                 
                 if result["success"]:
-                    # Update display state
+                    # Update BOTH current_state AND last_display_update
                     await db.execute("""
                         UPDATE parking_spaces.spaces
-                        SET last_display_update = NOW(),
+                        SET current_state = $1,
+                            display_state = $1,
+                            last_display_update = NOW(),
+                            state_changed_at = NOW(),
                             updated_at = NOW()
-                        WHERE space_id = $1
-                    """, space["space_id"])
+                        WHERE space_id = $2
+                    """, expected_state.value, space_id)
                     
                     self.stats["reconciliations_sent"] += 1
-                    logger.info(f"✅ Reconciled {space_name} successfully")
+                    logger.info(f"✅ Reconciled {space_name}: {current_state} → {expected_state.value}")
                 else:
                     logger.error(f"❌ Failed to reconcile {space_name}: {result['error']}")
                     self.stats["errors"] += 1
@@ -201,3 +206,65 @@ async def start_reconciliation_task(interval_minutes: int = 10):
     """Start the state reconciliation background task"""
     reconciliation = StateReconciliation(interval_minutes=interval_minutes)
     await reconciliation.run_forever()
+
+# Immediate reconciliation trigger for reservation changes
+async def trigger_space_reconciliation(space_id: str):
+    """
+    Trigger immediate reconciliation for a specific space.
+    Called after reservation changes to update display instantly (<1 second).
+    
+    Args:
+        space_id: UUID of the parking space to reconcile
+        
+    Returns:
+        bool: True if reconciliation succeeded, False otherwise
+    """
+    logger.info(f"🎯 Triggering immediate reconciliation for space {space_id}")
+    
+    async with get_db() as db:
+        try:
+            # Get space details with ALL necessary information including display registry data
+            query = """
+                SELECT 
+                    s.space_id,
+                    s.space_name,
+                    s.current_state,
+                    s.sensor_state,
+                    s.display_state,
+                    s.display_device_deveui,
+                    s.auto_actuation,
+                    s.reservation_priority,
+                    s.maintenance_mode,
+                    s.enabled,
+                    s.last_sensor_update,
+                    s.last_display_update,
+                    dr.display_codes,
+                    dr.fport,
+                    dr.confirmed_downlinks,
+                    dr.last_uplink_at,
+                    dr.last_dev_addr,
+                    dr.last_fcnt
+                FROM parking_spaces.spaces s
+                JOIN parking_config.display_registry dr 
+                    ON s.display_device_deveui = dr.dev_eui
+                WHERE s.space_id = $1
+                AND s.enabled = TRUE
+                AND dr.enabled = TRUE
+            """
+            
+            space = await db.fetchrow(query, space_id)
+            
+            if not space:
+                logger.warning(f"⚠️ Space {space_id} not found or disabled")
+                return False
+            
+            # Create reconciliation instance and reconcile this specific space
+            reconciliation = StateReconciliation(interval_minutes=1)
+            await reconciliation.reconcile_space(dict(space), db)
+            
+            logger.info(f"✅ Immediate reconciliation completed for space {space_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error in immediate reconciliation for space {space_id}: {e}", exc_info=True)
+            return False
