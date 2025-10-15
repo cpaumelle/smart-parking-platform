@@ -2349,6 +2349,61 @@ Closes #123
 
 ## Changelog
 
+### Version 1.5.0 (2025-10-15)
+
+- ✅ **Multi-Tenant Architecture**: Complete SaaS multi-tenancy with PostgreSQL RLS
+  - Tenant authentication via API keys (X-API-Key header on all endpoints)
+  - Database-level tenant isolation using PostgreSQL Row-Level Security
+  - Automatic tenant filtering on all queries (enforced by database, not application)
+  - Tenant context management with transaction-wrapped SET LOCAL
+  - Multi-tenant background tasks (reconciliation and reservation expiry loop through tenants)
+  - Two-tier database roles: system connection (tenant enumeration) + tenant-scoped connections
+  - API keys stored with bcrypt hashing compatible with PostgreSQL crypt()
+  - Cross-tenant access blocking verified (404 responses for unauthorized access)
+  - RLS policies with NULLIF() handling for empty session variables
+
+- ✅ **Tenant API Authentication**: Secure API access control
+  - All 17 user-facing endpoints require X-API-Key header
+  - Endpoints: `/v1/spaces`, `/v1/reservations`, `/v1/actuations/manual`, `/v1/actuations/status`, `/v1/admin/*`
+  - System endpoint `/v1/actuations/sensor-uplink` remains unauthenticated (internal service-to-service)
+  - FastAPI dependency injection for authentication (`get_authenticated_tenant`)
+  - Real-time tenant authentication with database validation
+  - Returns 401 Unauthorized for missing/invalid keys
+  - Tenant slug and ID included in authenticated context
+
+- ✅ **Database Architecture**: PostgreSQL RLS with tenant isolation
+  - Created `parking_app_user` role (non-superuser, RLS-enforced)
+  - Switched from `parking_user` (superuser, bypasses RLS) to restricted role
+  - RLS policies on 6+ tables: spaces, reservations, actuations, sensor_events, sensor_registry, display_registry
+  - Tenant context set via `SET LOCAL app.current_tenant_id = '<uuid>'`
+  - Transaction-wrapped context for proper session variable handling
+  - Core schema for tenant management (core.tenants, core.api_keys)
+  - Bcrypt $2a$ format for PostgreSQL crypt() compatibility
+
+- ✅ **Multi-Tenant Background Tasks**: Tenant-aware periodic tasks
+  - Reconciliation task loops through all active tenants independently
+  - Reservation expiry task processes each tenant's reservations separately
+  - System connection for tenant enumeration, tenant-scoped for operations
+  - Isolated error handling per tenant (one tenant failure doesn't affect others)
+  - Multi-tenant logging with tenant context in all log messages
+  - Statistics aggregated across tenants with per-tenant breakdowns
+
+- ✅ **Testing & Validation**: Comprehensive multi-tenancy testing
+  - Created test API keys for Verdegris and ACME Corp tenants
+  - Validated tenant isolation: Verdegris sees 5 spaces, ACME sees 1 space
+  - Cross-tenant blocking: 404 when accessing other tenant's resources
+  - Background task testing: reconciliation processed 4 spaces across 2 tenants
+  - RLS policy validation: empty string handling, UUID casting, COALESCE fallback
+
+- ✅ **Documentation**: Phase 3 implementation guide
+  - Created `PHASE-3-IMPLEMENTATION-GUIDE.md` (1,077 lines)
+  - Step-by-step migration instructions for all endpoints
+  - Code examples for authentication, tenant context, and RLS
+  - Testing procedures and validation checklist
+  - Rollback plan for reverting changes
+  - Troubleshooting guide for common issues
+
+
 ### Version 1.4.0 (2025-10-15)
 
 - ✅ **APScheduler Integration**: Event-driven reservation lifecycle management
@@ -2499,5 +2554,5 @@ Closes #123
 ---
 
 **Last Updated**: 2025-10-15
-**Platform Version**: 1.4.0
+**Platform Version**: 1.5.0
 **Maintained By**: Smart Parking Team

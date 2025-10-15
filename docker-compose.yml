@@ -235,12 +235,13 @@ services:
     container_name: parking-display
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@parking-postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://parking_app_user:${POSTGRES_APP_PASSWORD}@parking-postgres:5432/${POSTGRES_DB}
       DOWNLINK_SERVICE_URL: http://parking-downlink:8000
       LOG_LEVEL: INFO
       PYTHONUNBUFFERED: 1
       CORS_ORIGINS: https://devices.${DOMAIN},https://parking.${DOMAIN}
       RECONCILIATION_INTERVAL_MINUTES: 1
+      RESERVATION_EXPIRY_CHECK_MINUTES: 5
     volumes:
     - ./services/parking-display/app:/app/app
     networks:

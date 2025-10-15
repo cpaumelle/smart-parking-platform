@@ -7,12 +7,14 @@ import sys
 sys.path.append("/app")
 
 from app.database import get_db_dependency, get_db
+from app.dependencies import get_authenticated_tenant
+from app.utils.tenant_context import get_tenant_db
 from app.models import (
     SensorUplinkRequest, ManualActuationRequest, ActuationResponse,
     ParkingState, TriggerType
 )
 from app.services.state_engine import ParkingStateEngine
-from app.services.downlink_client import DownlinkClient
+from app.dependencies import get_downlink_client
 
 router = APIRouter()
 logger = logging.getLogger("actuations")
@@ -25,6 +27,10 @@ async def handle_sensor_uplink(
 ):
     """
     Handle Class A sensor uplink from Ingest Service
+    
+    NOTE: This is a SYSTEM endpoint called by Ingest Service (service-to-service).
+    Does not require tenant authentication. For Phase 3, this endpoint continues
+    to use the system database connection. Phase 4 will add service-to-service auth.
 
     This is the main entry point for real-time parking actuation.
     Optimized for <200ms response time.
@@ -130,71 +136,75 @@ async def handle_sensor_uplink(
 async def manual_actuation(
     request: ManualActuationRequest,
     background_tasks: BackgroundTasks,
-    db = Depends(get_db_dependency)
+    auth = Depends(get_authenticated_tenant)
 ):
     """
-    Manual override - force display to specific state
+    Manual override - force display to specific state (tenant-scoped)
     """
     try:
-        # Validate space exists and get current state
-        space_query = """
-            SELECT
-                s.space_name,
-                s.current_state,
-                s.display_device_deveui,
-                dr.display_codes,
-                dr.fport,
-                dr.confirmed_downlinks
-            FROM parking_spaces.spaces s
-            JOIN parking_config.display_registry dr ON s.display_device_id = dr.display_id
-            WHERE s.space_id = $1 AND s.enabled = TRUE
-        """
+        async with get_tenant_db(auth.tenant_id) as db:
+            # Validate space exists and get current state (RLS auto-filters by tenant)
+            space_query = """
+                SELECT
+                    s.space_name,
+                    s.current_state,
+                    s.display_device_deveui,
+                    dr.display_codes,
+                    dr.fport,
+                    dr.confirmed_downlinks
+                FROM parking_spaces.spaces s
+                JOIN parking_config.display_registry dr ON s.display_device_id = dr.display_id
+                WHERE s.space_id = $1 AND s.enabled = TRUE
+            """
 
-        space = await db.fetchrow(space_query, request.space_id)
+            space = await db.fetchrow(space_query, request.space_id)
 
-        if not space:
-            raise HTTPException(status_code=404, detail="Parking space not found or disabled")
+            if not space:
+                # Either space doesn't exist OR belongs to different tenant
+                raise HTTPException(status_code=404, detail="Parking space not found or disabled")
 
-        # Check if change needed
-        if space["current_state"] == request.new_state.value:
-            return ActuationResponse(
-                status="no_change",
+            # Check if change needed
+            if space["current_state"] == request.new_state.value:
+                return ActuationResponse(
+                    status="no_change",
+                    space_id=request.space_id,
+                    space_name=space["space_name"],
+                    new_state=request.new_state,
+                    reason="already_in_target_state"
+                )
+
+            # Queue manual actuation
+            background_tasks.add_task(
+                execute_immediate_actuation,
                 space_id=request.space_id,
                 space_name=space["space_name"],
+                previous_state=space["current_state"],
                 new_state=request.new_state,
-                reason="already_in_target_state"
+                display_deveui=space["display_device_deveui"],
+                display_codes=space["display_codes"],
+                fport=space["fport"],
+                confirmed_downlinks=space["confirmed_downlinks"],
+                trigger_type=TriggerType.MANUAL_OVERRIDE,
+                trigger_source=request.user_id or "api",
+                trigger_data=request.model_dump(mode='json'),
+                state_metadata={"reason": "manual_override"}
             )
 
-        # Queue manual actuation
-        background_tasks.add_task(
-            execute_immediate_actuation,
-            space_id=request.space_id,
-            space_name=space["space_name"],
-            previous_state=space["current_state"],
-            new_state=request.new_state,
-            display_deveui=space["display_device_deveui"],
-            display_codes=space["display_codes"],
-            fport=space["fport"],
-            confirmed_downlinks=space["confirmed_downlinks"],
-            trigger_type=TriggerType.MANUAL_OVERRIDE,
-            trigger_source=request.user_id or "api",
-            trigger_data=request.model_dump(mode='json'),
-            state_metadata={"reason": "manual_override"}
-        )
+            logger.info(f"Manual actuation queued for {request.space_id} by tenant={auth.tenant_slug}")
 
-        return ActuationResponse(
-            status="queued_immediate",
-            space_id=request.space_id,
-            space_name=space["space_name"],
-            previous_state=ParkingState(space["current_state"]),
-            new_state=request.new_state,
-            reason="manual_override"
-        )
+            return ActuationResponse(
+                status="queued_immediate",
+                space_id=request.space_id,
+                space_name=space["space_name"],
+                previous_state=ParkingState(space["current_state"]),
+                new_state=request.new_state,
+                reason="manual_override"
+            )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in manual actuation: {e}", exc_info=True)
+        logger.error(f"Error in manual actuation (tenant={auth.tenant_slug}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 async def execute_immediate_actuation(
@@ -215,6 +225,8 @@ async def execute_immediate_actuation(
     Background task to execute display actuation immediately
 
     Priority: Send downlink first, update database after
+    
+    NOTE: Uses system database connection (not tenant-scoped) for background operations.
     """
     actuation_start = time.time()
 
@@ -234,7 +246,7 @@ async def execute_immediate_actuation(
             )
 
             # 2. Send downlink immediately (highest priority)
-            downlink_client = DownlinkClient()
+            downlink_client = get_downlink_client()
             display_code = ParkingStateEngine.get_display_code(new_state, display_codes)
 
             downlink_result = await downlink_client.send_downlink(
@@ -263,15 +275,12 @@ async def execute_immediate_actuation(
 
             # 4. Update space state if downlink successful
             if downlink_result["success"]:
-                await db.execute("""
-                    UPDATE parking_spaces.spaces
-                    SET current_state = $1,
-                        display_state = $1,
-                        last_display_update = NOW(),
-                        state_changed_at = NOW(),
-                        updated_at = NOW()
-                    WHERE space_id = $2
-                """, new_state.value, space_id)
+                await ParkingStateEngine.update_space_state(
+                    space_id=space_id,
+                    new_state=new_state,
+                    db_connection=db,
+                    update_reason="sensor_actuation"
+                )
 
                 total_time = (time.time() - actuation_start) * 1000
                 logger.info(f"Space {space_name}: {previous_state} -> {new_state.value} ({total_time:.1f}ms)")
@@ -300,57 +309,62 @@ async def update_sensor_state(space_id: str, sensor_state: ParkingState, timesta
         logger.error(f"Error updating sensor state for space {space_id}: {e}")
 
 @router.get("/status/{space_id}")
-async def get_space_status(space_id: str, db = Depends(get_db_dependency)):
-    """Get current status of parking space"""
+async def get_space_status(
+    space_id: str,
+    auth = Depends(get_authenticated_tenant)
+):
+    """Get current status of parking space (tenant-scoped)"""
     try:
-        query = """
-            SELECT
-                s.space_id,
-                s.space_name,
-                s.current_state,
-                s.sensor_state,
-                s.last_sensor_update,
-                s.last_display_update,
-                s.enabled,
-                s.maintenance_mode,
-                r.reservation_id,
-                r.reserved_until,
-                r.external_booking_id
-            FROM parking_spaces.spaces s
-            LEFT JOIN parking_spaces.reservations r ON s.space_id = r.space_id
-                AND r.status = 'active'
-                AND r.reserved_from <= NOW()
-                AND r.reserved_until >= NOW()
-            WHERE s.space_id = $1
-        """
+        async with get_tenant_db(auth.tenant_id) as db:
+            query = """
+                SELECT
+                    s.space_id,
+                    s.space_name,
+                    s.current_state,
+                    s.sensor_state,
+                    s.last_sensor_update,
+                    s.last_display_update,
+                    s.enabled,
+                    s.maintenance_mode,
+                    r.reservation_id,
+                    r.reserved_until,
+                    r.external_booking_id
+                FROM parking_spaces.spaces s
+                LEFT JOIN parking_spaces.reservations r ON s.space_id = r.space_id
+                    AND r.status = 'active'
+                    AND r.reserved_from <= NOW()
+                    AND r.reserved_until >= NOW()
+                WHERE s.space_id = $1
+            """
 
-        result = await db.fetchrow(query, space_id)
+            result = await db.fetchrow(query, space_id)
 
-        if not result:
-            raise HTTPException(status_code=404, detail="Parking space not found")
+            if not result:
+                # Either space doesn't exist OR belongs to different tenant
+                raise HTTPException(status_code=404, detail="Parking space not found")
 
-        active_reservation = None
-        if result["reservation_id"]:
-            active_reservation = {
-                "reservation_id": str(result["reservation_id"]),
-                "reserved_until": result["reserved_until"].isoformat(),
-                "external_booking_id": result["external_booking_id"]
+            active_reservation = None
+            if result["reservation_id"]:
+                active_reservation = {
+                    "reservation_id": str(result["reservation_id"]),
+                    "reserved_until": result["reserved_until"].isoformat(),
+                    "external_booking_id": result["external_booking_id"]
+                }
+
+            return {
+                "space_id": str(result["space_id"]),
+                "space_name": result["space_name"],
+                "current_state": result["current_state"],
+                "sensor_state": result["sensor_state"],
+                "last_sensor_update": result["last_sensor_update"],
+                "last_display_update": result["last_display_update"],
+                "enabled": result["enabled"],
+                "maintenance_mode": result["maintenance_mode"],
+                "active_reservation": active_reservation
             }
-
-        return {
-            "space_id": str(result["space_id"]),
-            "space_name": result["space_name"],
-            "current_state": result["current_state"],
-            "sensor_state": result["sensor_state"],
-            "last_sensor_update": result["last_sensor_update"],
-            "last_display_update": result["last_display_update"],
-            "enabled": result["enabled"],
-            "maintenance_mode": result["maintenance_mode"],
-            "active_reservation": active_reservation
-        }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting space status: {e}", exc_info=True)
+        logger.error(f"Error getting space status (tenant={auth.tenant_slug}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

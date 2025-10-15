@@ -40,7 +40,7 @@ class ParkingStateEngine:
         """
 
         # Get space configuration and current state
-        space_data = await ParkingStateEngine._get_space_data(space_id, db_connection)
+        space_data, active_reservation = await ParkingStateEngine._get_space_data(space_id, db_connection)
         if not space_data:
             raise ValueError(f"Parking space {space_id} not found")
 
@@ -68,7 +68,7 @@ class ParkingStateEngine:
 
         # Priority 3: Active Reservation (if reservation_priority enabled)
         if space_data["reservation_priority"]:
-            active_reservation = await ParkingStateEngine._get_active_reservation(space_id, db_connection)
+            # Reservation data already fetched in _get_space_data (optimized single query)
             if active_reservation:
                 return {
                     "display_state": ParkingState.RESERVED,
@@ -102,10 +102,18 @@ class ParkingStateEngine:
         }
 
     @staticmethod
-    async def _get_space_data(space_id: str, db_connection) -> Optional[Dict]:
-        """Get space configuration and current state"""
+    async def _get_space_data(space_id: str, db_connection) -> tuple[Optional[Dict], Optional[Dict]]:
+        """
+        Get space configuration and active reservation in single query (OPTIMIZED).
+        
+        Returns:
+            tuple: (space_data, active_reservation)
+            - space_data: Dict with space config, or None if not found
+            - active_reservation: Dict with reservation data, or None if no active reservation
+        """
         query = """
             SELECT
+                -- Space fields
                 s.space_id,
                 s.space_name,
                 s.current_state,
@@ -114,39 +122,73 @@ class ParkingStateEngine:
                 s.reservation_priority,
                 s.maintenance_mode,
                 s.enabled,
+                
+                -- Display registry fields
                 dr.display_codes,
                 dr.fport,
-                dr.confirmed_downlinks
+                dr.confirmed_downlinks,
+                
+                -- Active reservation fields (NULL if no reservation)
+                r.reservation_id,
+                r.reserved_from,
+                r.reserved_until,
+                r.external_booking_id,
+                r.external_system,
+                r.booking_metadata
+                
             FROM parking_spaces.spaces s
-            LEFT JOIN parking_config.display_registry dr ON s.display_device_id = dr.display_id
-            WHERE s.space_id = $1 AND s.enabled = TRUE
-        """
-
-        result = await db_connection.fetchrow(query, space_id)
-        return dict(result) if result else None
-
-    @staticmethod
-    async def _get_active_reservation(space_id: str, db_connection) -> Optional[Dict]:
-        """Get active reservation for space"""
-        query = """
-            SELECT
-                reservation_id,
-                reserved_from,
-                reserved_until,
-                external_booking_id,
-                external_system,
-                booking_metadata
-            FROM parking_spaces.reservations
-            WHERE space_id = $1
-              AND status = 'active'
-              AND reserved_from <= NOW()
-              AND reserved_until >= NOW()
-            ORDER BY reserved_from DESC
+            
+            -- Join display registry
+            LEFT JOIN parking_config.display_registry dr 
+                ON s.display_device_id = dr.display_id
+            
+            -- Join active reservation (if exists)
+            LEFT JOIN parking_spaces.reservations r
+                ON s.space_id = r.space_id
+                AND r.status = 'active'
+                AND r.reserved_from <= NOW()
+                AND r.reserved_until >= NOW()
+            
+            WHERE s.space_id = $1 
+              AND s.enabled = TRUE
+            
+            ORDER BY r.reserved_from DESC
             LIMIT 1
         """
 
         result = await db_connection.fetchrow(query, space_id)
-        return dict(result) if result else None
+        
+        if not result:
+            return None, None
+        
+        # Extract space data
+        space_data = {
+            "space_id": result["space_id"],
+            "space_name": result["space_name"],
+            "current_state": result["current_state"],
+            "display_device_deveui": result["display_device_deveui"],
+            "auto_actuation": result["auto_actuation"],
+            "reservation_priority": result["reservation_priority"],
+            "maintenance_mode": result["maintenance_mode"],
+            "enabled": result["enabled"],
+            "display_codes": result["display_codes"],
+            "fport": result["fport"],
+            "confirmed_downlinks": result["confirmed_downlinks"]
+        }
+        
+        # Extract reservation data (if present)
+        active_reservation = None
+        if result["reservation_id"]:
+            active_reservation = {
+                "reservation_id": result["reservation_id"],
+                "reserved_from": result["reserved_from"],
+                "reserved_until": result["reserved_until"],
+                "external_booking_id": result["external_booking_id"],
+                "external_system": result["external_system"],
+                "booking_metadata": result["booking_metadata"]
+            }
+        
+        return space_data, active_reservation
 
     @staticmethod
     def get_display_code(state: ParkingState, display_codes) -> str:
@@ -186,3 +228,49 @@ class ParkingStateEngine:
         )
 
         return str(actuation_id)
+
+    @staticmethod
+    async def update_space_state(
+        space_id: str,
+        new_state: ParkingState,
+        db_connection,
+        update_reason: str = "actuation"
+    ) -> bool:
+        """
+        Update parking space display state in database.
+        
+        Single source of truth for state updates.
+        
+        Args:
+            space_id: UUID of parking space
+            new_state: New parking state (FREE, OCCUPIED, RESERVED, etc)
+            db_connection: Active database connection
+            update_reason: Reason for update (for logging/auditing)
+        
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        try:
+            result = await db_connection.execute("""
+                UPDATE parking_spaces.spaces
+                SET current_state = $1,
+                    display_state = $1,
+                    last_display_update = NOW(),
+                    state_changed_at = NOW(),
+                    updated_at = NOW()
+                WHERE space_id = $2
+            """, new_state.value, space_id)
+            
+            # Verify update affected a row
+            rows_updated = int(result.split()[-1]) if result else 0
+            
+            if rows_updated == 0:
+                logger.warning(f"State update for space {space_id} affected 0 rows")
+                return False
+            
+            logger.debug(f"Updated space {space_id} state to {new_state.value} ({update_reason})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to update space {space_id} state: {e}")
+            return False

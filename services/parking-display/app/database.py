@@ -42,6 +42,22 @@ async def close_db_pool():
         _pool = None
         logger.info("Database connection pool closed")
 
+def get_db_pool():
+    """
+    Get the database connection pool.
+    
+    Used by tenant authentication and context management.
+    
+    Returns:
+        asyncpg.Pool: The database connection pool
+    
+    Raises:
+        RuntimeError: If pool not initialized
+    """
+    if not _pool:
+        raise RuntimeError("Database pool not initialized")
+    return _pool
+
 @asynccontextmanager
 async def get_db():
     """Get database connection from pool"""

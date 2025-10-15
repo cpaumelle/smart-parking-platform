@@ -1,6 +1,7 @@
 """parking_detector.py - Parking Sensor Detection and Forwarding
-Version: 1.0.3 - 2025-10-13 17:10 UTC
+Version: 1.0.4 - 2025-10-14 16:30 UTC
 Changelog:
+- v1.0.4: Fixed fport=0 MAC command handling (ignore instead of treating as FREE)
 - v1.0.3: Use uppercase DevEUIs to match ChirpStack format
 - v1.0.2: Removed debug logging, verified working end-to-end pipeline
 - v1.0.1: Fixed payload decoder to use bytes.fromhex() instead of base64.b64decode()
@@ -82,7 +83,7 @@ parking_detector = ParkingSensorDetector()
 
 async def refresh_parking_cache_task():
     """Background task to refresh parking sensor cache"""
-    logger.info("Starting parking sensor cache refresh task (parking_detector.py v1.0.3)")
+    logger.info("Starting parking sensor cache refresh task (parking_detector.py v1.0.4)")
 
     # Initial refresh
     await parking_detector.refresh_cache()
@@ -102,6 +103,11 @@ async def forward_to_parking_display(uplink_data: dict, space_id: str):
 
         # Extract occupancy state from payload
         occupancy_state = extract_occupancy_from_payload(uplink_data)
+
+        # Skip if payload should be ignored (MAC commands, empty payloads, etc.)
+        if occupancy_state is None:
+            logger.info(f"⏭️  Skipping parking actuation for {dev_eui} (no valid occupancy state)")
+            return
 
         # Prepare payload for Parking Display Service
         parking_payload = {
@@ -137,30 +143,37 @@ async def forward_to_parking_display(uplink_data: dict, space_id: str):
     except Exception as e:
         logger.error(f"Error forwarding to parking display: {e}")
 
-def extract_occupancy_from_payload(uplink_data: dict) -> str:
+def extract_occupancy_from_payload(uplink_data: dict) -> Optional[str]:
     """
     Extract occupancy state from Browan TABS Motion payload
     Payload format: First byte 00=FREE, 01=OCCUPIED
-    Returns: FREE or OCCUPIED
+    Returns: FREE, OCCUPIED, or None (if uplink should be ignored)
     """
     try:
         dev_eui = uplink_data.get("devEUI", "").upper()
+        fport = uplink_data.get("fPort", 0)
         payload_hex = uplink_data.get("data", "")
 
+        # Ignore MAC commands (fport=0) - these have no application payload
+        if fport == 0:
+            logger.info(f"⏭️  Ignoring MAC command (fport=0) for {dev_eui}")
+            return None
+
+        # Ignore empty payloads - don't assume state
         if not payload_hex:
-            logger.warning(f"No payload data for {dev_eui}")
-            return "FREE"
+            logger.warning(f"⏭️  No payload data for {dev_eui} on fport {fport}, skipping")
+            return None
 
         # Convert hex string to bytes
         try:
             payload_bytes = bytes.fromhex(payload_hex)
         except ValueError as e:
             logger.warning(f"Invalid hex payload for {dev_eui}: {payload_hex} ({e})")
-            return "FREE"
+            return None
 
         if len(payload_bytes) < 1:
             logger.warning(f"Payload too short for {dev_eui}")
-            return "FREE"
+            return None
 
         # First byte: 0x00 = FREE, 0x01 = OCCUPIED
         first_byte = payload_bytes[0]
@@ -171,4 +184,4 @@ def extract_occupancy_from_payload(uplink_data: dict) -> str:
 
     except Exception as e:
         logger.error(f"Failed to extract occupancy from {uplink_data.get('devEUI')}: {e}")
-        return "FREE"
+        return None

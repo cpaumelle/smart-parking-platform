@@ -175,6 +175,7 @@ async def receive_uplink(req: Request):
                 try:
                     parking_uplink = {
                         "devEUI": deveui,
+                        "fPort": uplink_data.get("fport"),
                         "data": payload_hex,
                         "timestamp": received_at.isoformat(),
                         "object": uplink_data.get("uplink_metadata", {}).get("decoded", {}),

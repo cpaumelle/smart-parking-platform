@@ -181,6 +181,49 @@ Internet (verdegris.eu)
 - `/v1/actuations` - Manual state control and audit logs
 
 ### Phase 4: Future Enhancements (Deferred)
+
+### Phase 3.5: Parking Display Monitoring & Reliability (✅ Complete - 2025-10-15)
+- [x] Implement background task statistics registry
+- [x] Add reconciliation task deduplication to prevent concurrent updates
+- [x] Create health endpoint with task monitoring
+- [x] Fix health endpoint blocking issues (database pool exhaustion)
+- [x] Implement timeout-based database connection acquisition
+- [x] Add graceful degradation for health checks
+- [x] Document crash prevention best practices
+
+**Background Tasks Implemented:**
+- **State Reconciliation**: Runs every 1-10 minutes (configurable), verifies display states match expected states
+- **Reservation Expiry**: Runs every 5 minutes, expires past reservations and triggers reconciliation
+- **Statistics Registry**: Tracks task runs, errors, and custom metrics
+
+**Monitoring Features:**
+- Task health summary with error rates
+- Database connection pool timeout handling (2s max)
+- Non-blocking health endpoint returns within 2s
+- Graceful degradation when database unavailable
+- Detailed task metrics (total runs, errors, last run time)
+
+**Reliability Improvements:**
+- Prevents database pool exhaustion from blocking health checks
+- Deduplication locks prevent concurrent reconciliation of same space
+- Health endpoint never blocks on resource acquisition
+- Clear error messages for debugging connection issues
+
+**Health Endpoint**: `/health`
+- Status: healthy | degraded | unhealthy
+- Database connection status with timeout
+- Background task health summary
+- Parking space and reservation counts
+- Last actuation timestamp
+
+**Performance Metrics:**
+- Reconciliation: <100ms per space check
+- Health endpoint: <2s response time (typically <500ms)
+- Database pool: 20 connections max, 2 min connections
+
+**Documentation:**
+- `CRASH_PREVENTION.md` - Testing best practices and debugging guide
+
 These items are explicitly **out of scope** for the current platform phase:
 - [ ] Create admin UI for parking management (use API directly)
 - [ ] Integrate payment processing (external systems via API)

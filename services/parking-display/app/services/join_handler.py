@@ -69,7 +69,7 @@ class JoinHandler:
             # Queue state recovery downlink
             # Import here to avoid circular dependency
             from app.services.state_engine import ParkingStateEngine
-            from app.services.downlink_client import DownlinkClient
+            from app.dependencies import get_downlink_client
             from app.models import ParkingState
             
             # Determine current expected state
@@ -90,7 +90,7 @@ class JoinHandler:
             # Send downlink (wait a few seconds after JOIN to avoid collision)
             await asyncio.sleep(3)
             
-            downlink_client = DownlinkClient()
+            downlink_client = get_downlink_client()
             result = await downlink_client.send_downlink(
                 dev_eui=dev_eui,
                 fport=display["fport"],

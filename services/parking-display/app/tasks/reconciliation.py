@@ -1,6 +1,7 @@
 """
 State Reconciliation Task
 Periodically verifies and corrects display states across all parking spaces
+Multi-Tenant: Loops through all active tenants
 """
 import asyncio
 import logging
@@ -10,6 +11,7 @@ import sys
 sys.path.append("/app")
 
 from app.database import get_db
+from app.utils.tenant_context import get_tenant_db
 from app.services.state_engine import ParkingStateEngine
 from app.dependencies import get_downlink_client
 from app.services.rejoin_detector import RejoinDetector
@@ -39,86 +41,100 @@ class StateReconciliation:
     
     async def run_forever(self):
         """Main reconciliation loop"""
-        logger.info(f"🔄 State reconciliation task started (interval: {self.interval_minutes} min)")
+        logger.info(f"🔄 State reconciliation task started (interval: {self.interval_minutes} min) - Multi-Tenant Mode")
         
         while True:
             try:
-                await self.reconcile_all_spaces()
+                await self.reconcile_all_tenants()
                 await asyncio.sleep(self.interval_minutes * 60)
             except Exception as e:
                 logger.error(f"Error in reconciliation loop: {e}", exc_info=True)
                 await asyncio.sleep(60)  # Wait 1 min before retrying
     
-    async def reconcile_all_spaces(self):
-        """Check and reconcile all enabled parking spaces"""
+    async def reconcile_all_tenants(self):
+        """Check and reconcile all enabled parking spaces across all tenants"""
         start_time = datetime.now(timezone.utc)
         
+        # Get list of active tenants (using system connection)
         async with get_db() as db:
+            tenants = await db.fetch("""
+                SELECT tenant_id, tenant_slug
+                FROM core.tenants
+                WHERE is_active = TRUE
+                ORDER BY tenant_slug
+            """)
+        
+        logger.info(f"🔍 Reconciling spaces for {len(tenants)} active tenant(s)")
+        
+        total_spaces_checked = 0
+        
+        # Reconcile each tenant's spaces
+        for tenant in tenants:
             try:
-                # Get all enabled spaces with displays
-                spaces = await db.fetch("""
-                    SELECT 
-                        s.space_id,
-                        s.space_name,
-                        s.current_state,
-                        s.sensor_state,
-                        s.display_device_deveui,
-                        s.auto_actuation,
-                        s.reservation_priority,
-                        s.maintenance_mode,
-                        s.last_display_update,
-                        s.last_sensor_update,
-                        dr.display_codes,
-                        dr.fport,
-                        dr.confirmed_downlinks,
-                        dr.last_uplink_at,
-                        dr.last_dev_addr,
-                        dr.last_fcnt
-                    FROM parking_spaces.spaces s
-                    JOIN parking_config.display_registry dr 
-                        ON s.display_device_deveui = dr.dev_eui
-                    WHERE s.enabled = TRUE
-                      AND s.auto_actuation = TRUE
-                      AND dr.enabled = TRUE
-                """)
+                tenant_id = tenant['tenant_id']
+                tenant_slug = tenant['tenant_slug']
                 
-                logger.info(f"🔍 Checking {len(spaces)} spaces for reconciliation")
-                
-                for space in spaces:
-                    await self.reconcile_space(space, db)
-                
-                self.stats["total_checks"] += len(spaces)
-
-                elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-                logger.info(
-                    f"✅ Reconciliation complete: {len(spaces)} spaces checked in {elapsed:.1f}s "
-                    f"(sent: {self.stats['reconciliations_sent']}, "
-                    f"rejoins: {self.stats['rejoins_detected']}, "
-                    f"errors: {self.stats['errors']})"
-                )
-                
-                # Update stats registry (Phase 2.2)
-                await self.stats_registry.update_stats(
-                    task_name="reconciliation",
-                    success=True,
-                    custom_metrics={
-                        "spaces_checked": len(spaces),
-                        "reconciliations_sent": self.stats["reconciliations_sent"],
-                        "rejoins_detected": self.stats["rejoins_detected"],
-                        "elapsed_seconds": elapsed
-                    }
-                )
-                
+                async with get_tenant_db(tenant_id) as db:
+                    # Get all enabled spaces for this tenant (RLS auto-filters)
+                    spaces = await db.fetch("""
+                        SELECT 
+                            s.space_id,
+                            s.space_name,
+                            s.current_state,
+                            s.sensor_state,
+                            s.display_device_deveui,
+                            s.auto_actuation,
+                            s.reservation_priority,
+                            s.maintenance_mode,
+                            s.last_display_update,
+                            s.last_sensor_update,
+                            dr.display_codes,
+                            dr.fport,
+                            dr.confirmed_downlinks,
+                            dr.last_uplink_at,
+                            dr.last_dev_addr,
+                            dr.last_fcnt
+                        FROM parking_spaces.spaces s
+                        JOIN parking_config.display_registry dr 
+                            ON s.display_device_deveui = dr.dev_eui
+                        WHERE s.enabled = TRUE
+                          AND s.auto_actuation = TRUE
+                          AND dr.enabled = TRUE
+                    """)
+                    
+                    if len(spaces) > 0:
+                        logger.info(f"🔍 Tenant {tenant_slug}: checking {len(spaces)} space(s)")
+                        
+                        for space in spaces:
+                            await self.reconcile_space(space, db)
+                        
+                        total_spaces_checked += len(spaces)
+                    
             except Exception as e:
-                logger.error(f"Error in reconcile_all_spaces: {e}", exc_info=True)
+                logger.error(f"Error reconciling tenant {tenant.get('tenant_slug', 'unknown')}: {e}", exc_info=True)
                 self.stats["errors"] += 1
-                
-                # Update stats registry with error (Phase 2.2)
-                await self.stats_registry.update_stats(
-                    task_name="reconciliation",
-                    success=False,
-                    error_message=str(e)
-                )
+                continue  # Continue with other tenants
+        
+        self.stats["total_checks"] += total_spaces_checked
+        
+        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+        logger.info(
+            f"✅ Multi-tenant reconciliation complete: {total_spaces_checked} spaces across {len(tenants)} tenants "
+            f"in {elapsed:.1f}s (sent: {self.stats['reconciliations_sent']}, errors: {self.stats['errors']})"
+        )
+        
+        # Update stats registry
+        await self.stats_registry.update_stats(
+            task_name="reconciliation",
+            success=True,
+            custom_metrics={
+                "tenants_checked": len(tenants),
+                "spaces_checked": total_spaces_checked,
+                "reconciliations_sent": self.stats["reconciliations_sent"],
+                "rejoins_detected": self.stats["rejoins_detected"],
+                "elapsed_seconds": elapsed
+            }
+        )
     
     async def reconcile_space(self, space: Dict, db):
         """Reconcile a single parking space"""
@@ -150,7 +166,7 @@ class StateReconciliation:
             should_reconcile = False
             reconcile_reason = None
 
-            # Reason 1: MOST IMPORTANT - Expected state differs from current state
+            # Reason 1: Expected state differs from current state
             if expected_state.value != current_state:
                 should_reconcile = True
                 reconcile_reason = f"state_mismatch (current: {current_state}, expected: {expected_state.value})"
@@ -214,7 +230,6 @@ class StateReconciliation:
                         update_reason="reconciliation"
                     )
                     
-                    
                     self.stats["reconciliations_sent"] += 1
                     logger.info(f"✅ Reconciled {space_name}: {current_state} → {expected_state.value}")
                 else:
@@ -233,19 +248,18 @@ async def start_reconciliation_task(interval_minutes: int = 10):
 # Immediate reconciliation trigger for reservation changes
 _lock_mutex = asyncio.Lock()
 
-async def trigger_space_reconciliation(space_id: str) -> bool:
+async def trigger_space_reconciliation(space_id: str, tenant_id: str = None) -> bool:
     """
     Trigger immediate reconciliation for a specific space.
     
-    Phase 2.1: Added deduplication to prevent concurrent reconciliation of same space.
-    
     Args:
         space_id: UUID of the parking space to reconcile
+        tenant_id: Optional tenant_id for tenant-scoped reconciliation
         
     Returns:
         bool: True if reconciliation executed, False if already in progress or failed
     """
-    # Check if reconciliation already in progress (Phase 2.1 optimization)
+    # Check if reconciliation already in progress
     async with _lock_mutex:
         if space_id in _reconciliation_locks:
             logger.debug(f"⏭️  Reconciliation already in progress for space {space_id}")
@@ -257,54 +271,64 @@ async def trigger_space_reconciliation(space_id: str) -> bool:
     logger.info(f"🎯 Triggering immediate reconciliation for space {space_id}")
     
     try:
-        async with get_db() as db:
-            try:
-                # Get space details with ALL necessary information including display registry data
-                query = """
-                    SELECT 
-                        s.space_id,
-                        s.space_name,
-                        s.current_state,
-                        s.sensor_state,
-                        s.display_state,
-                        s.display_device_deveui,
-                        s.auto_actuation,
-                        s.reservation_priority,
-                        s.maintenance_mode,
-                        s.enabled,
-                        s.last_sensor_update,
-                        s.last_display_update,
-                        dr.display_codes,
-                        dr.fport,
-                        dr.confirmed_downlinks,
-                        dr.last_uplink_at,
-                        dr.last_dev_addr,
-                        dr.last_fcnt
-                    FROM parking_spaces.spaces s
-                    JOIN parking_config.display_registry dr 
-                        ON s.display_device_deveui = dr.dev_eui
-                    WHERE s.space_id = $1
-                    AND s.enabled = TRUE
-                    AND dr.enabled = TRUE
-                """
-                
-                space = await db.fetchrow(query, space_id)
-                
-                if not space:
-                    logger.warning(f"⚠️ Space {space_id} not found or disabled")
-                    return False
-                
-                # Create reconciliation instance and reconcile this specific space
-                reconciliation = StateReconciliation(interval_minutes=1)
-                await reconciliation.reconcile_space(dict(space), db)
-                
-                logger.info(f"✅ Immediate reconciliation completed for space {space_id}")
-                return True
-                
-            except Exception as e:
-                logger.error(f"❌ Error in immediate reconciliation for space {space_id}: {e}", exc_info=True)
-                return False
+        # Use tenant-scoped connection if tenant_id provided, otherwise system connection
+        if tenant_id:
+            async with get_tenant_db(tenant_id) as db:
+                return await _do_reconcile_space(space_id, db)
+        else:
+            async with get_db() as db:
+                return await _do_reconcile_space(space_id, db)
     finally:
         # Always release lock
         async with _lock_mutex:
             _reconciliation_locks.discard(space_id)
+
+
+async def _do_reconcile_space(space_id: str, db) -> bool:
+    """Internal function to perform reconciliation"""
+    try:
+        # Get space details
+        query = """
+            SELECT 
+                s.space_id,
+                s.space_name,
+                s.current_state,
+                s.sensor_state,
+                s.display_state,
+                s.display_device_deveui,
+                s.auto_actuation,
+                s.reservation_priority,
+                s.maintenance_mode,
+                s.enabled,
+                s.last_sensor_update,
+                s.last_display_update,
+                dr.display_codes,
+                dr.fport,
+                dr.confirmed_downlinks,
+                dr.last_uplink_at,
+                dr.last_dev_addr,
+                dr.last_fcnt
+            FROM parking_spaces.spaces s
+            JOIN parking_config.display_registry dr 
+                ON s.display_device_deveui = dr.dev_eui
+            WHERE s.space_id = $1
+            AND s.enabled = TRUE
+            AND dr.enabled = TRUE
+        """
+        
+        space = await db.fetchrow(query, space_id)
+        
+        if not space:
+            logger.warning(f"⚠️ Space {space_id} not found or disabled")
+            return False
+        
+        # Create reconciliation instance and reconcile this specific space
+        reconciliation = StateReconciliation(interval_minutes=1)
+        await reconciliation.reconcile_space(dict(space), db)
+        
+        logger.info(f"✅ Immediate reconciliation completed for space {space_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Error in immediate reconciliation for space {space_id}: {e}", exc_info=True)
+        return False

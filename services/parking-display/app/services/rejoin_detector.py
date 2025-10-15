@@ -177,7 +177,7 @@ class RejoinDetector:
             
             # Import here to avoid circular dependency
             from app.services.state_engine import ParkingStateEngine
-            from app.services.downlink_client import DownlinkClient
+            from app.dependencies import get_downlink_client
             from app.models import ParkingState
             
             # Determine current expected display state
@@ -193,7 +193,7 @@ class RejoinDetector:
             logger.info(f"Recovering {space_info['space_name']} to state: {expected_state.value}")
             
             # Send downlink
-            downlink_client = DownlinkClient()
+            downlink_client = get_downlink_client()
             result = await downlink_client.send_downlink(
                 dev_eui=dev_eui,
                 fport=space_info["fport"],

@@ -9,10 +9,11 @@ import sys
 sys.path.append("/app")
 
 from app.routers import actuations, spaces, reservations, admin
-from app.database import init_db_pool, close_db_pool, get_db_dependency
+from app.database import init_db_pool, close_db_pool, get_db_dependency, get_db_pool
 from app.tasks.monitor import start_monitoring_tasks
 from app.scheduler.scheduler import start_scheduler, shutdown_scheduler
 from app.utils.idempotency import init_redis, close_redis
+from app.utils.tenant_context import init_tenant_context
 
 # Configure logging
 logging.basicConfig(
@@ -29,26 +30,39 @@ async def lifespan(app: FastAPI):
     """Application lifecycle management"""
 
     # Startup
-    logger.info("Parking Display Service v1.0.0 starting")
+    logger.info("=========================================================")
+    logger.info("Parking Display Service v1.4.0 starting")
+    logger.info("Multi-Tenancy: ENABLED (PostgreSQL RLS)")
+    logger.info("=========================================================")
 
     try:
         # Initialize database
         await init_db_pool()
-        logger.info("Database connection pool initialized")
+        logger.info("✅ Database connection pool initialized")
+
+        # Initialize tenant context (CRITICAL FOR MULTI-TENANCY)
+        init_tenant_context(get_db_pool())
+        logger.info("✅ Tenant context manager initialized")
+
+        # Initialize Redis for idempotency
+        await init_redis()
+        logger.info("✅ Redis initialized for idempotency cache")
+
+        # Start APScheduler for reservation management
+        start_scheduler()
+        logger.info("✅ APScheduler started for reservation lifecycle management")
 
         # Start background monitoring tasks
         monitor_task = asyncio.create_task(start_monitoring_tasks())
         background_tasks.append(monitor_task)
-        logger.info("Background monitoring tasks started")
-        # Start APScheduler for reservation management
-        # Initialize Redis for idempotency
-        await init_redis()
-        logger.info("Redis initialized for idempotency cache")
-        start_scheduler()
-        logger.info("APScheduler started for reservation lifecycle management")
+        logger.info("✅ Background monitoring tasks started")
+
+        logger.info("=========================================================")
+        logger.info("Parking Display Service fully operational")
+        logger.info("=========================================================")
 
     except Exception as e:
-        logger.error(f"Startup failed: {e}")
+        logger.error(f"❌ Startup failed: {e}")
         raise
 
     yield
@@ -64,11 +78,13 @@ async def lifespan(app: FastAPI):
         if background_tasks:
             await asyncio.gather(*background_tasks, return_exceptions=True)
             logger.info("Background tasks stopped")
+
         # Shutdown APScheduler
-        # Close Redis connection
-        await close_redis()
         shutdown_scheduler()
         logger.info("APScheduler shutdown")
+
+        # Close Redis connection
+        await close_redis()
 
         # Close database pool
         await close_db_pool()
@@ -80,19 +96,22 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Parking Display Service",
-    description="Smart parking state management and Class C display actuation",
-    version="1.0.0",
+    description="Smart parking state management and Class C display actuation (Multi-Tenant)",
+    version="1.4.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc"
 )
 
-# CORS middleware
+# CORS middleware (restricted origins - security hardened)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=[
+        "https://devices.verdegris.eu",
+        "https://parking.verdegris.eu"
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -107,9 +126,10 @@ async def root():
     """Service information"""
     return {
         "service": "parking-display",
-        "version": "1.0.0",
+        "version": "1.4.0",
         "status": "operational",
         "description": "Smart parking state management and Class C display actuation",
+        "multi_tenancy": "enabled",
         "endpoints": {
             "actuations": "/v1/actuations",
             "spaces": "/v1/spaces",
@@ -137,6 +157,7 @@ async def health_check(db = Depends(get_db_dependency)):
                 (SELECT MAX(created_at) FROM parking_operations.actuations) as last_actuation
         """
         stats = await db.fetchrow(stats_query)
+        
         # Add scheduler status
         try:
             from app.scheduler.scheduler import get_scheduler
@@ -147,20 +168,20 @@ async def health_check(db = Depends(get_db_dependency)):
             scheduler_running = False
             scheduled_jobs_count = 0
 
-
         return {
             "status": "healthy" if database_connected else "unhealthy",
             "service": "parking-display",
-            "version": "1.0.0",
+            "version": "1.4.0",
             "timestamp": datetime.utcnow().isoformat(),
             "database_connected": database_connected,
             "parking_spaces_count": stats["spaces_count"] or 0,
             "active_reservations_count": stats["active_reservations"] or 0,
-            "last_actuation": stats["last_actuation"].isoformat() if stats["last_actuation"] else None
-            ,"apscheduler": {
+            "last_actuation": stats["last_actuation"].isoformat() if stats["last_actuation"] else None,
+            "apscheduler": {
                 "running": scheduler_running,
                 "scheduled_jobs": scheduled_jobs_count
-            }
+            },
+            "multi_tenancy": "enabled"
         }
 
     except Exception as e:
@@ -168,7 +189,7 @@ async def health_check(db = Depends(get_db_dependency)):
         return {
             "status": "unhealthy",
             "service": "parking-display",
-            "version": "1.0.0",
+            "version": "1.4.0",
             "timestamp": datetime.utcnow().isoformat(),
             "error": str(e),
             "database_connected": False
