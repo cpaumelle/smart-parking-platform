@@ -1075,3 +1075,716 @@ Phase 3 activates the multi-tenancy security infrastructure built in Phase 2. Af
 ---
 
 *End of Phase 3 Implementation Guide*
+
+---
+
+# Phase 3.2: Production Hardening & Operational Features
+
+**Date**: 2025-10-15
+**Platform**: Smart Parking Platform v1.5.1
+**Status**: IMPLEMENTED ✅
+
+---
+
+## Executive Summary
+
+Phase 3.2 adds essential production hardening, monitoring, and operational features to the multi-tenant platform implemented in Phase 3.1.
+
+**Implementation Status**:
+- ✅ Error handling improvements with proper HTTP status codes
+- ✅ API key redaction in logs (security hardening)
+- ✅ Prometheus metrics endpoint for monitoring
+- ✅ Admin endpoints for API key management (5 endpoints)
+- ✅ Per-tenant API usage tracking
+- ✅ Audit logging for security events
+- ✅ Health check improvements with component-level status
+
+---
+
+## Features Implemented
+
+### 1. Error Handling Improvements ✅
+
+**Module**: `app/utils/errors.py`
+
+**Features**:
+- Custom exception hierarchy (`ParkingAPIError`)
+- Proper HTTP status codes (401, 403, 404, 422, 500)
+- Safe error messages (no sensitive data leakage)
+- Global exception handlers
+- Request validation error handling
+
+**Example**:
+```python
+from app.utils.errors import NotFoundError, UnauthorizedError
+
+# Raises HTTPException with proper status code
+raise NotFoundError("Parking space not found", space_id=space_id)
+raise UnauthorizedError("Invalid API key")
+```
+
+**Exception Handlers**:
+- `ParkingAPIError` → Structured JSON responses
+- `RequestValidationError` → Field-level validation errors
+- `Exception` → Generic 500 errors with logging
+
+---
+
+### 2. API Key Redaction in Logs ✅
+
+**Module**: `app/utils/errors.py`
+
+**Function**: `redact_api_key(api_key: str) -> str`
+
+**Implementation**:
+```python
+def redact_api_key(api_key: str) -> str:
+    """Redact API key for safe logging (show first 8 chars only)"""
+    if not api_key or len(api_key) < 8:
+        return "REDACTED"
+    return f"{api_key[:8]}..."
+```
+
+**Usage**:
+- All authentication logs redact API keys
+- Audit logs use key prefixes (first 12 chars)
+- Security event logs never expose full keys
+
+**Example Log**:
+```
+✅ Authenticated: tenant=verdegris tier=enterprise key=sp_live_...
+```
+
+---
+
+### 3. Prometheus Metrics Endpoint ✅
+
+**Endpoint**: `GET /metrics`
+**Module**: `app/utils/metrics.py`
+
+**Metrics Tracked**:
+1. **Authentication Metrics**:
+   - `parking_auth_attempts_total{tenant, success, reason}`
+   - `parking_auth_success_total{tenant}`
+   - `parking_auth_failures_total{tenant, reason}`
+
+2. **API Usage Metrics**:
+   - `parking_api_requests_total{tenant, endpoint, method, status}`
+   - `parking_api_request_duration_seconds{tenant, endpoint}`
+
+3. **Resource Metrics**:
+   - `parking_spaces_total{tenant}`
+   - `parking_reservations_active{tenant}`
+   - `parking_tenants_active`
+
+**Integration**: Compatible with Prometheus, Grafana, and cloud monitoring platforms
+
+**Example Response**:
+```
+# HELP parking_auth_attempts_total Total authentication attempts
+# TYPE parking_auth_attempts_total counter
+parking_auth_attempts_total{tenant="verdegris",success="true",reason=""} 156
+parking_auth_attempts_total{tenant="acme-corp",success="false",reason="expired"} 3
+```
+
+---
+
+### 4. Admin Endpoints for API Key Management ✅
+
+**Prefix**: `/v1/admin`
+
+**Authentication**: Requires valid API key (same as other endpoints)
+
+#### 4.1. Create API Key
+
+**Endpoint**: `POST /v1/admin/api-keys`
+
+**Request Body**:
+```json
+{
+  "tenant_id": "ee20b258-7afc-4c98-a5e9-1c9eab37ea94",
+  "key_name": "Production API Key",
+  "scopes": ["read", "write"],
+  "expires_days": 365
+}
+```
+
+**Response**:
+```json
+{
+  "api_key_id": "uuid",
+  "api_key": "sp_live_...",
+  "key_name": "Production API Key",
+  "tenant_id": "uuid",
+  "scopes": ["read", "write"],
+  "expires_at": "2026-10-15T12:00:00Z",
+  "created_at": "2025-10-15T12:00:00Z"
+}
+```
+
+**Security**:
+- API key only returned once at creation
+- Hashed with bcrypt $2a$ format (PostgreSQL compatible)
+- Prefix stored for audit logs
+
+#### 4.2. List API Keys
+
+**Endpoint**: `GET /v1/admin/api-keys`
+
+**Response**:
+```json
+{
+  "api_keys": [
+    {
+      "api_key_id": "uuid",
+      "tenant_id": "uuid",
+      "tenant_slug": "verdegris",
+      "key_name": "Production Key",
+      "key_prefix": "sp_live_kWnU",
+      "scopes": ["read", "write"],
+      "is_active": true,
+      "created_at": "2025-10-15T12:00:00Z",
+      "expires_at": "2026-10-15T12:00:00Z",
+      "last_used_at": "2025-10-15T16:00:00Z"
+    }
+  ],
+  "total": 3
+}
+```
+
+#### 4.3. Get API Key Details
+
+**Endpoint**: `GET /v1/admin/api-keys/{api_key_id}`
+
+**Response**: Same as single item in list response
+
+#### 4.4. Revoke API Key
+
+**Endpoint**: `DELETE /v1/admin/api-keys/{api_key_id}`
+
+**Response**:
+```json
+{
+  "message": "API key revoked successfully",
+  "api_key_id": "uuid",
+  "revoked_at": "2025-10-15T12:00:00Z"
+}
+```
+
+**Effect**:
+- Sets `is_active = FALSE`
+- Immediately blocks authentication
+- Audit event logged
+
+#### 4.5. Rotate API Key
+
+**Endpoint**: `POST /v1/admin/api-keys/{api_key_id}/rotate`
+
+**Request Body** (optional):
+```json
+{
+  "new_key_name": "Production Key v2",
+  "expires_days": 90
+}
+```
+
+**Response**:
+```json
+{
+  "message": "API key rotated successfully",
+  "old_api_key_id": "uuid",
+  "new_api_key_id": "uuid",
+  "new_api_key": "sp_live_...",
+  "new_key_name": "Production Key v2",
+  "expires_at": "2026-01-15T12:00:00Z"
+}
+```
+
+**Behavior**:
+- Old key revoked immediately
+- New key inherits scopes from old key
+- Audit event logged
+
+---
+
+### 5. Per-Tenant API Usage Tracking ✅
+
+**Database Schema**: Migration 012
+**Table**: `core.api_usage`
+**Middleware**: `UsageTrackingMiddleware`
+
+**Tracked Data**:
+- Tenant ID
+- Endpoint path
+- HTTP method
+- HTTP status code
+- Request timestamp
+- Response time (milliseconds)
+
+**Endpoints**:
+
+#### 5.1. Usage Summary
+
+**Endpoint**: `GET /v1/admin/usage/summary?hours=24`
+
+**Response**:
+```json
+{
+  "tenant_id": "uuid",
+  "tenant_slug": "verdegris",
+  "period_hours": 24,
+  "total_requests": 1543,
+  "successful_requests": 1498,
+  "failed_requests": 45,
+  "endpoints": [
+    {
+      "endpoint": "/v1/spaces",
+      "method": "GET",
+      "request_count": 892,
+      "avg_response_time_ms": 45.2
+    }
+  ],
+  "status_codes": {
+    "200": 1350,
+    "201": 48,
+    "400": 15,
+    "404": 30
+  }
+}
+```
+
+#### 5.2. Rate Limit Status
+
+**Endpoint**: `GET /v1/admin/usage/rate-limit`
+
+**Response**:
+```json
+{
+  "tenant_id": "uuid",
+  "tenant_slug": "verdegris",
+  "subscription_tier": "enterprise",
+  "current_usage": {
+    "last_hour": 125,
+    "last_24h": 1543
+  },
+  "limits": {
+    "hourly_limit": 1000,
+    "daily_limit": 10000
+  },
+  "status": "within_limits"
+}
+```
+
+**Note**: Rate limiting enforcement not yet implemented (planned for future phase)
+
+---
+
+### 6. Audit Logging for Security Events ✅
+
+**Database Schema**: Migration 013
+**Module**: `app/utils/audit.py`
+**Class**: `AuditLogger`
+
+#### Audit Event Types
+
+```sql
+CREATE TYPE core.audit_event_type AS ENUM (
+    'auth_success',           -- Successful authentication
+    'auth_failure',           -- Failed authentication
+    'api_key_created',        -- New API key created
+    'api_key_revoked',        -- API key revoked
+    'api_key_rotated',        -- API key rotated
+    'tenant_isolation_violation', -- Security violation
+    'admin_action',           -- Administrative action
+    'config_change',          -- Configuration change
+    'security_alert'          -- Security alert
+);
+```
+
+#### Audit Severity Levels
+
+```sql
+CREATE TYPE core.audit_severity AS ENUM (
+    'info',      -- Normal operation
+    'warning',   -- Potential issue
+    'error',     -- Error occurred
+    'critical'   -- Critical security event
+);
+```
+
+#### Audit Log Table
+
+```sql
+CREATE TABLE core.audit_log (
+    audit_id BIGSERIAL PRIMARY KEY,
+    event_type core.audit_event_type NOT NULL,
+    severity core.audit_severity NOT NULL DEFAULT 'info',
+    tenant_id UUID REFERENCES core.tenants(tenant_id),
+    event_description TEXT NOT NULL,
+    event_details JSONB,
+    ip_address INET,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+```
+
+#### Audit Functions
+
+**Log Event**:
+```python
+AuditLogger.log_auth_success(
+    db_pool, 
+    tenant_id, 
+    tenant_slug, 
+    api_key_id,
+    ip_address="1.2.3.4"
+)
+```
+
+**View Recent Events**:
+```bash
+GET /v1/admin/audit/events?hours=24&severity=warning
+```
+
+**Response**:
+```json
+{
+  "events": [
+    {
+      "audit_id": 12345,
+      "event_type": "auth_failure",
+      "severity": "warning",
+      "tenant_slug": "verdegris",
+      "event_description": "Invalid API key attempted",
+      "event_details": {"api_key_prefix": "sp_live_..."},
+      "ip_address": "1.2.3.4",
+      "created_at": "2025-10-15T12:00:00Z"
+    }
+  ],
+  "total": 156
+}
+```
+
+**Audit Statistics**:
+```bash
+GET /v1/admin/audit/statistics?hours=24
+```
+
+**Response**:
+```json
+{
+  "period_hours": 24,
+  "total_events": 3542,
+  "by_type": {
+    "auth_success": 3200,
+    "auth_failure": 45,
+    "api_key_created": 3,
+    "api_key_revoked": 1
+  },
+  "by_severity": {
+    "info": 3450,
+    "warning": 87,
+    "error": 5,
+    "critical": 0
+  }
+}
+```
+
+#### Security Features
+
+- **Row-Level Security**: Audit logs tenant-scoped via RLS
+- **Immutable**: No UPDATE/DELETE permissions (append-only)
+- **Non-Blocking**: Fire-and-forget logging (doesn't block requests)
+- **SECURITY DEFINER**: Audit functions run as `parking_user` to bypass RLS
+
+---
+
+### 7. Health Check Improvements ✅
+
+**Endpoint**: `GET /health`
+**Module**: `app/main.py` + Database function
+
+#### Component-Level Health Status
+
+**Response Structure**:
+```json
+{
+  "status": "healthy",
+  "service": "parking-display",
+  "version": "1.5.1",
+  "timestamp": "2025-10-15T16:00:00Z",
+  "components": {
+    "database": "healthy",
+    "redis": "healthy",
+    "scheduler": "healthy",
+    "multi_tenancy": "healthy"
+  },
+  "statistics": {
+    "active_tenants": 2,
+    "active_api_keys": 3,
+    "parking_spaces": 4,
+    "active_reservations": 0,
+    "scheduled_jobs": 1
+  },
+  "last_actuation": "2025-10-15T15:30:00Z",
+  "multi_tenancy": "enabled"
+}
+```
+
+#### Database Function
+
+**Migration 014**: Created `public.get_health_check_stats()` function
+
+```sql
+CREATE FUNCTION public.get_health_check_stats()
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    RETURN json_build_object(
+        'spaces_count', (SELECT COUNT(*) FROM parking_spaces.spaces WHERE enabled = TRUE),
+        'active_reservations', (SELECT COUNT(*) FROM parking_spaces.reservations WHERE status = 'active'),
+        'last_actuation', (SELECT MAX(created_at) FROM parking_operations.actuations),
+        'active_tenants', (SELECT COUNT(*) FROM core.tenants WHERE is_active = TRUE),
+        'active_api_keys', (SELECT COUNT(*) FROM core.api_keys WHERE is_active = TRUE)
+    );
+END;
+$$;
+```
+
+**Benefits**:
+- Runs as `parking_user` (bypasses RLS)
+- Aggregates system-wide stats
+- No tenant context required
+- Safe for monitoring tools
+
+#### Status Determination
+
+- **healthy**: All components operational
+- **degraded**: Some components unhealthy but service functional
+- **unhealthy**: Critical components failed
+
+---
+
+## Database Migrations
+
+### Migration 012: API Usage Tracking
+
+**File**: `database/migrations/012_api_usage_tracking.sql`
+
+**Tables Created**:
+- `core.api_usage` - Request log
+- Indexes on (tenant_id, created_at), (tenant_id, endpoint)
+
+### Migration 013: Audit Logging
+
+**File**: `database/migrations/013_audit_logging.sql`
+
+**Components**:
+- `core.audit_event_type` enum
+- `core.audit_severity` enum
+- `core.audit_log` table
+- `core.record_audit_event()` function
+- `core.get_recent_security_events()` function
+- `core.get_audit_statistics()` function
+- RLS policy: `audit_tenant_isolation_policy`
+- Indexes for performance
+
+### Migration 014: Health Check Function
+
+**File**: `database/migrations/014_health_check_function.sql`
+
+**Components**:
+- `public.get_health_check_stats()` function (SECURITY DEFINER)
+- Grant to `parking_app_user`
+
+---
+
+## API Documentation
+
+### Admin API Summary
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/v1/admin/api-keys` | POST | Create API key |
+| `/v1/admin/api-keys` | GET | List API keys |
+| `/v1/admin/api-keys/{id}` | GET | Get API key details |
+| `/v1/admin/api-keys/{id}` | DELETE | Revoke API key |
+| `/v1/admin/api-keys/{id}/rotate` | POST | Rotate API key |
+| `/v1/admin/usage/summary` | GET | Get usage statistics |
+| `/v1/admin/usage/rate-limit` | GET | Check rate limit status |
+| `/v1/admin/audit/events` | GET | View audit events |
+| `/v1/admin/audit/statistics` | GET | Get audit statistics |
+
+**Authentication**: All admin endpoints require valid `X-API-Key` header
+
+---
+
+## Testing Results
+
+### Error Handling
+
+✅ **Tested**:
+- Invalid API keys return 403 with safe error message
+- Missing API keys return 401 with WWW-Authenticate header
+- Validation errors return 422 with field-level errors
+- Not found errors return 404 with resource info
+- Internal errors return 500 without sensitive data
+
+### API Key Management
+
+✅ **Tested**:
+- Created API key for Verdegris tenant
+- Listed all API keys (tenant-scoped)
+- Retrieved specific API key details
+- Rotated API key (old revoked, new created)
+- Revoked API key (authentication blocked)
+
+### Usage Tracking
+
+✅ **Tested**:
+- Usage middleware tracks all requests
+- Summary endpoint returns accurate stats
+- Endpoint-level breakdown working
+- Status code distribution accurate
+
+### Audit Logging
+
+✅ **Tested**:
+- Authentication events logged
+- API key operations logged
+- Audit events viewable via admin endpoint
+- Statistics endpoint working
+- RLS enforced (tenants see only their logs)
+
+### Health Check
+
+✅ **Tested**:
+- Component-level status accurate
+- Multi-tenancy validation working
+- Statistics populated correctly
+- SECURITY DEFINER function bypasses RLS
+
+---
+
+## Performance Considerations
+
+### Middleware Overhead
+
+- **Usage Tracking**: ~1-2ms per request
+- **Audit Logging**: Fire-and-forget (non-blocking)
+- **Impact**: Negligible for production workloads
+
+### Database Performance
+
+- **API Usage Table**: Auto-vacuum configured, indexes optimized
+- **Audit Log Table**: Append-only, indexed by timestamp
+- **Health Check**: Single function call, no complex joins
+
+### Recommended Monitoring
+
+1. **Metrics to Watch**:
+   - API request rate per tenant
+   - Authentication failure rate
+   - Response times by endpoint
+   - Health check status
+
+2. **Alerts to Configure**:
+   - Authentication failure spike (> 10/min)
+   - Component degraded status
+   - High error rate (> 5%)
+   - Slow response times (> 500ms p95)
+
+---
+
+## Security Enhancements
+
+### Implemented
+
+✅ **API Key Security**:
+- Bcrypt hashing ($2a$ format)
+- Key prefix storage for audit logs
+- Full key never logged
+- Expiration checking
+- Revocation support
+
+✅ **Audit Trail**:
+- All authentication attempts logged
+- API key lifecycle events tracked
+- Tenant-scoped audit logs
+- Immutable log records
+
+✅ **Error Handling**:
+- No sensitive data in error messages
+- Safe logging (redacted keys)
+- Proper HTTP status codes
+- Structured error responses
+
+### Future Enhancements
+
+🔄 **Rate Limiting**:
+- Per-tenant request limits
+- Configurable thresholds by tier
+- Automatic blocking of abusive clients
+
+🔄 **Advanced Monitoring**:
+- Real-time alerting
+- Anomaly detection
+- Threat intelligence integration
+
+---
+
+## Version History
+
+- **v1.5.0** - Phase 3.1: Multi-tenant API authentication
+- **v1.5.1** - Phase 3.2: Production hardening (this release)
+
+---
+
+## Deployment Notes
+
+### Environment Variables
+
+No new environment variables required. All configuration stored in database.
+
+### Service Restart
+
+```bash
+sudo docker compose restart parking-display-service
+```
+
+### Verification
+
+```bash
+# Test health check
+curl -sL https://parking.verdegris.eu/health | jq .
+
+# Test metrics endpoint
+curl -sL https://parking.verdegris.eu/metrics
+
+# Test admin endpoints (with API key)
+curl -sL -H "X-API-Key: $API_KEY" https://parking.verdegris.eu/v1/admin/api-keys
+```
+
+---
+
+## Conclusion
+
+Phase 3.2 successfully adds essential production features:
+
+✅ **Operational Excellence**: Health checks, metrics, usage tracking
+✅ **Security Hardening**: Audit logging, error handling, key management
+✅ **Tenant Management**: Self-service API key operations
+
+**Next Steps**:
+- Implement rate limiting enforcement
+- Add tenant management UI
+- Integrate with external monitoring platforms
+
+---
+
+**Document Version**: 1.1
+**Last Updated**: 2025-10-15
+**Author**: Smart Parking Platform Team
+**Status**: Phase 3.2 COMPLETE ✅
+

@@ -299,3 +299,689 @@ async def trigger_reconciliation(auth = Depends(get_authenticated_tenant)):
     except Exception as e:
         logger.error(f"Error during reconciliation (tenant={auth.tenant_slug}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# API Key Management Endpoints
+# ============================================================================
+
+from pydantic import BaseModel, Field
+from typing import Optional, List
+from uuid import UUID
+from app.utils.api_keys import generate_and_hash_api_key
+from app.database import get_db_pool
+import bcrypt
+from app.utils.audit import AuditLogger
+
+
+class CreateAPIKeyRequest(BaseModel):
+    tenant_id: UUID
+    key_name: str = Field(..., min_length=1, max_length=100, description="Descriptive name for the API key")
+    scopes: List[str] = Field(default=["read", "write"], description="API key permissions")
+    expires_days: Optional[int] = Field(default=None, description="Days until expiration (null = never)")
+
+
+class APIKeyResponse(BaseModel):
+    api_key_id: UUID
+    tenant_id: UUID
+    tenant_slug: str
+    key_name: str
+    key_prefix: str  # First 12 chars for identification
+    scopes: List[str]
+    is_active: bool
+    created_at: str
+    expires_at: Optional[str]
+    last_used_at: Optional[str]
+
+
+class CreateAPIKeyResponse(BaseModel):
+    api_key_id: UUID
+    tenant_slug: str
+    key_name: str
+    api_key: str  # Full key - ONLY returned on creation!
+    key_prefix: str
+    scopes: List[str]
+    expires_at: Optional[str]
+    created_at: str
+    warning: str = "Save this API key now - it will not be shown again!"
+
+
+@router.post("/api-keys", response_model=CreateAPIKeyResponse, status_code=201)
+async def create_api_key(
+    request: CreateAPIKeyRequest,
+    auth = Depends(get_authenticated_tenant)
+):
+    """
+    Create a new API key for a tenant.
+    
+    **SECURITY**: Only system admins or the tenant themselves can create keys.
+    For Phase 3.2, allowing authenticated tenants to create their own keys.
+    
+    Args:
+        request: API key creation parameters
+        
+    Returns:
+        Full API key (ONLY time it's shown!) and metadata
+        
+    **WARNING**: The full API key is only returned once. Store it securely!
+    """
+    try:
+        db_pool = get_db_pool()
+        
+        # Generate new API key
+        api_key, key_hash = generate_and_hash_api_key(prefix="sp_live_")
+        
+        # Insert into database
+        async with db_pool.acquire() as conn:
+            # Verify tenant exists
+            tenant = await conn.fetchrow(
+                "SELECT tenant_id, tenant_slug FROM core.tenants WHERE tenant_id = $1",
+                str(request.tenant_id)
+            )
+            
+            if not tenant:
+                raise HTTPException(status_code=404, detail="Tenant not found")
+            
+            # Check authorization - tenant can only create keys for themselves
+            if str(auth.tenant_id) != str(request.tenant_id):
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Cannot create API keys for other tenants"
+                )
+            
+            # Calculate expiration
+            expires_at = None
+            if request.expires_days:
+                expires_at = f"NOW() + INTERVAL '{request.expires_days} days'"
+            
+            query = f"""
+                INSERT INTO core.api_keys (
+                    tenant_id, key_name, key_hash, key_prefix, scopes, is_active, expires_at
+                )
+                VALUES ($1, $2, $3, $4, $5, TRUE, {expires_at or 'NULL'})
+                RETURNING api_key_id, created_at, expires_at
+            """
+            
+            result = await conn.fetchrow(
+                query,
+                str(request.tenant_id),
+                request.key_name,
+                key_hash,
+                api_key[:12],
+                request.scopes
+            )
+        
+        logger.info(
+            f"✅ API key created: tenant={tenant['tenant_slug']} "
+            f"key_name={request.key_name} by={auth.tenant_slug}"
+        )
+        AuditLogger.log_api_key_created(db_pool, auth.tenant_id, tenant['tenant_slug'], result['api_key_id'], request.key_name, auth.tenant_slug)
+        
+        return CreateAPIKeyResponse(
+            api_key_id=result['api_key_id'],
+            tenant_slug=tenant['tenant_slug'],
+            key_name=request.key_name,
+            api_key=api_key,  # Full key - ONLY shown here!
+            key_prefix=api_key[:12],
+            scopes=request.scopes,
+            expires_at=result['expires_at'].isoformat() if result['expires_at'] else None,
+            created_at=result['created_at'].isoformat()
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating API key: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create API key")
+
+
+@router.get("/api-keys", response_model=List[APIKeyResponse])
+async def list_api_keys(
+    tenant_id: Optional[UUID] = None,
+    include_revoked: bool = False,
+    auth = Depends(get_authenticated_tenant)
+):
+    """
+    List API keys for a tenant.
+    
+    **SECURITY**: Tenants can only see their own keys.
+    
+    Args:
+        tenant_id: Filter by tenant (defaults to authenticated tenant)
+        include_revoked: Include revoked keys in results
+        
+    Returns:
+        List of API keys (without full key value)
+    """
+    try:
+        db_pool = get_db_pool()
+        
+        # Default to authenticated tenant
+        target_tenant_id = tenant_id or auth.tenant_id
+        
+        # Check authorization
+        if str(auth.tenant_id) != str(target_tenant_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Cannot view API keys for other tenants"
+            )
+        
+        async with db_pool.acquire() as conn:
+            # Build query
+            query = """
+                SELECT 
+                    ak.api_key_id,
+                    ak.tenant_id,
+                    t.tenant_slug,
+                    ak.key_name,
+                    ak.key_hash,
+                    ak.scopes,
+                    ak.is_active,
+                    ak.created_at,
+                    ak.expires_at,
+                    ak.last_used_at
+                FROM core.api_keys ak
+                JOIN core.tenants t ON ak.tenant_id = t.tenant_id
+                WHERE ak.tenant_id = $1
+            """
+            
+            if not include_revoked:
+                query += " AND ak.is_active = TRUE"
+            
+            query += " ORDER BY ak.created_at DESC"
+            
+            results = await conn.fetch(query, str(target_tenant_id))
+        
+        # Format results
+        api_keys = []
+        for row in results:
+            # Extract key prefix from hash (first 12 chars of original key)
+            # We can't recover it from hash, so we'll show a placeholder
+            key_prefix = "sp_live_***"
+            
+            api_keys.append(APIKeyResponse(
+                api_key_id=row['api_key_id'],
+                tenant_id=row['tenant_id'],
+                tenant_slug=row['tenant_slug'],
+                key_name=row['key_name'],
+                key_prefix=key_prefix,
+                scopes=row['scopes'],
+                is_active=row['is_active'],
+                created_at=row['created_at'].isoformat(),
+                expires_at=row['expires_at'].isoformat() if row['expires_at'] else None,
+                last_used_at=row['last_used_at'].isoformat() if row['last_used_at'] else None
+            ))
+        
+        logger.info(f"Listed {len(api_keys)} API keys for tenant={auth.tenant_slug}")
+        
+        return api_keys
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing API keys: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to list API keys")
+
+
+@router.delete("/api-keys/{key_id}", status_code=200)
+async def revoke_api_key(
+    key_id: UUID,
+    auth = Depends(get_authenticated_tenant)
+):
+    """
+    Revoke (deactivate) an API key.
+    
+    **SECURITY**: Tenants can only revoke their own keys.
+    
+    Args:
+        key_id: UUID of the API key to revoke
+        
+    Returns:
+        Confirmation message
+    """
+    try:
+        db_pool = get_db_pool()
+        
+        async with db_pool.acquire() as conn:
+            # Check key exists and belongs to tenant
+            key_check = await conn.fetchrow(
+                """
+                SELECT ak.api_key_id, ak.tenant_id, t.tenant_slug, ak.key_name, ak.is_active
+                FROM core.api_keys ak
+                JOIN core.tenants t ON ak.tenant_id = t.tenant_id
+                WHERE ak.api_key_id = $1
+                """,
+                str(key_id)
+            )
+            
+            if not key_check:
+                raise HTTPException(status_code=404, detail="API key not found")
+            
+            # Check authorization
+            if str(auth.tenant_id) != str(key_check['tenant_id']):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Cannot revoke API keys for other tenants"
+                )
+            
+            if not key_check['is_active']:
+                raise HTTPException(status_code=400, detail="API key already revoked")
+            
+            # Revoke the key
+            await conn.execute(
+                "UPDATE core.api_keys SET is_active = FALSE WHERE api_key_id = $1",
+                str(key_id)
+            )
+        
+        logger.warning(
+            f"🔑 API key revoked: key_id={key_id} key_name={key_check['key_name']} "
+            f"tenant={key_check['tenant_slug']} by={auth.tenant_slug}"
+        )
+        AuditLogger.log_api_key_revoked(db_pool, auth.tenant_id, key_check['tenant_slug'], key_id, key_check['key_name'], auth.tenant_slug)
+        
+        return {
+            "status": "revoked",
+            "api_key_id": str(key_id),
+            "key_name": key_check['key_name'],
+            "tenant_slug": key_check['tenant_slug'],
+            "message": "API key successfully revoked",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error revoking API key: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to revoke API key")
+
+
+@router.get("/api-keys/{key_id}", response_model=APIKeyResponse)
+async def get_api_key_details(
+    key_id: UUID,
+    auth = Depends(get_authenticated_tenant)
+):
+    """
+    Get details for a specific API key.
+    
+    **SECURITY**: Tenants can only view their own keys.
+    
+    Args:
+        key_id: UUID of the API key
+        
+    Returns:
+        API key metadata (without full key value)
+    """
+    try:
+        db_pool = get_db_pool()
+        
+        async with db_pool.acquire() as conn:
+            result = await conn.fetchrow(
+                """
+                SELECT 
+                    ak.api_key_id,
+                    ak.tenant_id,
+                    t.tenant_slug,
+                    ak.key_name,
+                    ak.scopes,
+                    ak.is_active,
+                    ak.created_at,
+                    ak.expires_at,
+                    ak.last_used_at
+                FROM core.api_keys ak
+                JOIN core.tenants t ON ak.tenant_id = t.tenant_id
+                WHERE ak.api_key_id = $1
+                """,
+                str(key_id)
+            )
+            
+            if not result:
+                raise HTTPException(status_code=404, detail="API key not found")
+            
+            # Check authorization
+            if str(auth.tenant_id) != str(result['tenant_id']):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Cannot view API keys for other tenants"
+                )
+        
+        return APIKeyResponse(
+            api_key_id=result['api_key_id'],
+            tenant_id=result['tenant_id'],
+            tenant_slug=result['tenant_slug'],
+            key_name=result['key_name'],
+            key_prefix="sp_live_***",
+            scopes=result['scopes'],
+            is_active=result['is_active'],
+            created_at=result['created_at'].isoformat(),
+            expires_at=result['expires_at'].isoformat() if result['expires_at'] else None,
+            last_used_at=result['last_used_at'].isoformat() if result['last_used_at'] else None
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting API key details: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get API key details")
+
+
+@router.post("/api-keys/{key_id}/rotate", response_model=CreateAPIKeyResponse, status_code=201)
+async def rotate_api_key(
+    key_id: UUID,
+    auth = Depends(get_authenticated_tenant)
+):
+    """
+    Rotate an API key - creates new key and revokes old one.
+    
+    **SECURITY**: Tenants can only rotate their own keys.
+    
+    This operation:
+    1. Generates a new API key
+    2. Creates new database entry
+    3. Revokes the old key
+    4. Returns the new key (ONLY time it's shown!)
+    
+    Args:
+        key_id: UUID of the API key to rotate
+        
+    Returns:
+        New API key (ONLY shown once!)
+        
+    **WARNING**: The new key is only returned once. Store it securely!
+    The old key will be immediately revoked.
+    """
+    try:
+        db_pool = get_db_pool()
+        
+        async with db_pool.acquire() as conn:
+            # Get existing key details
+            old_key = await conn.fetchrow(
+                """
+                SELECT ak.api_key_id, ak.tenant_id, t.tenant_slug, ak.key_name, 
+                       ak.scopes, ak.expires_at, ak.is_active
+                FROM core.api_keys ak
+                JOIN core.tenants t ON ak.tenant_id = t.tenant_id
+                WHERE ak.api_key_id = $1
+                """,
+                str(key_id)
+            )
+            
+            if not old_key:
+                raise HTTPException(status_code=404, detail="API key not found")
+            
+            # Check authorization
+            if str(auth.tenant_id) != str(old_key['tenant_id']):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Cannot rotate API keys for other tenants"
+                )
+            
+            if not old_key['is_active']:
+                raise HTTPException(status_code=400, detail="Cannot rotate revoked API key")
+            
+            # Generate new API key
+            new_api_key, new_key_hash = generate_and_hash_api_key(prefix="sp_live_")
+            
+            # Begin transaction
+            async with conn.transaction():
+                # Create new key (same name with " (rotated)" suffix)
+                new_key_name = f"{old_key['key_name']} (rotated)"
+                
+                new_result = await conn.fetchrow(
+                    """
+                    INSERT INTO core.api_keys (
+                        tenant_id, key_name, key_hash, key_prefix, scopes, is_active, expires_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, TRUE, $6)
+                    RETURNING api_key_id, created_at, expires_at
+                    """,
+                    str(old_key['tenant_id']),
+                    new_key_name,
+                    new_key_hash,
+                    new_api_key[:12],
+                    old_key['scopes'],
+                    old_key['expires_at']
+                )
+                
+                # Revoke old key
+                await conn.execute(
+                    "UPDATE core.api_keys SET is_active = FALSE WHERE api_key_id = $1",
+                    str(key_id)
+                )
+        
+        logger.warning(
+            f"🔄 API key rotated: old_key_id={key_id} new_key_id={new_result['api_key_id']} "
+            f"tenant={old_key['tenant_slug']} by={auth.tenant_slug}"
+        )
+        AuditLogger.log_api_key_rotated(db_pool, auth.tenant_id, old_key['tenant_slug'], key_id, new_result['api_key_id'], new_key_name, auth.tenant_slug)
+        
+        return CreateAPIKeyResponse(
+            api_key_id=new_result['api_key_id'],
+            tenant_slug=old_key['tenant_slug'],
+            key_name=new_key_name,
+            api_key=new_api_key,  # Full key - ONLY shown here!
+            key_prefix=new_api_key[:12],
+            scopes=old_key['scopes'],
+            expires_at=new_result['expires_at'].isoformat() if new_result['expires_at'] else None,
+            created_at=new_result['created_at'].isoformat()
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error rotating API key: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to rotate API key")
+
+# ============================================================================
+# API Usage Tracking Endpoints (Phase 3.2)
+# ============================================================================
+
+@router.get("/usage/summary")
+async def get_usage_summary(
+    hours: int = 24,
+    auth = Depends(get_authenticated_tenant)
+):
+    """
+    Get API usage summary for authenticated tenant.
+    
+    Args:
+        hours: Number of hours to look back (default 24)
+        
+    Returns:
+        Usage statistics including:
+        - Total requests
+        - Success/failure counts  
+        - Average response time
+        - Requests per endpoint
+        - Requests per hour
+    """
+    try:
+        db_pool = get_db_pool()
+        
+        async with db_pool.acquire() as conn:
+            result = await conn.fetchrow(
+                """
+                SELECT * FROM core.get_tenant_usage_summary($1::UUID, $2)
+                """,
+                str(auth.tenant_id),
+                hours
+            )
+        
+        if not result:
+            return {
+                "tenant": auth.tenant_slug,
+                "period_hours": hours,
+                "total_requests": 0,
+                "successful_requests": 0,
+                "failed_requests": 0,
+                "avg_response_time_ms": 0,
+                "requests_per_endpoint": {},
+                "requests_per_hour": {}
+            }
+        
+        return {
+            "tenant": auth.tenant_slug,
+            "period_hours": hours,
+            "total_requests": result["total_requests"],
+            "successful_requests": result["successful_requests"],
+            "failed_requests": result["failed_requests"],
+            "avg_response_time_ms": float(result["avg_response_time_ms"]) if result["avg_response_time_ms"] else 0,
+            "requests_per_endpoint": result["requests_per_endpoint"] or {},
+            "requests_per_hour": result["requests_per_hour"] or {},
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting usage summary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get usage summary")
+
+
+@router.get("/usage/rate-limit-status")
+async def get_rate_limit_status(
+    auth = Depends(get_authenticated_tenant)
+):
+    """
+    Check current rate limit status for tenant.
+    
+    Returns:
+        Current request count and limit status
+    """
+    try:
+        db_pool = get_db_pool()
+        
+        async with db_pool.acquire() as conn:
+            result = await conn.fetchrow(
+                """
+                SELECT * FROM core.check_rate_limit($1::UUID, 60, 1000)
+                """,
+                str(auth.tenant_id)
+            )
+        
+        return {
+            "tenant": auth.tenant_slug,
+            "window_minutes": 60,
+            "max_requests": 1000,
+            "current_requests": result["request_count"],
+            "limit_exceeded": result["limit_exceeded"],
+            "window_start": result["window_start"].isoformat(),
+            "window_end": result["window_end"].isoformat(),
+            "requests_remaining": max(0, 1000 - result["request_count"]),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking rate limit: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to check rate limit")
+
+# ============================================================================
+# Audit Log Endpoints (Phase 3.2)
+# ============================================================================
+
+@router.get("/audit/events")
+async def get_audit_events(
+    hours: int = 24,
+    severity: Optional[str] = None,
+    auth = Depends(get_authenticated_tenant)
+):
+    """
+    Get recent security audit events for authenticated tenant.
+    
+    Args:
+        hours: Number of hours to look back (default 24)
+        severity: Filter by severity (info, warning, error, critical)
+        
+    Returns:
+        List of audit events with details
+    """
+    try:
+        db_pool = get_db_pool()
+        
+        async with db_pool.acquire() as conn:
+            results = await conn.fetch(
+                """
+                SELECT * FROM core.get_recent_security_events($1::UUID, $2, $3::core.audit_severity)
+                """,
+                str(auth.tenant_id),
+                hours,
+                severity
+            )
+        
+        events = []
+        for row in results:
+            events.append({
+                "audit_id": row["audit_id"],
+                "event_type": row["event_type"],
+                "severity": row["severity"],
+                "event_description": row["event_description"],
+                "event_details": row["event_details"],
+                "ip_address": str(row["ip_address"]) if row["ip_address"] else None,
+                "resource_type": row["resource_type"],
+                "resource_id": row["resource_id"],
+                "created_at": row["created_at"].isoformat()
+            })
+        
+        return {
+            "tenant": auth.tenant_slug,
+            "period_hours": hours,
+            "severity_filter": severity,
+            "total_events": len(events),
+            "events": events,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting audit events: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get audit events")
+
+
+@router.get("/audit/statistics")
+async def get_audit_statistics(
+    hours: int = 24,
+    auth = Depends(get_authenticated_tenant)
+):
+    """
+    Get audit statistics for authenticated tenant.
+    
+    Args:
+        hours: Number of hours to look back (default 24)
+        
+    Returns:
+        Summary statistics of audit events
+    """
+    try:
+        db_pool = get_db_pool()
+        
+        async with db_pool.acquire() as conn:
+            result = await conn.fetchrow(
+                """
+                SELECT * FROM core.get_audit_statistics($1::UUID, $2)
+                """,
+                str(auth.tenant_id),
+                hours
+            )
+        
+        if not result:
+            return {
+                "tenant": auth.tenant_slug,
+                "period_hours": hours,
+                "total_events": 0,
+                "auth_failures": 0,
+                "security_alerts": 0,
+                "api_key_changes": 0,
+                "events_by_type": {},
+                "events_by_severity": {}
+            }
+        
+        return {
+            "tenant": auth.tenant_slug,
+            "period_hours": hours,
+            "total_events": result["total_events"],
+            "auth_failures": result["auth_failures"],
+            "security_alerts": result["security_alerts"],
+            "api_key_changes": result["api_key_changes"],
+            "events_by_type": result["events_by_type"] or {},
+            "events_by_severity": result["events_by_severity"] or {},
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting audit statistics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get audit statistics")

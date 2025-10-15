@@ -50,7 +50,7 @@ def hash_api_key(api_key: str) -> str:
         bcrypt hash string
     """
     # Generate salt and hash
-    salt = bcrypt.gensalt()
+    salt = bcrypt.gensalt(prefix=b"2a")
     key_hash = bcrypt.hashpw(api_key.encode('utf-8'), salt)
     return key_hash.decode('utf-8')
 

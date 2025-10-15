@@ -2350,6 +2350,62 @@ Closes #123
 ## Changelog
 
 ### Version 1.5.0 (2025-10-15)
+### Version 1.5.1 (2025-10-15)
+
+- ✅ **Production Hardening (Phase 3.2)**: Essential operational and security features
+  - Error handling improvements with proper HTTP status codes (401, 403, 404, 422, 500)
+  - Custom exception hierarchy (ParkingAPIError) with global exception handlers
+  - Safe error messages without sensitive data leakage
+
+- ✅ **Security Hardening**: API key redaction and audit logging
+  - API key redaction in all logs (show first 8 characters only)
+  - Comprehensive audit logging for security events (auth, API key operations)
+  - Audit event types: auth_success, auth_failure, api_key_created, api_key_revoked, api_key_rotated
+  - Audit severity levels: info, warning, error, critical
+  - Tenant-scoped audit logs with RLS enforcement
+  - Immutable audit trail (append-only, no UPDATE/DELETE)
+
+- ✅ **Prometheus Metrics**: Monitoring and observability
+  - Metrics endpoint at /metrics (Prometheus-compatible)
+  - Authentication metrics: attempts, successes, failures by tenant
+  - API usage metrics: requests, duration by tenant and endpoint
+  - Resource metrics: spaces, reservations, tenants
+
+- ✅ **Admin API**: Self-service API key management (9 endpoints)
+  - Create API keys with configurable expiration
+  - List API keys (tenant-scoped)
+  - Get API key details
+  - Revoke API keys
+  - Rotate API keys (old revoked, new created)
+  - View audit events with filtering
+  - Get audit statistics
+  - API usage summary and rate limit status
+
+- ✅ **Per-Tenant Usage Tracking**: Request logging and analytics
+  - Usage middleware tracks all API requests
+  - Stores tenant_id, endpoint, method, status, timestamp, response_time
+  - Usage summary endpoint with statistics
+  - Rate limit status endpoint (enforcement pending)
+
+- ✅ **Health Check Improvements**: Component-level status
+  - Enhanced health check with component breakdown
+  - Components: database, redis, scheduler, multi_tenancy
+  - Status: healthy, degraded, unhealthy
+  - Statistics: active_tenants, active_api_keys, parking_spaces
+  - SECURITY DEFINER function to bypass RLS for system stats
+
+- ✅ **Database Migrations**:
+  - Migration 012: API usage tracking (core.api_usage table)
+  - Migration 013: Audit logging (core.audit_log table, functions)
+  - Migration 014: Health check function (public.get_health_check_stats)
+
+- ✅ **Documentation**: Phase 3.2 complete implementation guide
+  - Added Phase 3.2 section to PHASE-3-IMPLEMENTATION-GUIDE.md
+  - Comprehensive API documentation for all admin endpoints
+  - Testing results and validation procedures
+  - Performance considerations and monitoring recommendations
+
+
 
 - ✅ **Multi-Tenant Architecture**: Complete SaaS multi-tenancy with PostgreSQL RLS
   - Tenant authentication via API keys (X-API-Key header on all endpoints)

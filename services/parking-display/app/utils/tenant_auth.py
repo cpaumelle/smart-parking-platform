@@ -15,10 +15,13 @@ from fastapi import Security, HTTPException, status, Header
 from typing import Optional
 from uuid import UUID
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncpg
 
 logger = logging.getLogger("tenant_auth")
+from app.utils.errors import redact_api_key
+from app.utils.metrics import record_auth_attempt
+from app.utils.audit import AuditLogger
 
 
 class TenantAuthResult:
@@ -84,8 +87,8 @@ async def verify_tenant_api_key(
             headers={"WWW-Authenticate": "ApiKey"}
         )
     
-    # Extract key prefix for logging (first 8 chars)
-    key_prefix = x_api_key[:8]
+    # Redact API key for safe logging
+    key_redacted = redact_api_key(x_api_key)
     
     if not db_pool:
         logger.error("❌ Database pool not provided to verify_tenant_api_key")
@@ -117,7 +120,8 @@ async def verify_tenant_api_key(
             row = await conn.fetchrow(query, x_api_key)
         
         if not row:
-            logger.warning(f"❌ Invalid API key attempt: {key_prefix}...")
+            AuditLogger.log_auth_failure(db_pool, "invalid_api_key", ip_address=None, api_key_prefix=key_redacted)
+            logger.warning(f"❌ Invalid API key attempt: {key_redacted}...")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid API key"
@@ -125,7 +129,9 @@ async def verify_tenant_api_key(
         
         # Check if key is active
         if not row['key_active']:
-            logger.warning(f"❌ Revoked API key used: {key_prefix}... tenant={row['tenant_slug']}")
+            logger.warning(f"❌ Revoked API key used: {key_redacted}... tenant={row['tenant_slug']}")
+            AuditLogger.log_auth_failure(db_pool, "revoked_api_key", api_key_prefix=key_redacted)
+            record_auth_attempt(row['tenant_slug'], False, "revoked")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="API key has been revoked"
@@ -134,14 +140,17 @@ async def verify_tenant_api_key(
         # Check if tenant is active
         if not row['tenant_active']:
             logger.warning(f"❌ Inactive tenant access attempt: {row['tenant_slug']}")
+            record_auth_attempt(row['tenant_slug'], False, "inactive_tenant")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Tenant account is inactive"
             )
         
         # Check if key is expired
-        if row['expires_at'] and row['expires_at'] < datetime.utcnow():
-            logger.warning(f"❌ Expired API key used: {key_prefix}... tenant={row['tenant_slug']}")
+        if row['expires_at'] and row['expires_at'] < datetime.now(timezone.utc):
+            logger.warning(f"❌ Expired API key used: {key_redacted}... tenant={row['tenant_slug']}")
+            AuditLogger.log_auth_failure(db_pool, "expired_api_key", api_key_prefix=key_redacted)
+            record_auth_attempt(row['tenant_slug'], False, "expired")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="API key has expired"
@@ -151,7 +160,10 @@ async def verify_tenant_api_key(
         import asyncio
         asyncio.create_task(_update_key_last_used(db_pool, row['api_key_id']))
         
-        logger.info(f"✅ Authenticated: tenant={row['tenant_slug']} tier={row['subscription_tier']} key={key_prefix}...")
+        # Record successful authentication
+        record_auth_attempt(row['tenant_slug'], True)
+        AuditLogger.log_auth_success(db_pool, row['tenant_id'], row['tenant_slug'], row['api_key_id'])
+        logger.info(f"✅ Authenticated: tenant={row['tenant_slug']} tier={row['subscription_tier']} key={key_redacted}...")
         
         return TenantAuthResult(
             tenant_id=row['tenant_id'],

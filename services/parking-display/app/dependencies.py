@@ -3,6 +3,7 @@ Shared dependencies for parking-display service
 Provides singleton instances and dependency injection patterns
 """
 from fastapi import Depends, Header
+from fastapi import Request
 from typing import Optional
 from app.services.downlink_client import DownlinkClient
 from app.utils.tenant_auth import verify_tenant_api_key, TenantAuthResult
@@ -25,6 +26,7 @@ def get_downlink_client() -> DownlinkClient:
 
 
 async def get_authenticated_tenant(
+    request: Request,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key")
 ) -> TenantAuthResult:
     """
@@ -64,4 +66,6 @@ async def get_authenticated_tenant(
         - Key expiration checked
         - Access logged for audit trail
     """
-    return await verify_tenant_api_key(x_api_key, get_db_pool())
+    auth = await verify_tenant_api_key(x_api_key, get_db_pool())
+    request.state.auth = auth  # Store for middleware
+    return auth
