@@ -8,9 +8,11 @@ import os
 import sys
 sys.path.append("/app")
 
-from app.routers import actuations, spaces, reservations
+from app.routers import actuations, spaces, reservations, admin
 from app.database import init_db_pool, close_db_pool, get_db_dependency
 from app.tasks.monitor import start_monitoring_tasks
+from app.scheduler.scheduler import start_scheduler, shutdown_scheduler
+from app.utils.idempotency import init_redis, close_redis
 
 # Configure logging
 logging.basicConfig(
@@ -38,6 +40,12 @@ async def lifespan(app: FastAPI):
         monitor_task = asyncio.create_task(start_monitoring_tasks())
         background_tasks.append(monitor_task)
         logger.info("Background monitoring tasks started")
+        # Start APScheduler for reservation management
+        # Initialize Redis for idempotency
+        await init_redis()
+        logger.info("Redis initialized for idempotency cache")
+        start_scheduler()
+        logger.info("APScheduler started for reservation lifecycle management")
 
     except Exception as e:
         logger.error(f"Startup failed: {e}")
@@ -56,6 +64,11 @@ async def lifespan(app: FastAPI):
         if background_tasks:
             await asyncio.gather(*background_tasks, return_exceptions=True)
             logger.info("Background tasks stopped")
+        # Shutdown APScheduler
+        # Close Redis connection
+        await close_redis()
+        shutdown_scheduler()
+        logger.info("APScheduler shutdown")
 
         # Close database pool
         await close_db_pool()
@@ -87,6 +100,7 @@ app.add_middleware(
 app.include_router(actuations.router, prefix="/v1/actuations", tags=["actuations"])
 app.include_router(spaces.router, prefix="/v1/spaces", tags=["spaces"])
 app.include_router(reservations.router, prefix="/v1/reservations", tags=["reservations"])
+app.include_router(admin.router, prefix="/v1/admin", tags=["admin"])
 
 @app.get("/")
 async def root():
@@ -101,6 +115,7 @@ async def root():
             "spaces": "/v1/spaces",
             "reservations": "/v1/reservations",
             "health": "/health",
+            "admin": "/v1/admin",
             "docs": "/docs"
         },
         "timestamp": datetime.utcnow().isoformat()
@@ -122,6 +137,16 @@ async def health_check(db = Depends(get_db_dependency)):
                 (SELECT MAX(created_at) FROM parking_operations.actuations) as last_actuation
         """
         stats = await db.fetchrow(stats_query)
+        # Add scheduler status
+        try:
+            from app.scheduler.scheduler import get_scheduler
+            scheduler = get_scheduler()
+            scheduler_running = scheduler.running
+            scheduled_jobs_count = len(scheduler.get_jobs())
+        except:
+            scheduler_running = False
+            scheduled_jobs_count = 0
+
 
         return {
             "status": "healthy" if database_connected else "unhealthy",
@@ -132,6 +157,10 @@ async def health_check(db = Depends(get_db_dependency)):
             "parking_spaces_count": stats["spaces_count"] or 0,
             "active_reservations_count": stats["active_reservations"] or 0,
             "last_actuation": stats["last_actuation"].isoformat() if stats["last_actuation"] else None
+            ,"apscheduler": {
+                "running": scheduler_running,
+                "scheduled_jobs": scheduled_jobs_count
+            }
         }
 
     except Exception as e:

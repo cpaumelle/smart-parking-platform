@@ -2,6 +2,7 @@ import os
 import asyncpg
 from contextlib import asynccontextmanager
 import logging
+import asyncio
 
 logger = logging.getLogger("database")
 
@@ -58,3 +59,26 @@ async def get_db_dependency():
     """FastAPI dependency for database connection"""
     async with get_db() as db:
         yield db
+
+@asynccontextmanager
+async def get_db_with_timeout(timeout_seconds: float = 2.0):
+    """
+    Get database connection with timeout (for health checks).
+    
+    Raises RuntimeError if connection cannot be acquired within timeout.
+    """
+    if not _pool:
+        raise RuntimeError("Database pool not initialized")
+    
+    connection = None
+    try:
+        connection = await asyncio.wait_for(
+            _pool.acquire(),
+            timeout=timeout_seconds
+        )
+        yield connection
+    except asyncio.TimeoutError:
+        raise RuntimeError(f"Could not acquire database connection within {timeout_seconds}s - pool may be exhausted")
+    finally:
+        if connection:
+            await _pool.release(connection)

@@ -660,19 +660,26 @@ monit restart station
 #### Parking Display Service
 - **Port**: 8100 (container-internal)
 - **URL**: `https://parking.verdegris.eu`
-- **Purpose**: Unified parking management service with real-time state management, space administration, and reservation support
+- **Purpose**: Unified parking management service with real-time state management, space administration, and intelligent reservation lifecycle management
 - **API Groups**:
   - `/v1/actuations` - State management and display actuation
   - `/v1/spaces` - Parking space administration
-  - `/v1/reservations` - Reservation management
+  - `/v1/reservations` - Reservation management with APScheduler
+  - `/v1/admin` - Monitoring and observability endpoints
 - **Features**:
-  - Priority-based state engine (Manual > Maintenance > Reservation > Sensor)
-  - Sub-200ms response time for sensor uplinks
-  - Automated downlink control for Class C LoRaWAN displays
-  - Complete audit trail in `parking_operations.actuations` table
-  - Time-based reservations with grace periods
-  - Background task execution for non-blocking actuations
-- **Documentation**: `/opt/smart-parking/PARKING-DISPLAY-SERVICE.md`
+  - **APScheduler Integration**: Event-driven reservation lifecycle with PostgreSQL job store
+  - **Redis Idempotency**: Prevents duplicate reservations with 24-hour TTL cache
+  - **Smart Status Management**: Automatic pending/active reservation status
+  - **Precise Timing**: Sub-second precision for reservation activation/completion
+  - **Future Reservations**: Full support for reservations starting in the future
+  - **Admin Monitoring**: Comprehensive endpoints for scheduler health and job inspection
+  - **Priority-based State Engine**: Manual > Maintenance > Reservation > Sensor
+  - **Sub-200ms Response Time**: Fast sensor-to-display actuation pipeline
+  - **Automated Downlink Control**: Class C LoRaWAN display management
+  - **Complete Audit Trail**: Full history in `parking_operations.actuations` table
+  - **Grace Periods**: Configurable no-show detection with automated cleanup
+  - **Background Tasks**: Non-blocking asynchronous job execution
+- **Documentation**: `/opt/smart-parking/PARKING-DISPLAY-SERVICE.md`, `/opt/smart-parking/apscheduler-implementation-plan.md`
 
 ### Management Tools
 
@@ -2342,6 +2349,39 @@ Closes #123
 
 ## Changelog
 
+### Version 1.4.0 (2025-10-15)
+
+- ✅ **APScheduler Integration**: Event-driven reservation lifecycle management
+  - Migrated from polling-based cleanup to precise, event-driven scheduling
+  - PostgreSQL-backed job store for durability across service restarts
+  - Sub-second precision for reservation activation, no-show detection, and completion
+  - Smart status management: automatic `pending` for future reservations, `active` for immediate
+  - Full support for future reservations (scheduled jobs execute at exact time)
+  - 3 jobs per reservation: activate, no-show check, complete
+  - Graceful job cancellation when reservations are cancelled via API
+  - APScheduler monitoring dashboard at `/v1/admin/scheduler/status`
+
+- ✅ **Redis Idempotency**: Duplicate request prevention
+  - Prevents duplicate reservations from double-clicks or API retries
+  - 24-hour TTL cache for `Idempotency-Key` header
+  - Returns cached response for duplicate requests
+  - Graceful degradation if Redis unavailable (idempotency disabled but service continues)
+  - Integrated with reservation creation endpoint
+
+- ✅ **Admin Monitoring Endpoints**: Operational visibility
+  - `GET /v1/admin/scheduler/status` - Real-time scheduler health and job counts
+  - `GET /v1/admin/scheduler/jobs/{reservation_id}` - Jobs for specific reservation
+  - `GET /v1/admin/scheduler/jobs` - List all scheduled jobs
+  - `GET /v1/admin/reservations/health` - Comprehensive system health with 7-day stats
+  - `POST /v1/admin/scheduler/reconcile` - Manual job synchronization and healing
+  - Production-ready monitoring for operational dashboards
+
+- ✅ **Documentation**: Implementation guides
+  - Created `apscheduler-implementation-plan.md` with complete architecture
+  - Updated README.md with APScheduler features and admin endpoints
+  - API documentation for all new monitoring endpoints
+  - Changelog updated with version 1.4.0 features
+
 ### Version 1.3.0 (2025-10-14)
 
 - ✅ **Kuando Busylight Integration**: Complete Class C display device support
@@ -2458,6 +2498,6 @@ Closes #123
 
 ---
 
-**Last Updated**: 2025-10-14
-**Platform Version**: 1.3.0
+**Last Updated**: 2025-10-15
+**Platform Version**: 1.4.0
 **Maintained By**: Smart Parking Team
