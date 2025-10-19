@@ -1,0 +1,415 @@
+/*
+ * SenseMy IoT Platform - Location Manager
+ * Version: 1.0.0
+ * Created: 2025-08-08 15:50:00 UTC
+ * Author: SenseMy IoT Team
+ * 
+ * Main location management page following the same pattern as Gateways.jsx
+ * Features:
+ * - Hierarchical location tree display
+ * - CRUD operations for locations
+ * - Archive/unarchive functionality
+ * - Statistics dashboard
+ * - Search and filtering
+ */
+
+import { useState, useMemo } from "react";
+import useLocations from "../hooks/useLocations.js";
+import { locationService } from "../services/locationService.js";
+import LocationTree from "../components/locations/LocationTree.jsx";
+import LocationForm from "../components/locations/LocationForm.jsx";
+import LoadingSpinner from "../components/common/LoadingSpinner.jsx";
+
+// Location-specific constants
+const LOCATION_FILTERS = {
+  ALL: 'all',
+  SITES: 'sites',
+  FLOORS: 'floors', 
+  ROOMS: 'rooms',
+  ZONES: 'zones',
+  ARCHIVED: 'archived'
+};
+
+const LOCATION_FILTER_LABELS = {
+  [LOCATION_FILTERS.ALL]: 'All Locations',
+  [LOCATION_FILTERS.SITES]: 'Sites Only',
+  [LOCATION_FILTERS.FLOORS]: 'Floors Only',
+  [LOCATION_FILTERS.ROOMS]: 'Rooms Only',
+  [LOCATION_FILTERS.ZONES]: 'Zones Only',
+  [LOCATION_FILTERS.ARCHIVED]: 'Archived'
+};
+
+export default function LocationManager() {
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const [filters, setFilters] = useState({
+    type: LOCATION_FILTERS.ALL,
+    search: '',
+    includeArchived: false
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Use the existing useLocations hook
+  const { 
+    tree, 
+    loading, 
+    error: locationsError, 
+    refresh,
+    byId 
+  } = useLocations({ 
+    archived: filters.includeArchived ? "all" : "false" 
+  });
+
+  // Calculate statistics from the tree data
+  const statistics = useMemo(() => {
+    const stats = {
+      total: 0,
+      sites: 0,
+      floors: 0,
+      rooms: 0,
+      zones: 0,
+      archived: 0
+    };
+
+    const countNodes = (nodes) => {
+      nodes.forEach(node => {
+        stats.total++;
+        if (node.type === "site") stats.sites++;
+        else if (node.type === "floor") stats.floors++;
+        else if (node.type === "room") stats.rooms++;
+        else if (node.type === "zone") stats.zones++;
+        
+        if (node.children?.length > 0) {
+          countNodes(node.children);
+        }
+      });
+    };
+
+    if (tree?.length > 0) {
+      countNodes(tree);
+    }
+
+    return stats;
+  }, [tree]);
+
+  // Filter and search locations
+  const filteredTree = useMemo(() => {
+    if (!tree || tree.length === 0) return [];
+    
+    const filterNode = (node) => {
+      // Apply type filter
+      const typeMatch = filters.type === LOCATION_FILTERS.ALL || 
+                       (filters.type === 'sites' && node.type === 'site') ||
+                       (filters.type === 'floors' && node.type === 'floor') ||
+                       (filters.type === 'rooms' && node.type === 'room') ||
+                       (filters.type === 'zones' && node.type === 'zone');
+
+      // Apply search filter
+      const searchMatch = !filters.search || 
+                         node.name.toLowerCase().includes(filters.search.toLowerCase());
+
+      // Filter children recursively
+      const filteredChildren = node.children?.map(filterNode).filter(Boolean) || [];
+      
+      // Include node if it matches OR has matching children
+      if ((typeMatch && searchMatch) || filteredChildren.length > 0) {
+        return {
+          ...node,
+          children: filteredChildren
+        };
+      }
+      
+      return null;
+    };
+
+    return tree.map(filterNode).filter(Boolean);
+  }, [tree, filters]);
+
+  const updateFilters = (newFilters) => {
+    setFilters(prev => ({ ...prev, ...newFilters }));
+  };
+
+  const handleAddLocation = () => {
+    setShowAddForm(!showAddForm);
+    setSelectedLocation(null);
+    setError(null);
+  };
+
+  const handleEditLocation = (location) => {
+    setSelectedLocation(location);
+    setShowAddForm(true);
+    setError(null);
+  };
+
+  const handleLocationSaved = async () => {
+    setIsSubmitting(false);
+    setShowAddForm(false);
+    setSelectedLocation(null);
+    setError(null);
+    await refresh();
+  };
+
+  const handleArchiveLocation = async (locationId, locationName) => {
+    if (!confirm(`Archive "${locationName}" and all its child locations?`)) {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await locationService.archiveLocation(locationId, true);
+      await refresh();
+      setError(null);
+    } catch (err) {
+      setError(`Failed to archive location: ${err.userMessage || err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const displayError = error || locationsError;
+
+  if (loading && tree.length === 0) {
+    return <LoadingSpinner />;
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col space-y-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Location Management</h1>
+          <p className="text-sm text-gray-600 mt-1">
+            Manage your location hierarchy (sites, floors, rooms, zones)
+          </p>
+        </div>
+        <div className="flex flex-col space-y-2 w-full">
+          <button
+            onClick={refresh}
+            disabled={loading}
+            className="px-2 py-1 sm:px-3 sm:py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+          <button
+            onClick={handleAddLocation}
+            disabled={isSubmitting}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+          >
+            Add Location
+          </button>
+        </div>
+      </div>
+
+      {/* Error Display */}
+      {displayError && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="text-sm text-red-600">
+            {displayError?.userMessage || displayError?.message || "An error occurred while loading locations"}
+          </div>
+        </div>
+      )}
+
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-5">
+        <div className="bg-white p-3 rounded-lg border">
+          <div className="flex flex-col space-y-3">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Locations</p>
+              <p className="text-2xl font-bold text-gray-900">{statistics.total}</p>
+            </div>
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-3 rounded-lg border">
+          <div className="flex flex-col space-y-3">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Sites</p>
+              <p className="text-2xl font-bold text-indigo-600">{statistics.sites || 0}</p>
+            </div>
+            <div className="p-2 bg-indigo-100 rounded-lg">
+              <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-3 rounded-lg border">
+          <div className="flex flex-col space-y-3">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Floors</p>
+              <p className="text-2xl font-bold text-green-600">{statistics.floors || 0}</p>
+            </div>
+            <div className="p-2 bg-green-100 rounded-lg">
+              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2 2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 21v-4a2 2 0 012-2h2a2 2 0 012 2v4" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-3 rounded-lg border">
+          <div className="flex flex-col space-y-3">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Rooms</p>
+              <p className="text-2xl font-bold text-yellow-600">{statistics.rooms || 0}</p>
+            </div>
+            <div className="p-2 bg-yellow-100 rounded-lg">
+              <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10v11M20 10v11" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-3 rounded-lg border">
+          <div className="flex flex-col space-y-3">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Zones</p>
+              <p className="text-2xl font-bold text-purple-600">{statistics.zones || 0}</p>
+            </div>
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white p-3 rounded-lg border">
+        <div className="flex flex-col space-y-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:space-y-0">
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium text-gray-700">Filter by Type:</label>
+            <select
+              value={filters.type}
+              onChange={(e) => updateFilters({ type: e.target.value })}
+              className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+            >
+              {Object.entries(LOCATION_FILTER_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium text-gray-700">Search:</label>
+            <input
+              type="text"
+              value={filters.search}
+              onChange={(e) => updateFilters({ search: e.target.value })}
+              placeholder="Search location names..."
+              className="px-3 py-1 border border-gray-300 rounded-md text-sm w-full sm:w-64"
+            />
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="includeArchived"
+              checked={filters.includeArchived}
+              onChange={(e) => updateFilters({ includeArchived: e.target.checked })}
+              className="rounded border-gray-300"
+            />
+            <label htmlFor="includeArchived" className="text-sm font-medium text-gray-700">
+              Include Archived
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Add Location Form */}
+      {showAddForm && (
+        <div className="bg-white p-6 rounded-lg border">
+          <div className="flex flex-col space-y-3 mb-4">
+            <h2 className="text-lg font-medium text-gray-900">
+              {selectedLocation ? `Edit Location: ${selectedLocation.name}` : 'Add New Location'}
+            </h2>
+            <button
+              onClick={() => {
+                setShowAddForm(false);
+                setSelectedLocation(null);
+                setError(null);
+              }}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <LocationForm 
+            location={selectedLocation}
+            availableParents={tree}
+            onSaved={handleLocationSaved} 
+            onCancel={() => {
+              setShowAddForm(false);
+              setSelectedLocation(null);
+              setError(null);
+            }}
+            isSubmitting={isSubmitting}
+            setIsSubmitting={setIsSubmitting}
+            setError={setError}
+          />
+        </div>
+      )}
+
+      {/* Location Tree */}
+      <div className="bg-white rounded-lg border">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-medium text-gray-900">
+            Location Hierarchy ({statistics.total} locations)
+          </h2>
+        </div>
+        <div className="p-6">
+          {filteredTree.length > 0 ? (
+            <LocationTree 
+              locations={filteredTree}
+              onEdit={handleEditLocation}
+              onArchive={handleArchiveLocation}
+              isSubmitting={isSubmitting}
+            />
+          ) : (
+            <div className="text-center py-8">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No locations found</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {filters.search || filters.type !== LOCATION_FILTERS.ALL 
+                  ? "Try adjusting your filters or search terms"
+                  : "Get started by creating your first location"
+                }
+              </p>
+              {!filters.search && filters.type === LOCATION_FILTERS.ALL && (
+                <div className="mt-6">
+                  <button
+                    onClick={handleAddLocation}
+                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                  >
+                    <svg className="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Add Location
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

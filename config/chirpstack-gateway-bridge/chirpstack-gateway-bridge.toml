@@ -1,0 +1,20 @@
+# ChirpStack Gateway Bridge configuration
+
+[backend]
+type="basic_station"
+
+  [backend.basic_station]
+  bind=":3001"
+
+[integration.mqtt]
+event_topic_template="gateway/{{ .GatewayID }}/event/{{ .EventType }}"
+state_topic_template="gateway/{{ .GatewayID }}/state/{{ .StateType }}"
+command_topic_template="gateway/{{ .GatewayID }}/command/#"
+
+  [integration.mqtt.auth]
+  type="generic"
+
+    [integration.mqtt.auth.generic]
+    username="mqttadmin"
+    password="2+ipv5qiYG4RGSrgtmlPvCAA5g55OoGhoaBwhSKCJlY="
+    server="tcp://mosquitto:1883"

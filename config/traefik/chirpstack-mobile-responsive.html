@@ -1,0 +1,164 @@
+<style>
+/* ChirpStack Mobile Responsive CSS Injection */
+/* Force mobile responsiveness for Ant Design v5 components */
+
+@media (max-width: 768px) {
+    /* Remove min-widths that break mobile layouts */
+    .ant-layout,
+    .ant-layout-content,
+    .ant-table-wrapper,
+    body {
+        min-width: unset !important;
+        width: 100% !important;
+    }
+
+    /* Make tables horizontally scrollable */
+    .ant-table {
+        overflow-x: auto !important;
+        display: block !important;
+    }
+
+    .ant-table-wrapper {
+        overflow-x: auto !important;
+    }
+
+    /* Adjust form widths */
+    .ant-form,
+    .ant-card,
+    .ant-modal {
+        max-width: 100% !important;
+        margin: 0 !important;
+    }
+
+    /* Better button sizing for touch */
+    .ant-btn {
+        padding: 10px 14px !important;
+        font-size: 14px !important;
+        min-height: 36px !important;
+    }
+
+    /* Adjust typography for mobile */
+    body {
+        font-size: 14px !important;
+    }
+
+    h1 { font-size: 22px !important; }
+    h2 { font-size: 18px !important; }
+    h3 { font-size: 16px !important; }
+
+    /* Menu responsive */
+    .ant-menu {
+        font-size: 14px !important;
+    }
+
+    /* Better spacing on mobile */
+    .ant-layout-content {
+        padding: 12px !important;
+    }
+
+    /* Make sidebar collapsible */
+    .ant-layout-sider {
+        position: fixed !important;
+        z-index: 1000 !important;
+        height: 100vh !important;
+    }
+
+    /* Input fields */
+    .ant-input,
+    .ant-select,
+    .ant-picker {
+        font-size: 16px !important; /* Prevents zoom on iOS */
+        min-height: 44px !important; /* Apple's recommended touch target */
+    }
+
+    /* Pagination */
+    .ant-pagination {
+        font-size: 12px !important;
+    }
+
+    .ant-pagination-item {
+        min-width: 32px !important;
+        height: 32px !important;
+        line-height: 32px !important;
+    }
+
+    /* Modals */
+    .ant-modal {
+        margin: 8px !important;
+        max-width: calc(100vw - 16px) !important;
+    }
+
+    /* Tabs */
+    .ant-tabs-nav {
+        font-size: 14px !important;
+    }
+
+    /* Breadcrumbs */
+    .ant-breadcrumb {
+        font-size: 12px !important;
+    }
+
+    /* Cards */
+    .ant-card-body {
+        padding: 12px !important;
+    }
+
+    /* Descriptions */
+    .ant-descriptions-item-label,
+    .ant-descriptions-item-content {
+        padding: 8px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Extra small screens (phones in portrait) */
+    body {
+        font-size: 13px !important;
+    }
+
+    .ant-btn {
+        padding: 8px 12px !important;
+        font-size: 13px !important;
+    }
+
+    .ant-layout-content {
+        padding: 8px !important;
+    }
+
+    h1 { font-size: 20px !important; }
+    h2 { font-size: 16px !important; }
+    h3 { font-size: 14px !important; }
+
+    /* Stack form items vertically */
+    .ant-form-item {
+        margin-bottom: 12px !important;
+    }
+
+    /* Make action buttons full width */
+    .ant-btn-block {
+        width: 100% !important;
+    }
+}
+
+/* Landscape mode adjustments */
+@media (max-width: 900px) and (orientation: landscape) {
+    .ant-layout-sider {
+        width: 200px !important;
+        min-width: 200px !important;
+    }
+}
+
+/* Improve touch targets throughout */
+@media (hover: none) and (pointer: coarse) {
+    /* Touch devices */
+    .ant-btn,
+    .ant-menu-item,
+    .ant-list-item,
+    .ant-table-row,
+    a {
+        min-height: 44px !important;
+        display: flex !important;
+        align-items: center !important;
+    }
+}
+</style>

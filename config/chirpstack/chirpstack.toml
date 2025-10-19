@@ -1,0 +1,134 @@
+# ChirpStack Configuration - Complete EU868 with RX2 Settings
+[postgresql]
+dsn = "postgresql://parking_user:fd9-kyLwTx@postgres:5432/chirpstack"
+
+[redis]
+servers = ["redis://redis:6379"]
+
+[network]
+net_id = "000000"
+enabled_regions = ["eu868"]
+
+[api]
+bind = "0.0.0.0:8080"
+
+[integration.mqtt]
+username = "mqttadmin"
+password = "2+ipv5qiYG4RGSrgtmlPvCAA5g55OoGhoaBwhSKCJlY="
+server = "tcp://mosquitto:1883"
+json = true
+qos = 0
+clean_session = false
+client_id = "chirpstack_integration"
+
+# EU868 Region Configuration
+[[regions]]
+id = "eu868"
+description = "EU868 region"
+common_name = "EU868"
+
+  [regions.gateway]
+  force_gws_private = false
+  
+    [regions.gateway.backend]
+    enabled = "mqtt"
+    
+      [regions.gateway.backend.mqtt]
+      username = "mqttadmin"
+      password = "2+ipv5qiYG4RGSrgtmlPvCAA5g55OoGhoaBwhSKCJlY="
+      event_topic = "gateway/+/event/+"
+      state_topic = "gateway/+/state/+"
+      command_topic = "gateway/{{ gateway_id }}/command/{{ command }}"
+      server = "tcp://mosquitto:1883"
+      qos = 0
+      clean_session = true
+
+    # Gateway channels - Required for proper operation
+    [[regions.gateway.channels]]
+    frequency = 868100000
+    bandwidth = 125000
+    modulation = "LORA"
+    spreading_factors = [7, 8, 9, 10, 11, 12]
+
+    [[regions.gateway.channels]]
+    frequency = 868300000
+    bandwidth = 125000
+    modulation = "LORA"
+    spreading_factors = [7, 8, 9, 10, 11, 12]
+
+    [[regions.gateway.channels]]
+    frequency = 868500000
+    bandwidth = 125000
+    modulation = "LORA"
+    spreading_factors = [7, 8, 9, 10, 11, 12]
+
+    [[regions.gateway.channels]]
+    frequency = 867100000
+    bandwidth = 125000
+    modulation = "LORA"
+    spreading_factors = [7, 8, 9, 10, 11, 12]
+
+    [[regions.gateway.channels]]
+    frequency = 867300000
+    bandwidth = 125000
+    modulation = "LORA"
+    spreading_factors = [7, 8, 9, 10, 11, 12]
+
+    [[regions.gateway.channels]]
+    frequency = 867500000
+    bandwidth = 125000
+    modulation = "LORA"
+    spreading_factors = [7, 8, 9, 10, 11, 12]
+
+    [[regions.gateway.channels]]
+    frequency = 867700000
+    bandwidth = 125000
+    modulation = "LORA"
+    spreading_factors = [7, 8, 9, 10, 11, 12]
+
+    [[regions.gateway.channels]]
+    frequency = 867900000
+    bandwidth = 125000
+    modulation = "LORA"
+    spreading_factors = [7, 8, 9, 10, 11, 12]
+
+  # Network configuration
+  [regions.network]
+  installation_margin = 10
+  rx_window = 0
+  rx1_delay = 1
+  rx1_dr_offset = 0
+  rx2_dr = 4
+  rx2_frequency = 869525000
+  rx2_prefer_on_rx1_dr_lt = 0
+  rx2_prefer_on_link_budget = false
+  downlink_tx_power = -1
+  adr_disabled = false
+  min_dr = 0
+  max_dr = 5
+
+  # Extra channels - MUST be at same level as [regions.network], NOT inside it
+  [[regions.network.extra_channels]]
+  frequency = 867100000
+  min_dr = 0
+  max_dr = 5
+
+  [[regions.network.extra_channels]]
+  frequency = 867300000
+  min_dr = 0
+  max_dr = 5
+
+  [[regions.network.extra_channels]]
+  frequency = 867500000
+  min_dr = 0
+  max_dr = 5
+
+  [[regions.network.extra_channels]]
+  frequency = 867700000
+  min_dr = 0
+  max_dr = 5
+
+  [[regions.network.extra_channels]]
+  frequency = 867900000
+  min_dr = 0
+  max_dr = 5

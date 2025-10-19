@@ -1,0 +1,417 @@
+// src/components/gateways/GatewayConfigModal.jsx
+// Version: 2.0.0 - 2025-08-08 13:30 UTC
+// Changelog:
+// - Completely redesigned to focus on CONFIGURATION not operational status
+// - Added location hierarchy picker (matching device configuration)
+// - Configuration status detection (orphaned/partial/configured)
+// - Removed operational status dropdown (online/offline is separate concern)
+// - Added "why this matters" explanations for user education
+
+import { useState, useEffect } from 'react';
+import { MapPin, Settings, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import Modal from '../common/Modal.jsx';
+import { updateGateway } from '../../services/gateways.js';
+import { locationService } from '../../services/locationService.js';
+import { formatLastSeen, formatDateTime } from '../../utils/formatters.js';
+import { 
+  getGatewayConfigStatus, 
+  getGatewayConfigBadge,
+  getRequiredGatewayAction 
+} from '../../utils/gatewayConfigStatus.js';
+
+const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
+  const [formData, setFormData] = useState({
+    gateway_name: gateway.gateway_name === 'Orphan Gateway' ? '' : (gateway.gateway_name || ''),
+    location_id: gateway.location_id || '',
+    site_id: gateway.site_id || '',
+    assigned_at: new Date().toISOString()
+  });
+
+  const [locations, setLocations] = useState({ sites: [], floors: [], rooms: [], zones: [] });
+  const [selectedSite, setSelectedSite] = useState(gateway.site_id || '');
+  const [selectedFloor, setSelectedFloor] = useState('');
+  const [selectedRoom, setSelectedRoom] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Load location hierarchy
+  useEffect(() => {
+    loadLocations();
+  }, []);
+
+  // Update location filters when selections change
+  useEffect(() => {
+    if (selectedSite) {
+      const floors = locations.floors.filter(f => f.parent_id === selectedSite);
+      setLocations(prev => ({ ...prev, floors }));
+    }
+  }, [selectedSite]);
+
+  useEffect(() => {
+    if (selectedFloor) {
+      const rooms = locations.rooms.filter(r => r.parent_id === selectedFloor);
+      setLocations(prev => ({ ...prev, rooms }));
+    }
+  }, [selectedFloor]);
+
+  useEffect(() => {
+    if (selectedRoom) {
+      const zones = locations.zones.filter(z => z.parent_id === selectedRoom);
+      setLocations(prev => ({ ...prev, zones }));
+      // Auto-select room as location if no zones
+      if (zones.length === 0) {
+        setFormData(prev => ({ ...prev, location_id: selectedRoom }));
+      }
+    }
+  }, [selectedRoom]);
+
+  const loadLocations = async () => {
+    try {
+      const response = await locationService.getLocations();
+      const locationHierarchy = { sites: [], floors: [], rooms: [], zones: [] };
+      
+      response.forEach(location => {
+        switch (location.type) {
+          case 'site':
+            locationHierarchy.sites.push(location);
+            break;
+          case 'floor':
+            locationHierarchy.floors.push(location);
+            break;
+          case 'room':
+            locationHierarchy.rooms.push(location);
+            break;
+          case 'zone':
+            locationHierarchy.zones.push(location);
+            break;
+        }
+      });
+      
+      setLocations(locationHierarchy);
+    } catch (err) {
+      console.error('Failed to load locations:', err);
+      setError('Failed to load location hierarchy');
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Validation
+    if (!formData.gateway_name.trim()) {
+      setError('Gateway name is required');
+      return;
+    }
+    
+    if (!formData.location_id) {
+      setError('Location assignment is required');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      
+      const updatePayload = {
+        gateway_name: formData.gateway_name.trim(),
+        location_id: formData.location_id,
+        ...(selectedSite && { site_id: selectedSite }),
+        ...(selectedFloor && { floor_id: selectedFloor }),
+        ...(selectedRoom && { room_id: selectedRoom })
+      };
+
+      await updateGateway(gateway.gw_eui, updatePayload);
+      onSaved?.();
+    } catch (err) {
+      console.error('Failed to update gateway configuration:', err);
+      setError(err?.userMessage || err?.message || 'Failed to save configuration');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Configuration status analysis
+  const configStatus = getGatewayConfigStatus(gateway);
+  const configBadge = getGatewayConfigBadge(gateway);
+  const requiredAction = getRequiredGatewayAction(gateway);
+  const isOrphaned = gateway.gateway_name === 'Orphan Gateway' || !gateway.gateway_name;
+
+  // Operational status (separate from configuration)
+  const getOperationalBadge = () => {
+    if (gateway.archived_at) return { color: 'bg-gray-100 text-gray-600', text: 'ARCHIVED' };
+    if (gateway.status === 'online') return { color: 'bg-green-100 text-green-800', text: 'ONLINE' };
+    if (gateway.status === 'offline') return { color: 'bg-red-100 text-red-800', text: 'OFFLINE' };
+    return { color: 'bg-gray-100 text-gray-600', text: 'UNKNOWN' };
+  };
+
+  const operationalBadge = getOperationalBadge();
+
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={`Configure Gateway: ${gateway.gateway_name || gateway.gw_eui}`}
+      size="large"
+    >
+      <div className="space-y-6">
+        {/* Configuration Status Overview */}
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+            <Settings className="w-4 h-4 mr-2" />
+            Configuration Status
+          </h4>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700">Gateway EUI</label>
+              <div className="text-sm font-mono bg-gray-100 px-3 py-2 rounded border-2 border-gray-200 text-gray-700">
+                <span className="text-xs text-gray-500 uppercase tracking-wide">Hardware ID:</span>
+                <br />
+                {gateway.gw_eui}
+              </div>
+                {gateway.gw_eui}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Configuration Status</label>
+              <div className="mt-1">
+                <span className={`px-2 py-1 rounded text-xs font-medium ${configBadge.className}`}>
+                  {configBadge.text}
+                </span>
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Required Action</label>
+              <div className="text-sm text-gray-900">{requiredAction}</div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Operational Status</label>
+              <div className="mt-1">
+                <span className={`px-2 py-1 rounded text-xs font-medium ${operationalBadge.color}`}>
+                  {operationalBadge.text}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Configuration Issues Alert */}
+          {configStatus !== 'configured' && (
+            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded flex items-start">
+              <AlertCircle className="w-4 h-4 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" />
+              <div className="text-sm">
+                <p className="text-yellow-800 font-medium">Configuration Required</p>
+                <p className="text-yellow-700">
+                  {isOrphaned && 'This gateway was auto-created and needs a custom name. '}
+                  {!formData.location_id && 'Location assignment is required for spatial analytics and device management.'}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Configuration Form */}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          
+          {/* Gateway Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <Settings className="inline w-4 h-4 mr-1" />
+              Gateway Name *
+            </label>
+            <input
+              type="text"
+              value={formData.gateway_name}
+              onChange={(e) => setFormData(prev => ({ ...prev, gateway_name: e.target.value }))}
+              placeholder={isOrphaned ? 'Replace "Orphan Gateway" with custom name' : 'Enter gateway name'}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            />
+            {isOrphaned && (
+              <p className="text-xs text-gray-500 mt-1">
+                "💡" "Orphan Gateway" is auto-generated. Give it a meaningful name like "Building-A-Floor-2" or "Main-Entrance-GW"
+              </p>
+            )}
+          </div>
+
+          {/* Location Assignment */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <MapPin className="inline w-4 h-4 mr-1" />
+              Location Assignment *
+            </label>
+            
+            <div className="space-y-3">
+              {/* Site Selection */}
+              <select
+                value={selectedSite}
+                onChange={(e) => {
+                  setSelectedSite(e.target.value);
+                  setSelectedFloor('');
+                  setSelectedRoom('');
+                  setFormData(prev => ({ ...prev, location_id: e.target.value }));
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              >
+                <option value="">Select site...</option>
+                {locations.sites.map(site => (
+                  <option key={site.location_id} value={site.location_id}>
+                    "🏢" {site.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* Floor Selection */}
+              {selectedSite && locations.floors.length > 0 && (
+                <select
+                  value={selectedFloor}
+                  onChange={(e) => {
+                    setSelectedFloor(e.target.value);
+                    setSelectedRoom('');
+                    setFormData(prev => ({ ...prev, location_id: e.target.value || selectedSite }));
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ml-4"
+                >
+                  <option value="">Select floor (optional)...</option>
+                  {locations.floors.map(floor => (
+                    <option key={floor.location_id} value={floor.location_id}>
+                      "🏗️" {floor.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Room Selection */}
+              {selectedFloor && locations.rooms.length > 0 && (
+                <select
+                  value={selectedRoom}
+                  onChange={(e) => {
+                    setSelectedRoom(e.target.value);
+                    setFormData(prev => ({ ...prev, location_id: e.target.value || selectedFloor }));
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ml-8"
+                >
+                  <option value="">Select room (optional)...</option>
+                  {locations.rooms.map(room => (
+                    <option key={room.location_id} value={room.location_id}>
+                      "🚪" {room.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Zone Selection */}
+              {selectedRoom && locations.zones.length > 0 && (
+                <select
+                  value={formData.location_id}
+                  onChange={(e) => setFormData(prev => ({ ...prev, location_id: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ml-12"
+                >
+                  <option value={selectedRoom}>No specific zone</option>
+                  {locations.zones.map(zone => (
+                    <option key={zone.location_id} value={zone.location_id}>
+                      "📍" {zone.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+
+          {/* Assignment Date/Time */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <Clock className="inline w-4 h-4 mr-1" />
+              Assignment Date & Time
+            </label>
+            <input
+              type="datetime-local"
+              value={formData.assigned_at ? new Date(formData.assigned_at).toISOString().slice(0, 16) : ''}
+              onChange={(e) => setFormData(prev => ({ 
+                ...prev, 
+                assigned_at: new Date(e.target.value).toISOString() 
+              }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              This tracks when the gateway was assigned to this location for historical purposes.
+            </p>
+          </div>
+
+          {/* Impact Explanation */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
+              <div>
+                <h4 className="text-sm font-medium text-blue-900">Configuration Benefits</h4>
+                <p className="text-sm text-blue-700 mt-1">Completing this configuration will enable:</p>
+                <ul className="text-sm text-blue-700 mt-2 space-y-1">
+                  <li>•bull; <strong>Device Management:</strong> Devices can be automatically assigned to this gateway's location</li>
+                  <li>•bull; <strong>Spatial Analytics:</strong> Location-based reporting and insights</li>
+                  <li>•bull; <strong>Network Planning:</strong> Coverage analysis and optimization</li>
+                  <li>•bull; <strong>Maintenance:</strong> Site-specific gateway management and monitoring</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Current Gateway Info */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="font-medium text-gray-900 mb-2">Gateway Information</h4>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-600">Last Seen:</span>
+                <span className="ml-2 text-gray-900">{formatLastSeen(gateway.last_seen_at) || 'Never'}</span>
+              </div>
+              <div>
+                <span className="text-gray-600">Created:</span>
+                <span className="ml-2 text-gray-900">{formatDateTime(gateway.created_at)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Error Display */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-3">
+              <div className="flex items-center">
+                <AlertCircle className="w-4 h-4 text-red-400 mr-2" />
+                <span className="text-sm text-red-600">{error}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !formData.gateway_name.trim() || !formData.location_id}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Save Configuration
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </Modal>
+  );
+};
+
+export default GatewayConfigModal;

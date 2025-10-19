@@ -1,0 +1,541 @@
+/*
+ * SenseMy IoT Platform - Analytics Dashboard with Flexible Duration
+ * Version: 5.0.0 - Flexible Chart Duration Controls
+ * Last Updated: 2025-08-12 00:45:00 UTC
+ * Author: SenseMy IoT Development Team
+ *
+ * Changelog:
+ * - Added flexible time duration controls (1h, 6h, 24h, 7d, 30d)
+ * - Dynamic data fetching based on selected time period
+ * - Smart auto-refresh intervals for different durations
+ * - Enhanced time period selector with presets
+ * - Optimized chart performance for longer time ranges
+ */
+
+import React, { useState, useEffect } from 'react';
+import {
+  BarChart3,
+  Activity,
+  AlertCircle,
+  CheckCircle,
+  RefreshCw,
+  Clock,
+  Thermometer,
+  Droplets,
+  Wind,
+  Battery,
+  TrendingUp,
+  Settings,
+  Calendar,
+  Timer
+} from 'lucide-react';
+
+// Import environmental hook and chart components
+import { useEnvironmental } from '../hooks/useEnvironmental.js';
+import EnvironmentalTrends from '../components/environmental/EnvironmentalTrends.jsx';
+import EnvironmentalDashboard from '../components/environmental/EnvironmentalDashboard.jsx';
+import MetricSelector from '../components/environmental/MetricSelector.jsx';
+import VersionInfo from "../components/common/VersionInfo.jsx";
+
+const Analytics = () => {
+  // State for selected metric and chart configuration
+  const [selectedMetric, setSelectedMetric] = useState('temperature');
+  const [chartType, setChartType] = useState('line');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // Time duration controls
+  const [selectedDuration, setSelectedDuration] = useState('24h');
+  const [customHours, setCustomHours] = useState(24);
+
+  // Time duration presets
+  const durationPresets = [
+    { value: '1h', label: '1 Hour', hours: 1, refreshInterval: 30000 }, // 30 seconds
+    { value: '6h', label: '6 Hours', hours: 6, refreshInterval: 60000 }, // 1 minute
+    { value: '24h', label: '24 Hours', hours: 24, refreshInterval: 60000 }, // 1 minute
+    { value: '7d', label: '7 Days', hours: 168, refreshInterval: 300000 }, // 5 minutes
+    { value: '30d', label: '30 Days', hours: 720, refreshInterval: 600000 }, // 10 minutes
+    { value: 'custom', label: 'Custom', hours: customHours, refreshInterval: 60000 }
+  ];
+
+  // Get current duration settings
+  const currentDuration = durationPresets.find(d => d.value === selectedDuration) || durationPresets[2];
+
+  // Use environmental hook with dynamic duration
+  const {
+    processedLatestReadings,
+    deviceHealth,
+    metricAvailability,
+    environmentalHourly,
+    sensorCapabilities,
+    chartData,
+    loading,
+    isLoading,
+    error,
+    lastUpdated,
+    hasData,
+    refreshAll,
+    refreshMetric
+  } = useEnvironmental({
+    selectedMetric,
+    autoRefresh: true,
+    refreshInterval: currentDuration.refreshInterval,
+    hours: currentDuration.hours
+  });
+
+  // Handle duration change
+  const handleDurationChange = (newDuration) => {
+    setSelectedDuration(newDuration);
+    
+    // If custom is selected, don't change the hours yet
+    if (newDuration !== 'custom') {
+      const preset = durationPresets.find(d => d.value === newDuration);
+      if (preset) {
+        setCustomHours(preset.hours);
+      }
+    }
+  };
+
+  // Handle custom hours change
+  const handleCustomHoursChange = (hours) => {
+    setCustomHours(Math.max(1, Math.min(8760, hours))); // 1 hour to 1 year max
+  };
+
+  // Handle manual refresh
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshAll();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Handle metric change
+  const handleMetricChange = (newMetric) => {
+    setSelectedMetric(newMetric);
+  };
+
+  // Handle chart type change
+  const handleChartTypeChange = (newType) => {
+    setChartType(newType);
+  };
+
+  // Compute environmental statistics
+  const environmentalStats = {
+    totalSensors: processedLatestReadings.length,
+    activeSensors: processedLatestReadings.filter(d => 
+      d.status?.environmental_status === 'ok'
+    ).length,
+    selectedMetricSensors: metricAvailability[selectedMetric]?.count || 0,
+    selectedMetricCoverage: metricAvailability[selectedMetric]?.percentage || 0,
+    healthyDevices: deviceHealth.filter(d => d.overall_health === 'healthy').length,
+    totalHealthMonitored: deviceHealth.length
+  };
+
+  // Get last updated text
+  const getLastUpdatedText = () => {
+    if (!lastUpdated) return 'Never';
+    const now = new Date();
+    const diffMinutes = Math.floor((now - lastUpdated) / (1000 * 60));
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes === 1) return '1 minute ago';
+    if (diffMinutes < 60) return `${diffMinutes} minutes ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours === 1) return '1 hour ago';
+    return `${diffHours} hours ago`;
+  };
+
+  // Get next refresh countdown
+  const getRefreshCountdown = () => {
+    const interval = currentDuration.refreshInterval;
+    const minutes = Math.floor(interval / 60000);
+    const seconds = Math.floor((interval % 60000) / 1000);
+    
+    if (minutes > 0) {
+      return `${minutes}m${seconds > 0 ? ` ${seconds}s` : ''}`;
+    }
+    return `${seconds}s`;
+  };
+
+  // Get metric icon
+  const getMetricIcon = (metric) => {
+    const icons = {
+      temperature: Thermometer,
+      humidity: Droplets,
+      co2: Wind
+    };
+    return icons[metric] || Thermometer;
+  };
+
+  // Get metric color
+  const getMetricColor = (metric) => {
+    const colors = {
+      temperature: 'text-orange-600',
+      humidity: 'text-blue-600',
+      co2: 'text-green-600'
+    };
+    return colors[metric] || 'text-gray-600';
+  };
+
+  // Get duration display text
+  const getDurationDisplayText = () => {
+    const hours = currentDuration.hours;
+    if (hours < 24) {
+      return `${hours}h`;
+    } else if (hours < 168) {
+      return `${Math.round(hours / 24)}d`;
+    } else if (hours < 720) {
+      return `${Math.round(hours / 168)}w`;
+    } else {
+      return `${Math.round(hours / 720)}mo`;
+    }
+  };
+
+  const MetricIcon = getMetricIcon(selectedMetric);
+  const metricColor = getMetricColor(selectedMetric);
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      {/* Header with Version Info and Controls */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Environmental Analytics</h1>
+          <p className="descriptive-text">Real-time monitoring with flexible time ranges</p>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+          <VersionInfo />
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className={`btn-secondary ${showAdvanced ? 'bg-blue-50 text-blue-600' : ''}`}
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              {showAdvanced ? 'Hide' : 'Show'} Charts
+            </button>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || isLoading}
+              className={`btn-primary ${refreshing || isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="responsive-card bg-red-50 border-red-200 fade-in">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-medium text-red-800">Error Loading Analytics</h3>
+              <p className="text-sm text-red-700 mt-1">
+                {error.userMessage || error.message || 'An error occurred while loading environmental data'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Metric Selector with Duration Controls */}
+      <div className="responsive-card fade-in">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+          <div className="flex-1">
+            <MetricSelector
+              selectedMetric={selectedMetric}
+              onMetricChange={handleMetricChange}
+              metricAvailability={metricAvailability}
+              sensorCapabilities={sensorCapabilities}
+              disabled={isLoading}
+              showCounts={true}
+              showIcons={true}
+            />
+          </div>
+          
+          {/* Time Duration Controls */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+            {/* Duration Preset Selector */}
+            <div className="flex items-center space-x-2">
+              <Calendar className="w-4 h-4 text-gray-400" />
+              <select
+                value={selectedDuration}
+                onChange={(e) => handleDurationChange(e.target.value)}
+                className="text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {durationPresets.map(preset => (
+                  <option key={preset.value} value={preset.value}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Custom Hours Input */}
+            {selectedDuration === 'custom' && (
+              <div className="flex items-center space-x-2">
+                <Timer className="w-4 h-4 text-gray-400" />
+                <input
+                  type="number"
+                  min="1"
+                  max="8760"
+                  value={customHours}
+                  onChange={(e) => handleCustomHoursChange(parseInt(e.target.value) || 1)}
+                  className="w-20 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Hours"
+                />
+                <span className="text-sm text-gray-500">hours</span>
+              </div>
+            )}
+
+            {/* Quick Stats for Selected Metric */}
+            <div className="flex items-center space-x-4 text-sm">
+              <div className="flex items-center">
+                <MetricIcon className={`w-4 h-4 mr-1 ${metricColor}`} />
+                <span className="text-gray-600">{environmentalStats.selectedMetricSensors}</span>
+              </div>
+              <div className="flex items-center">
+                <Activity className="w-4 h-4 mr-1 text-green-600" />
+                <span className="text-gray-600">{environmentalStats.selectedMetricCoverage.toFixed(1)}%</span>
+              </div>
+              <div className="flex items-center">
+                <Clock className="w-4 h-4 mr-1 text-gray-400" />
+                <span className="text-gray-500">{getLastUpdatedText()}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Duration Info Bar */}
+        <div className="mt-4 flex items-center justify-between text-xs text-gray-500 bg-gray-50 rounded-md px-3 py-2">
+          <div className="flex items-center space-x-4">
+            <span>📊 Showing {getDurationDisplayText()} of data</span>
+            <span>🔄 Auto-refresh every {getRefreshCountdown()}</span>
+            <span>📈 {chartData.length} data points</span>
+          </div>
+          {currentDuration.hours > 24 && (
+            <span className="text-amber-600">⚠️ Large time range - data may be aggregated</span>
+          )}
+        </div>
+      </div>
+
+      {/* Environmental Statistics Cards */}
+      <div className="analytics-stats-grid">
+        <div className="stat-card fade-in">
+          <div className="flex items-center justify-between w-full lg:flex-col lg:items-start">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Active Sensors</p>
+              <p className="stat-number text-blue-600">
+                {environmentalStats.activeSensors}/{environmentalStats.totalSensors}
+              </p>
+            </div>
+            <Activity className="w-8 h-8 text-blue-400 flex-shrink-0" />
+          </div>
+        </div>
+
+        <div className="stat-card fade-in">
+          <div className="flex items-center justify-between w-full lg:flex-col lg:items-start">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Temperature Sensors</p>
+              <p className="stat-number text-orange-600">{metricAvailability.temperature?.count || 0}</p>
+            </div>
+            <Thermometer className="w-8 h-8 text-orange-400 flex-shrink-0" />
+          </div>
+        </div>
+
+        <div className="stat-card fade-in">
+          <div className="flex items-center justify-between w-full lg:flex-col lg:items-start">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Humidity Sensors</p>
+              <p className="stat-number text-blue-600">{metricAvailability.humidity?.count || 0}</p>
+            </div>
+            <Droplets className="w-8 h-8 text-blue-400 flex-shrink-0" />
+          </div>
+        </div>
+
+        <div className="stat-card fade-in">
+          <div className="flex items-center justify-between w-full lg:flex-col lg:items-start">
+            <div>
+              <p className="text-sm font-medium text-gray-600">CO2 Sensors</p>
+              <p className="stat-number text-green-600">{metricAvailability.co2?.count || 0}</p>
+            </div>
+            <Wind className="w-8 h-8 text-green-400 flex-shrink-0" />
+          </div>
+        </div>
+      </div>
+
+      {/* Environmental Trends Chart with Flexible Duration */}
+      {showAdvanced && (
+        <div className="responsive-card fade-in">
+          <div className="border-b border-gray-200 pb-4 mb-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <TrendingUp className="w-5 h-5 text-blue-600 mr-2" />
+                <h2 className="section-title">
+                  Environmental Trends - {currentDuration.label}
+                </h2>
+              </div>
+              <div className="text-sm text-gray-500">
+                {getDurationDisplayText()} historical data with ASHRAE compliance
+              </div>
+            </div>
+          </div>
+
+          <EnvironmentalTrends
+            chartData={chartData}
+            selectedMetric={selectedMetric}
+            selectedDevices={[]}
+            hours={currentDuration.hours}
+            loading={loading.hourly}
+            error={error}
+            sensorCapabilities={sensorCapabilities}
+            onChartTypeChange={handleChartTypeChange}
+            className="mb-6"
+          />
+        </div>
+      )}
+
+      {/* Real-time Environmental Dashboard */}
+      <div className="responsive-card fade-in">
+        <EnvironmentalDashboard
+          environmentalData={processedLatestReadings}
+          deviceHealth={deviceHealth}
+          selectedMetric={selectedMetric}
+          loading={loading.latest}
+          error={error}
+          lastUpdated={lastUpdated}
+          onRefresh={refreshMetric}
+        />
+      </div>
+
+      {/* Device Health Summary */}
+      {deviceHealth.length > 0 && (
+        <div className="responsive-card fade-in">
+          <div className="border-b border-gray-200 pb-4 mb-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <Battery className="w-5 h-5 text-green-600 mr-2" />
+                <h2 className="section-title">Device Health Summary</h2>
+              </div>
+              <div className="text-sm text-gray-500">
+                {environmentalStats.healthyDevices}/{environmentalStats.totalHealthMonitored} devices healthy
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Health Status Distribution */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="font-medium text-gray-900 mb-3">Overall Health</h4>
+              <div className="space-y-2">
+                {['healthy', 'warning', 'critical', 'offline'].map(status => {
+                  const count = deviceHealth.filter(d => d.overall_health === status).length;
+                  const percentage = deviceHealth.length > 0 ? (count / deviceHealth.length * 100) : 0;
+                  const colors = {
+                    healthy: 'text-green-600 bg-green-100',
+                    warning: 'text-yellow-600 bg-yellow-100',
+                    critical: 'text-red-600 bg-red-100',
+                    offline: 'text-gray-600 bg-gray-100'
+                  };
+
+                  return (
+                    <div key={status} className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600 capitalize">{status}:</span>
+                      <div className="flex items-center">
+                        <span className="text-sm font-medium mr-2">{count}</span>
+                        <span className={`text-xs px-2 py-1 rounded-full ${colors[status]}`}>
+                          {percentage.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Battery Status Distribution */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="font-medium text-gray-900 mb-3">Battery Status</h4>
+              <div className="space-y-2">
+                {['good', 'low', 'critical'].map(status => {
+                  const count = deviceHealth.filter(d => d.battery?.status === status).length;
+                  const percentage = deviceHealth.length > 0 ? (count / deviceHealth.length * 100) : 0;
+                  const colors = {
+                    good: 'text-green-600 bg-green-100',
+                    low: 'text-yellow-600 bg-yellow-100',
+                    critical: 'text-red-600 bg-red-100'
+                  };
+
+                  return (
+                    <div key={status} className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600 capitalize">{status}:</span>
+                      <div className="flex items-center">
+                        <span className="text-sm font-medium mr-2">{count}</span>
+                        <span className={`text-xs px-2 py-1 rounded-full ${colors[status]}`}>
+                          {percentage.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Connectivity Status */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="font-medium text-gray-900 mb-3">Connectivity</h4>
+              <div className="space-y-2">
+                {['online', 'delayed', 'stale'].map(status => {
+                  const count = deviceHealth.filter(d => d.connectivity?.status === status).length;
+                  const percentage = deviceHealth.length > 0 ? (count / deviceHealth.length * 100) : 0;
+                  const colors = {
+                    online: 'text-green-600 bg-green-100',
+                    delayed: 'text-yellow-600 bg-yellow-100',
+                    stale: 'text-red-600 bg-red-100'
+                  };
+
+                  return (
+                    <div key={status} className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600 capitalize">{status}:</span>
+                      <div className="flex items-center">
+                        <span className="text-sm font-medium mr-2">{count}</span>
+                        <span className={`text-xs px-2 py-1 rounded-full ${colors[status]}`}>
+                          {percentage.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!hasData && !isLoading && (
+        <div className="responsive-card fade-in">
+          <div className="text-center py-12">
+            <BarChart3 className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="section-title text-gray-900 mb-2">No Environmental Data</h3>
+            <p className="descriptive-text max-w-md mx-auto mb-4">
+              No environmental sensors found with recent data. Check your device connections and try refreshing.
+            </p>
+            <button
+              onClick={handleRefresh}
+              className="btn-primary"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh Data
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Analytics;

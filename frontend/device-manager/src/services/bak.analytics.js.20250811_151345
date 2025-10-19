@@ -1,0 +1,101 @@
+// src/services/analytics.js
+// Version: 1.0.0 - 2025-08-09 15:50 UTC
+// Changelog:
+// - Initial analytics API service implementation
+// - Public API access to analytics.sensemy.cloud
+// - Follows existing service patterns from devices/locations
+
+import apiClient from './apiClient.js';
+
+const ANALYTICS_BASE_URL = 'https://analytics.sensemy.cloud';
+
+// Create analytics-specific API client
+const analyticsClient = {
+  get: async (endpoint) => {
+    const response = await fetch(`${ANALYTICS_BASE_URL}${endpoint}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Analytics API error: ${response.status} ${response.statusText}`);
+    }
+    
+    return response.json();
+  }
+};
+
+export const analyticsService = {
+  // Get service health status
+  getHealth: async () => {
+    try {
+      return await analyticsClient.get('/health');
+    } catch (error) {
+      console.error('Failed to get analytics health:', error);
+      throw new Error(error.userMessage || error.message || 'Failed to check analytics service health');
+    }
+  },
+
+  // Get aggregation patterns (configuration)
+  getAggregationPatterns: async () => {
+    try {
+      return await analyticsClient.get('/v1/aggregations');
+    } catch (error) {
+      console.error('Failed to get aggregation patterns:', error);
+      throw new Error(error.userMessage || error.message || 'Failed to load aggregation patterns');
+    }
+  },
+
+  // Get occupancy analytics data
+  getOccupancyData: async (params = {}) => {
+    try {
+      const queryString = new URLSearchParams(params).toString();
+      const endpoint = `/v1/aggregations/analytics/occupancy${queryString ? '?' + queryString : ''}`;
+      return await analyticsClient.get(endpoint);
+    } catch (error) {
+      console.error('Failed to get occupancy data:', error);
+      throw new Error(error.userMessage || error.message || 'Failed to load occupancy data');
+    }
+  },
+
+  // Get real-time device status
+  getDeviceStatus: async () => {
+    try {
+      const occupancyData = await analyticsService.getOccupancyData();
+      
+      // Process data to determine active/inactive devices
+      const deviceStatus = {};
+      const now = new Date();
+      const recentThreshold = new Date(now.getTime() - (2 * 60 * 60 * 1000)); // 2 hours ago
+      
+      occupancyData.forEach(record => {
+        const recordTime = new Date(record.hour_bucket);
+        const isRecent = recordTime >= recentThreshold;
+        const hasActivity = (record.sum_in > 0 || record.sum_out > 0);
+        
+        if (!deviceStatus[record.deveui] || isRecent) {
+          deviceStatus[record.deveui] = {
+            deveui: record.deveui,
+            lastSeen: record.hour_bucket,
+            currentOccupancy: parseInt(record.occupancy) || 0,
+            isActive: isRecent && hasActivity,
+            recentTraffic: {
+              in: record.sum_in || 0,
+              out: record.sum_out || 0
+            }
+          };
+        }
+      });
+      
+      return Object.values(deviceStatus);
+    } catch (error) {
+      console.error('Failed to get device status:', error);
+      throw new Error(error.userMessage || error.message || 'Failed to load device status');
+    }
+  }
+};
+
+export default analyticsService;

@@ -1,0 +1,455 @@
+// src/components/environmental/EnvironmentalTrends.jsx
+// Version: 1.0.0 - 2025-08-12 00:02:00 UTC
+// Historical environmental trends with Recharts integration
+// Responsive charts with ASHRAE guidelines and multi-device comparison
+
+import React, { useState, useMemo } from 'react';
+import {
+ LineChart,
+ Line,
+ AreaChart,
+ Area,
+ XAxis,
+ YAxis,
+ CartesianGrid,
+ Tooltip,
+ Legend,
+ ResponsiveContainer,
+ ReferenceLine
+} from 'recharts';
+import { 
+ TrendingUp, 
+ TrendingDown, 
+ BarChart3, 
+ Activity,
+ Thermometer,
+ Droplets,
+ Wind
+} from 'lucide-react';
+
+const EnvironmentalTrends = ({ 
+ chartData = [],
+ selectedMetric = 'temperature',
+ selectedDevices = [],
+ hours = 24,
+ loading = false,
+ error = null,
+ sensorCapabilities = null,
+ onChartTypeChange = null,
+ className = ''
+}) => {
+ const [chartType, setChartType] = useState('line'); // 'line' or 'area'
+ const [showMinMax, setShowMinMax] = useState(false);
+
+ // Metric configuration
+ const metricConfig = {
+   temperature: {
+     icon: Thermometer,
+     label: 'Temperature',
+     unit: '°C',
+     color: '#f97316', // orange-500
+     lightColor: '#fed7aa', // orange-200
+     ashrae: { min: 20, max: 25 }
+   },
+   humidity: {
+     icon: Droplets,
+     label: 'Humidity',
+     unit: '%',
+     color: '#3b82f6', // blue-500
+     lightColor: '#bfdbfe', // blue-200
+     ashrae: { min: 40, max: 60 }
+   },
+   co2: {
+     icon: Wind,
+     label: 'CO2',
+     unit: 'ppm',
+     color: '#10b981', // green-500
+     lightColor: '#a7f3d0', // green-200
+     ashrae: { max: 1000 }
+   }
+ };
+
+ // Get ASHRAE standards for current metric
+ const getASHRAEStandards = () => {
+   if (!sensorCapabilities?.capabilities?.[selectedMetric]?.ashrae_standard) {
+     return metricConfig[selectedMetric]?.ashrae || {};
+   }
+   return sensorCapabilities.capabilities[selectedMetric].ashrae_standard;
+ };
+
+ // Process chart data for the selected metric
+ const processedChartData = useMemo(() => {
+   if (!chartData.length) return [];
+
+   return chartData.map(item => ({
+     ...item,
+     // Format timestamp for display
+     timeDisplay: new Date(item.timestamp).toLocaleTimeString('en-US', { 
+       hour: '2-digit', 
+       minute: '2-digit',
+       hour12: false 
+     }),
+     dateDisplay: new Date(item.timestamp).toLocaleDateString('en-US', {
+       month: 'short',
+       day: 'numeric'
+     }),
+     // Get primary metric value
+     value: item[`${selectedMetric}_avg`],
+     min_value: item[`${selectedMetric}_min`],
+     max_value: item[`${selectedMetric}_max`]
+   })).filter(item => item.value !== null && item.value !== undefined);
+ }, [chartData, selectedMetric]);
+
+ // Get unique devices in chart data
+ const devicesInChart = useMemo(() => {
+   const devices = [...new Set(chartData.map(item => item.deveui))];
+   return devices.map(deveui => {
+     const sample = chartData.find(item => item.deveui === deveui);
+     return {
+       deveui,
+       device_name: sample?.device_name || deveui,
+       device_type: sample?.device_type || 'Unknown'
+     };
+   });
+ }, [chartData]);
+
+ // Custom tooltip component
+ const CustomTooltip = ({ active, payload, label }) => {
+   if (!active || !payload || !payload.length) return null;
+
+   const data = payload[0].payload;
+   const config = metricConfig[selectedMetric];
+   const ashrae = getASHRAEStandards();
+
+   return (
+     <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+       <p className="font-medium text-gray-900 mb-2">
+         {data.device_name || data.deveui}
+       </p>
+       <p className="text-sm text-gray-600 mb-2">
+         {data.timeDisplay} • {data.dateDisplay}
+       </p>
+       
+       {payload.map((entry, index) => (
+         <div key={index} className="flex items-center justify-between mb-1">
+           <span className="text-sm" style={{ color: entry.color }}>
+             {entry.name}:
+           </span>
+           <span className="font-medium ml-2">
+             {entry.value?.toFixed(1)} {config?.unit}
+           </span>
+         </div>
+       ))}
+
+       {showMinMax && data.min_value !== null && data.max_value !== null && (
+         <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-600">
+           <div>Min: {data.min_value?.toFixed(1)} {config?.unit}</div>
+           <div>Max: {data.max_value?.toFixed(1)} {config?.unit}</div>
+         </div>
+       )}
+
+       {/* ASHRAE Compliance */}
+       {ashrae && (
+         <div className="mt-2 pt-2 border-t border-gray-100 text-xs">
+           <div className="text-gray-600 mb-1">ASHRAE Standard:</div>
+           {selectedMetric === 'co2' ? (
+             <div className={`${data.value <= ashrae.max ? 'text-green-600' : 'text-red-600'}`}>
+               {data.value <= ashrae.max ? '✓' : '✗'} ≤ {ashrae.max} {config?.unit}
+             </div>
+           ) : (
+             <div className={`${data.value >= ashrae.min && data.value <= ashrae.max ? 'text-green-600' : 'text-red-600'}`}>
+               {data.value >= ashrae.min && data.value <= ashrae.max ? '✓' : '✗'} {ashrae.min}-{ashrae.max} {config?.unit}
+             </div>
+           )}
+         </div>
+       )}
+     </div>
+   );
+ };
+
+ // Handle chart type change
+ const handleChartTypeChange = (newType) => {
+   setChartType(newType);
+   if (onChartTypeChange) {
+     onChartTypeChange(newType);
+   }
+ };
+
+ // Get chart height based on screen size
+ const getChartHeight = () => {
+   if (typeof window !== 'undefined') {
+     if (window.innerWidth < 768) return 250; // Mobile
+     if (window.innerWidth < 1024) return 350; // Tablet
+   }
+   return 400; // Desktop
+ };
+
+ const config = metricConfig[selectedMetric];
+ const ashrae = getASHRAEStandards();
+ 
+ if (loading) {
+   return (
+     <div className={`environmental-trends ${className}`}>
+       <div className="flex items-center justify-center p-8">
+         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+         <span className="ml-3 text-gray-600">Loading trend data...</span>
+       </div>
+     </div>
+   );
+ }
+
+ if (error) {
+   return (
+     <div className={`environmental-trends ${className}`}>
+       <div className="bg-red-50 border border-red-200 rounded-md p-4">
+         <div className="flex items-center">
+           <TrendingDown className="h-5 w-5 text-red-600 mr-2" />
+           <span className="text-red-800 font-medium">Failed to load trend data</span>
+         </div>
+         <p className="text-red-700 text-sm mt-1">{error.message}</p>
+       </div>
+     </div>
+   );
+ }
+
+ return (
+   <div className={`environmental-trends ${className}`}>
+     {/* Header */}
+     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 space-y-2 sm:space-y-0">
+       <div className="flex items-center">
+         {config && React.createElement(config.icon, { 
+           className: 'w-5 h-5 mr-2',
+           style: { color: config.color }
+         })}
+         <h3 className="text-lg font-semibold text-gray-900">
+           {config?.label} Trends ({hours}h)
+         </h3>
+       </div>
+
+       {/* Chart Controls */}
+       <div className="flex items-center space-x-2">
+         {/* Min/Max Toggle */}
+         <label className="flex items-center text-sm">
+           <input
+             type="checkbox"
+             checked={showMinMax}
+             onChange={(e) => setShowMinMax(e.target.checked)}
+             className="mr-1"
+           />
+           Min/Max
+         </label>
+
+         {/* Chart Type Selector */}
+         <div className="flex bg-gray-100 rounded-md p-1">
+           <button
+             onClick={() => handleChartTypeChange('line')}
+             className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+               chartType === 'line' 
+                 ? 'bg-white text-blue-600 shadow-sm' 
+                 : 'text-gray-600 hover:text-gray-900'
+             }`}
+           >
+             <Activity className="w-4 h-4" />
+           </button>
+           <button
+             onClick={() => handleChartTypeChange('area')}
+             className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+               chartType === 'area' 
+                 ? 'bg-white text-blue-600 shadow-sm' 
+                 : 'text-gray-600 hover:text-gray-900'
+             }`}
+           >
+             <BarChart3 className="w-4 h-4" />
+           </button>
+         </div>
+       </div>
+     </div>
+
+     {/* Chart */}
+     {processedChartData.length > 0 ? (
+       <div className="bg-white border border-gray-200 rounded-lg p-4">
+         <ResponsiveContainer width="100%" height={getChartHeight()}>
+           {chartType === 'area' ? (
+             <AreaChart data={processedChartData}>
+               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+               <XAxis 
+                 dataKey="timeDisplay" 
+                 stroke="#6b7280"
+                 fontSize={12}
+                 interval="preserveStartEnd"
+               />
+               <YAxis 
+                 stroke="#6b7280"
+                 fontSize={12}
+                 label={{ 
+                   value: config?.unit || '', 
+                   angle: -90, 
+                   position: 'insideLeft',
+                   style: { textAnchor: 'middle' }
+                 }}
+               />
+               <Tooltip content={<CustomTooltip />} />
+               
+               {/* ASHRAE Reference Lines */}
+               {ashrae.min && (
+                 <ReferenceLine 
+                   y={ashrae.min} 
+                   stroke="#10b981" 
+                   strokeDasharray="5 5"
+                   label={{ value: `Min: ${ashrae.min}`, position: "insideTopRight" }}
+                 />
+               )}
+               {ashrae.max && (
+                 <ReferenceLine 
+                   y={ashrae.max} 
+                   stroke="#ef4444" 
+                   strokeDasharray="5 5"
+                   label={{ value: `Max: ${ashrae.max}`, position: "insideTopRight" }}
+                 />
+               )}
+
+               <Area
+                 type="monotone"
+                 dataKey="value"
+                 stroke={config?.color}
+                 fill={config?.lightColor}
+                 strokeWidth={2}
+                 name={`${config?.label} (avg)`}
+               />
+
+               {/* Min/Max Areas */}
+               {showMinMax && (
+                 <>
+                   <Area
+                     type="monotone"
+                     dataKey="min_value"
+                     stroke={config?.color}
+                     fill="none"
+                     strokeWidth={1}
+                     strokeDasharray="3 3"
+                     name="Min"
+                   />
+                   <Area
+                     type="monotone"
+                     dataKey="max_value"
+                     stroke={config?.color}
+                     fill="none"
+                     strokeWidth={1}
+                     strokeDasharray="3 3"
+                     name="Max"
+                   />
+                 </>
+               )}
+             </AreaChart>
+           ) : (
+             <LineChart data={processedChartData}>
+               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+               <XAxis 
+                 dataKey="timeDisplay" 
+                 stroke="#6b7280"
+                 fontSize={12}
+                 interval="preserveStartEnd"
+               />
+               <YAxis 
+                 stroke="#6b7280"
+                 fontSize={12}
+                 label={{ 
+                   value: config?.unit || '', 
+                   angle: -90, 
+                   position: 'insideLeft',
+                   style: { textAnchor: 'middle' }
+                 }}
+               />
+               <Tooltip content={<CustomTooltip />} />
+               
+               {/* ASHRAE Reference Lines */}
+               {ashrae.min && (
+                 <ReferenceLine 
+                   y={ashrae.min} 
+                   stroke="#10b981" 
+                   strokeDasharray="5 5"
+                   label={{ value: `Min: ${ashrae.min}`, position: "insideTopRight" }}
+                 />
+               )}
+               {ashrae.max && (
+                 <ReferenceLine 
+                   y={ashrae.max} 
+                   stroke="#ef4444" 
+                   strokeDasharray="5 5"
+                   label={{ value: `Max: ${ashrae.max}`, position: "insideTopRight" }}
+                 />
+               )}
+
+               <Line
+                 type="monotone"
+                 dataKey="value"
+                 stroke={config?.color}
+                 strokeWidth={2}
+                 dot={{ fill: config?.color, strokeWidth: 2, r: 3 }}
+                 activeDot={{ r: 5, stroke: config?.color, strokeWidth: 2 }}
+                 name={`${config?.label} (avg)`}
+               />
+
+               {/* Min/Max Lines */}
+               {showMinMax && (
+                 <>
+                   <Line
+                     type="monotone"
+                     dataKey="min_value"
+                     stroke={config?.color}
+                     strokeWidth={1}
+                     strokeDasharray="3 3"
+                     dot={false}
+                     name="Min"
+                   />
+                   <Line
+                     type="monotone"
+                     dataKey="max_value"
+                     stroke={config?.color}
+                     strokeWidth={1}
+                     strokeDasharray="3 3"
+                     dot={false}
+                     name="Max"
+                   />
+                 </>
+               )}
+             </LineChart>
+           )}
+         </ResponsiveContainer>
+       </div>
+     ) : (
+       <div className="text-center py-8 bg-gray-50 rounded-lg">
+         <TrendingUp className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+         <h3 className="text-lg font-medium text-gray-900 mb-2">No Trend Data Available</h3>
+         <p className="text-gray-600">
+           No historical data found for {config?.label?.toLowerCase()} in the last {hours} hours.
+         </p>
+       </div>
+     )}
+
+     {/* Devices Legend */}
+     {devicesInChart.length > 1 && (
+       <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+         <h4 className="text-sm font-medium text-gray-700 mb-2">Devices in Chart:</h4>
+         <div className="flex flex-wrap gap-2">
+           {devicesInChart.map(device => (
+             <div
+               key={device.deveui}
+               className="inline-flex items-center px-2 py-1 bg-white border border-gray-200 rounded text-xs"
+             >
+               <div 
+                 className="w-2 h-2 rounded-full mr-2"
+                 style={{ backgroundColor: config?.color }}
+               />
+               <span className="font-medium">{device.device_name}</span>
+               <span className="text-gray-500 ml-1">({device.device_type})</span>
+             </div>
+           ))}
+         </div>
+       </div>
+     )}
+   </div>
+ );
+};
+
+export default EnvironmentalTrends;

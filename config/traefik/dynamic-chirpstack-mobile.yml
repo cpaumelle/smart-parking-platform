@@ -1,0 +1,34 @@
+http:
+  middlewares:
+    chirpstack-mobile-inject:
+      plugin:
+        rewrite-body:
+          monitoring:
+            methods:
+              - GET
+            types:
+              - text/html
+          rewrites:
+            - regex: '</head>'
+              replacement: '<link rel="stylesheet" href="/mobile-responsive.css"></head>'
+    
+    chirpstack-css-serve:
+      addPrefix:
+        prefix: /config/traefik
+  
+  routers:
+    chirpstack-mobile-css:
+      rule: "Host(`chirpstack.${DOMAIN}`) && Path(`/mobile-responsive.css`)"
+      service: chirpstack-css-file
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - chirpstack-css-serve
+  
+  services:
+    chirpstack-css-file:
+      loadBalancer:
+        servers:
+          - url: "http://traefik:80"

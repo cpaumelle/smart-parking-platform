@@ -1,0 +1,363 @@
+// src/hooks/useEnvironmental.js
+// Version: 1.0.0 - 2025-08-11 23:50:00 UTC
+// Environmental analytics hook for metric-first navigation
+// Follows patterns from useAnalytics.js and useDevices.js
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { analyticsService } from '../services/analytics.js';
+
+export const useEnvironmental = (options = {}) => {
+  const { 
+    selectedMetric = 'temperature',
+    selectedDevices = [],
+    autoRefresh = false, 
+    refreshInterval = 60000,
+    hours = 24
+  } = options;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // STATE MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════════
+
+  const [sensorCapabilities, setSensorCapabilities] = useState(null);
+  const [environmentalLatest, setEnvironmentalLatest] = useState([]);
+  const [environmentalHourly, setEnvironmentalHourly] = useState([]);
+  const [deviceHealth, setDeviceHealth] = useState([]);
+  const [deviceTypes, setDeviceTypes] = useState([]);
+  const [metricData, setMetricData] = useState([]);
+  const [comparisonData, setComparisonData] = useState(null);
+
+  const [loading, setLoading] = useState({
+    capabilities: false,
+    latest: false,
+    hourly: false,
+    health: false,
+    deviceTypes: false,
+    metricData: false,
+    comparison: false
+  });
+
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // CORE DATA FETCHING FUNCTIONS
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Fetch sensor capabilities for metric-first navigation
+  const fetchSensorCapabilities = useCallback(async () => {
+    try {
+      setLoading(prev => ({ ...prev, capabilities: true }));
+      setError(null);
+
+      const data = await analyticsService.getSensorCapabilities();
+      setSensorCapabilities(data);
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error('Failed to fetch sensor capabilities:', err);
+      setError(err);
+    } finally {
+      setLoading(prev => ({ ...prev, capabilities: false }));
+    }
+  }, []);
+
+  // Fetch latest environmental readings
+  const fetchEnvironmentalLatest = useCallback(async (params = {}) => {
+    try {
+      setLoading(prev => ({ ...prev, latest: true }));
+      setError(null);
+
+      const data = await analyticsService.getEnvironmentalLatest(params);
+      setEnvironmentalLatest(data || []);
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error('Failed to fetch environmental latest:', err);
+      setError(err);
+    } finally {
+      setLoading(prev => ({ ...prev, latest: false }));
+    }
+  }, []);
+
+  // Fetch hourly environmental aggregations
+  const fetchEnvironmentalHourly = useCallback(async (params = {}) => {
+    try {
+      setLoading(prev => ({ ...prev, hourly: true }));
+      
+      const hourlyParams = { hours, ...params };
+      const data = await analyticsService.getEnvironmentalHourly(hourlyParams);
+      setEnvironmentalHourly(data || []);
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error('Failed to fetch environmental hourly:', err);
+      setError(err);
+    } finally {
+      setLoading(prev => ({ ...prev, hourly: false }));
+    }
+  }, [hours]);
+
+  // Fetch device health data
+  const fetchDeviceHealth = useCallback(async (params = {}) => {
+    try {
+      setLoading(prev => ({ ...prev, health: true }));
+      
+      const data = await analyticsService.getDeviceHealth(params);
+      setDeviceHealth(data || []);
+    } catch (err) {
+      console.error('Failed to fetch device health:', err);
+      setError(err);
+    } finally {
+      setLoading(prev => ({ ...prev, health: false }));
+    }
+  }, []);
+
+  // Fetch environmental device types
+  const fetchDeviceTypes = useCallback(async () => {
+    try {
+      setLoading(prev => ({ ...prev, deviceTypes: true }));
+      
+      const data = await analyticsService.getEnvironmentalDeviceTypes();
+      setDeviceTypes(data || []);
+    } catch (err) {
+      console.error('Failed to fetch device types:', err);
+      setError(err);
+    } finally {
+      setLoading(prev => ({ ...prev, deviceTypes: false }));
+    }
+  }, []);
+
+  // Fetch metric-specific data
+  const fetchMetricData = useCallback(async (metric = selectedMetric, params = {}) => {
+    try {
+      setLoading(prev => ({ ...prev, metricData: true }));
+      setError(null);
+
+      const data = await analyticsService.getMetricData(metric, params);
+      setMetricData(data || []);
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error(`Failed to fetch ${metric} data:`, err);
+      setError(err);
+    } finally {
+      setLoading(prev => ({ ...prev, metricData: false }));
+    }
+  }, [selectedMetric]);
+
+  // Compare metrics across devices
+  const fetchComparisonData = useCallback(async (metric, devices, comparisonHours = hours) => {
+    try {
+      setLoading(prev => ({ ...prev, comparison: true }));
+      setError(null);
+
+      const data = await analyticsService.compareEnvironmentalMetrics(metric, devices, comparisonHours);
+      setComparisonData(data);
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error('Failed to fetch comparison data:', err);
+      setError(err);
+    } finally {
+      setLoading(prev => ({ ...prev, comparison: false }));
+    }
+  }, [hours]);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // COMPUTED VALUES AND HELPERS
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Get compatible devices for selected metric
+  const compatibleDevices = useMemo(() => {
+    if (!sensorCapabilities || !selectedMetric) return [];
+
+    const metricCapability = sensorCapabilities.capabilities[selectedMetric];
+    if (!metricCapability) return [];
+
+    return sensorCapabilities.device_type_breakdown.filter(
+      dt => dt[`supports_${selectedMetric}`]
+    );
+  }, [sensorCapabilities, selectedMetric]);
+
+  // Get metric availability summary
+  const metricAvailability = useMemo(() => {
+    if (!sensorCapabilities) return {};
+
+    return {
+      temperature: {
+        count: sensorCapabilities.capabilities.temperature?.sensor_count || 0,
+        percentage: sensorCapabilities.capabilities.temperature?.coverage_percent || 0
+      },
+      humidity: {
+        count: sensorCapabilities.capabilities.humidity?.sensor_count || 0,
+        percentage: sensorCapabilities.capabilities.humidity?.coverage_percent || 0
+      },
+      co2: {
+        count: sensorCapabilities.capabilities.co2?.sensor_count || 0,
+        percentage: sensorCapabilities.capabilities.co2?.coverage_percent || 0
+      }
+    };
+  }, [sensorCapabilities]);
+
+  // Process latest readings with ASHRAE compliance
+  const processedLatestReadings = useMemo(() => {
+    return environmentalLatest.map(reading => {
+      const processed = { ...reading };
+      
+      // Add ASHRAE compliance for each metric
+      if (reading.temperature?.value !== null) {
+        processed.temperature.ashrae = analyticsService.checkASHRAECompliance('temperature', reading.temperature.value);
+      }
+      if (reading.humidity?.value !== null) {
+        processed.humidity.ashrae = analyticsService.checkASHRAECompliance('humidity', reading.humidity.value);
+      }
+      if (reading.co2?.value !== null) {
+        processed.co2.ashrae = analyticsService.checkASHRAECompliance('co2', reading.co2.value);
+      }
+
+      return processed;
+    });
+  }, [environmentalLatest]);
+
+  // Prepare chart data for Recharts
+  const chartData = useMemo(() => {
+    if (!environmentalHourly.length) return [];
+
+    return environmentalHourly.map(record => ({
+      timestamp: new Date(record.hour_bucket).getTime(),
+      time: new Date(record.hour_bucket).toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }),
+      date: new Date(record.hour_bucket).toLocaleDateString(),
+      deveui: record.deveui,
+      device_name: record.device_name || record.deveui,
+      device_type: record.device_type,
+      temperature_avg: record.temperature?.avg,
+      temperature_min: record.temperature?.min,
+      temperature_max: record.temperature?.max,
+      humidity_avg: record.humidity?.avg,
+      humidity_min: record.humidity?.min,
+      humidity_max: record.humidity?.max,
+      co2_avg: record.co2?.avg,
+      co2_min: record.co2?.min,
+      co2_max: record.co2?.max,
+      reading_count: record.metadata?.reading_count
+    }));
+  }, [environmentalHourly]);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // BULK OPERATIONS
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Refresh all data
+  const refreshAll = useCallback(async () => {
+    const promises = [
+      fetchSensorCapabilities(),
+      fetchEnvironmentalLatest(),
+      fetchEnvironmentalHourly(),
+      fetchDeviceHealth(),
+      fetchDeviceTypes()
+    ];
+
+    if (selectedMetric) {
+      promises.push(fetchMetricData(selectedMetric));
+    }
+
+    await Promise.allSettled(promises);
+  }, [
+    fetchSensorCapabilities,
+    fetchEnvironmentalLatest, 
+    fetchEnvironmentalHourly,
+    fetchDeviceHealth,
+    fetchDeviceTypes,
+    fetchMetricData,
+    selectedMetric
+  ]);
+
+  // Refresh specific metric data
+  const refreshMetric = useCallback(async (metric = selectedMetric) => {
+    await Promise.allSettled([
+      fetchMetricData(metric),
+      fetchEnvironmentalLatest(),
+      fetchEnvironmentalHourly()
+    ]);
+  }, [fetchMetricData, fetchEnvironmentalLatest, fetchEnvironmentalHourly, selectedMetric]);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // EFFECT HOOKS
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Initial data load
+  useEffect(() => {
+    refreshAll();
+  }, []); // Only run once on mount
+
+  // Auto-refresh logic
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(refreshAll, refreshInterval);
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval, refreshAll]);
+
+  // Refresh when selected metric changes
+  useEffect(() => {
+    if (selectedMetric) {
+      fetchMetricData(selectedMetric);
+    }
+  }, [selectedMetric, fetchMetricData]);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // LOADING AND ERROR STATE HELPERS
+  // ═══════════════════════════════════════════════════════════════════
+
+  const isLoading = useMemo(() => {
+    return Object.values(loading).some(state => state);
+  }, [loading]);
+
+  const hasData = useMemo(() => {
+    return environmentalLatest.length > 0 || environmentalHourly.length > 0;
+  }, [environmentalLatest, environmentalHourly]);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // RETURN HOOK INTERFACE
+  // ═══════════════════════════════════════════════════════════════════
+
+  return {
+    // Raw data
+    sensorCapabilities,
+    environmentalLatest,
+    environmentalHourly, 
+    deviceHealth,
+    deviceTypes,
+    metricData,
+    comparisonData,
+
+    // Processed data
+    processedLatestReadings,
+    compatibleDevices,
+    metricAvailability,
+    chartData,
+
+    // State
+    loading,
+    isLoading,
+    error,
+    lastUpdated,
+    hasData,
+
+    // Actions
+    fetchSensorCapabilities,
+    fetchEnvironmentalLatest,
+    fetchEnvironmentalHourly,
+    fetchDeviceHealth,
+    fetchDeviceTypes,
+    fetchMetricData,
+    fetchComparisonData,
+    refreshAll,
+    refreshMetric,
+
+    // Utilities
+    checkASHRAECompliance: analyticsService.checkASHRAECompliance,
+    getCompatibleDevices: analyticsService.getCompatibleDevices
+  };
+};
+
+export default useEnvironmental;

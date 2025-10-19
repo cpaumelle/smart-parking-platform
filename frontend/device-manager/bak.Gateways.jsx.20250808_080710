@@ -1,0 +1,55 @@
+// src/pages/Gateways.jsx
+import { useEffect, useState } from 'react';
+import GatewayList from '../components/gateways/GatewayList';
+import GatewayForm from '../components/gateways/GatewayForm';
+import { listGateways } from '../services/gateways';
+
+const Gateways = () => {
+  const [gateways, setGateways] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await listGateways({ includeArchived });
+      setGateways(data || []);
+    } catch (e) {
+      setError(e?.response?.data?.detail || e.message || 'Failed to load gateways');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [includeArchived]);
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Gateways</h1>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={includeArchived}
+            onChange={e => setIncludeArchived(e.target.checked)}
+          />
+          Show archived
+        </label>
+      </div>
+
+      {error && <div className="text-red-600 text-sm">{error}</div>}
+
+      <GatewayForm onSaved={load} />
+
+      {loading ? (
+        <div className="text-sm text-gray-500">Loading…</div>
+      ) : (
+        <GatewayList items={gateways} onChanged={load} />
+      )}
+    </div>
+  );
+};
+
+export default Gateways;

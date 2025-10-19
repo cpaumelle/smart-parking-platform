@@ -1,0 +1,606 @@
+/*
+ * SenseMy IoT Platform - Unified Responsive Design System
+ * Version: 2.0.0
+ * Created: 2025-08-11 16:30:00 UTC
+ * Author: SenseMy IoT Development Team
+ * 
+ * Changelog:
+ * - Complete mobile-first responsive rewrite
+ * - Unified design system with consistent breakpoints
+ * - Optimized for both mobile and desktop experiences
+ * - Removed CSS fragmentation and conflicts
+ * - Performance optimized with GPU acceleration
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =============================================================================
+   FOUNDATIONAL STYLES
+   ============================================================================= */
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    font-size: 16px; /* Explicit base font size */
+  }
+
+  body {
+    @apply antialiased bg-gray-50 text-gray-900;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  /* Enhanced focus styles for accessibility */
+  *:focus {
+    @apply outline-none ring-2 ring-blue-500 ring-offset-2 ring-offset-white;
+  }
+
+  /* Touch-friendly base for mobile */
+  button, a, [role="button"], [role="tab"] {
+    @apply touch-manipulation;
+    min-height: 44px; /* iOS accessibility minimum */
+  }
+
+  /* Remove min-height on desktop for better design */
+  @media (min-width: 1024px) {
+    button, a, [role="button"], [role="tab"] {
+      min-height: auto;
+    }
+  }
+}
+
+/* =============================================================================
+   RESPONSIVE GRID SYSTEM
+   ============================================================================= */
+
+@layer components {
+  /* Analytics Statistics Grid - Mobile First */
+  .analytics-stats-grid {
+    @apply grid gap-3;
+    grid-template-columns: repeat(2, 1fr); /* Mobile: 2 columns */
+  }
+
+  @media (min-width: 768px) {
+    .analytics-stats-grid {
+      @apply gap-4;
+      grid-template-columns: repeat(4, 1fr); /* Tablet+: 4 columns */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .analytics-stats-grid {
+      @apply gap-6;
+    }
+  }
+
+  /* Device Grid - Progressive Enhancement */
+  .device-grid {
+    @apply grid gap-4;
+    grid-template-columns: 1fr; /* Mobile: Single column */
+  }
+
+  @media (min-width: 640px) {
+    .device-grid {
+      grid-template-columns: repeat(2, 1fr); /* Small tablet: 2 columns */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .device-grid {
+      @apply gap-6;
+      grid-template-columns: repeat(3, 1fr); /* Desktop: 3 columns */
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .device-grid {
+      grid-template-columns: repeat(4, 1fr); /* Large desktop: 4 columns */
+    }
+  }
+
+  /* General purpose responsive grid */
+  .responsive-grid {
+    @apply grid gap-4;
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 640px) {
+    .responsive-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .responsive-grid {
+      @apply gap-6;
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+}
+
+/* =============================================================================
+   CARD COMPONENTS
+   ============================================================================= */
+
+@layer components {
+  /* Base responsive card */
+  .responsive-card {
+    @apply bg-white rounded-lg border border-gray-200 shadow-sm;
+    @apply p-4; /* Mobile padding */
+  }
+
+  @media (min-width: 640px) {
+    .responsive-card {
+      @apply p-5; /* Tablet padding */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .responsive-card {
+      @apply p-6 shadow-md; /* Desktop padding and shadow */
+    }
+  }
+
+  /* Statistics card for analytics */
+  .stat-card {
+    @apply responsive-card;
+    @apply flex items-center justify-between;
+    min-height: 100px; /* Mobile minimum */
+  }
+
+  @media (min-width: 640px) {
+    .stat-card {
+      min-height: 120px; /* Tablet minimum */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .stat-card {
+      min-height: 140px; /* Desktop minimum */
+      @apply flex-col items-start justify-center space-y-3;
+    }
+  }
+
+  /* Device status card */
+  .device-card {
+    @apply responsive-card transition-all duration-200;
+    @apply hover:shadow-md hover:border-gray-300;
+  }
+
+  @media (min-width: 1024px) {
+    .device-card:hover {
+      @apply shadow-lg border-gray-400;
+    }
+  }
+}
+
+/* =============================================================================
+   TYPOGRAPHY SYSTEM
+   ============================================================================= */
+
+@layer components {
+  /* Page titles - responsive scaling */
+  .page-title {
+    @apply text-xl font-bold text-gray-900; /* Mobile */
+  }
+
+  @media (min-width: 640px) {
+    .page-title {
+      @apply text-2xl; /* Tablet */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .page-title {
+      @apply text-3xl; /* Desktop */
+    }
+  }
+
+  /* Section titles */
+  .section-title {
+    @apply text-lg font-semibold text-gray-900; /* Mobile */
+  }
+
+  @media (min-width: 640px) {
+    .section-title {
+      @apply text-xl; /* Tablet */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .section-title {
+      @apply text-2xl; /* Desktop */
+    }
+  }
+
+  /* Statistic numbers */
+  .stat-number {
+    @apply text-2xl font-bold; /* Mobile */
+    line-height: 1.1;
+  }
+
+  @media (min-width: 640px) {
+    .stat-number {
+      @apply text-3xl; /* Tablet */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .stat-number {
+      @apply text-4xl; /* Desktop */
+    }
+  }
+
+  /* Descriptive text */
+  .descriptive-text {
+    @apply text-sm text-gray-600; /* Mobile */
+  }
+
+  @media (min-width: 1024px) {
+    .descriptive-text {
+      @apply text-base; /* Desktop */
+    }
+  }
+}
+
+/* =============================================================================
+   BUTTON SYSTEM
+   ============================================================================= */
+
+@layer components {
+  /* Primary button */
+  .btn-primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg;
+    @apply px-4 py-2 text-sm; /* Mobile */
+    @apply transition-colors duration-200;
+    @apply focus:ring-2 focus:ring-blue-500 focus:ring-offset-2;
+    min-height: 44px; /* Touch friendly */
+  }
+
+  @media (min-width: 1024px) {
+    .btn-primary {
+      @apply px-6 py-3 text-base; /* Desktop */
+      min-height: auto;
+    }
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg;
+    @apply px-4 py-2 text-sm; /* Mobile */
+    @apply transition-colors duration-200;
+    @apply focus:ring-2 focus:ring-gray-500 focus:ring-offset-2;
+    min-height: 44px; /* Touch friendly */
+  }
+
+  @media (min-width: 1024px) {
+    .btn-secondary {
+      @apply px-6 py-3 text-base; /* Desktop */
+      min-height: auto;
+    }
+  }
+
+  /* Icon button */
+  .btn-icon {
+    @apply p-2 rounded-lg transition-colors duration-200;
+    @apply hover:bg-gray-100 focus:bg-gray-100;
+    @apply focus:ring-2 focus:ring-gray-500 focus:ring-offset-2;
+    min-height: 44px; /* Touch friendly */
+    min-width: 44px;
+  }
+
+  @media (min-width: 1024px) {
+    .btn-icon {
+      min-height: auto;
+      min-width: auto;
+    }
+  }
+}
+
+/* =============================================================================
+   LAYOUT COMPONENTS
+   ============================================================================= */
+
+@layer components {
+  /* Page container */
+  .page-container {
+    @apply p-4; /* Mobile padding */
+  }
+
+  @media (min-width: 640px) {
+    .page-container {
+      @apply p-6; /* Tablet padding */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .page-container {
+      @apply p-8; /* Desktop padding */
+    }
+  }
+
+  /* Content spacing */
+  .content-spacing {
+    @apply space-y-4; /* Mobile spacing */
+  }
+
+  @media (min-width: 640px) {
+    .content-spacing {
+      @apply space-y-6; /* Tablet spacing */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .content-spacing {
+      @apply space-y-8; /* Desktop spacing */
+    }
+  }
+
+  /* Page header */
+  .page-header {
+    @apply flex flex-col space-y-4; /* Mobile: vertical stack */
+  }
+
+  @media (min-width: 1024px) {
+    .page-header {
+      @apply flex-row items-center justify-between space-y-0; /* Desktop: horizontal */
+    }
+  }
+}
+
+/* =============================================================================
+   LOCATION TREE COMPONENTS
+   ============================================================================= */
+
+@layer components {
+  /* Location tree node */
+  .location-node {
+    @apply responsive-card;
+    @apply mb-2;
+  }
+
+  /* Location node content */
+  .location-node-content {
+    @apply flex flex-col space-y-3; /* Mobile: vertical stack */
+  }
+
+  @media (min-width: 640px) {
+    .location-node-content {
+      @apply flex-row items-center justify-between space-y-0; /* Tablet+: horizontal */
+    }
+  }
+
+  /* Location node info */
+  .location-node-info {
+    @apply flex items-center space-x-3 flex-1;
+  }
+
+  /* Location node actions */
+  .location-node-actions {
+    @apply flex items-center space-x-1;
+    @apply justify-center; /* Mobile: center actions */
+  }
+
+  @media (min-width: 640px) {
+    .location-node-actions {
+      @apply justify-end; /* Tablet+: align right */
+    }
+  }
+
+  /* Location tree indentation */
+  .location-indent-1 { @apply ml-4; }
+  .location-indent-2 { @apply ml-8; }
+  .location-indent-3 { @apply ml-12; }
+  
+  @media (min-width: 640px) {
+    .location-indent-1 { @apply ml-6; }
+    .location-indent-2 { @apply ml-12; }
+    .location-indent-3 { @apply ml-16; }
+  }
+
+  @media (min-width: 1024px) {
+    .location-indent-1 { @apply ml-8; }
+    .location-indent-2 { @apply ml-16; }
+    .location-indent-3 { @apply ml-24; }
+  }
+}
+
+/* =============================================================================
+   TABLE COMPONENTS
+   ============================================================================= */
+
+@layer components {
+  /* Responsive table wrapper */
+  .table-responsive {
+    @apply overflow-x-auto;
+    @apply -mx-4; /* Extend to edges on mobile */
+  }
+
+  @media (min-width: 640px) {
+    .table-responsive {
+      @apply mx-0 rounded-lg border border-gray-200;
+    }
+  }
+
+  /* Table styling */
+  .table-styled {
+    @apply min-w-full divide-y divide-gray-200;
+  }
+
+  /* Table header */
+  .table-header {
+    @apply bg-gray-50;
+  }
+
+  .table-header th {
+    @apply px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+  }
+
+  @media (min-width: 1024px) {
+    .table-header th {
+      @apply px-6 py-4 text-sm;
+    }
+  }
+
+  /* Table body */
+  .table-body {
+    @apply bg-white divide-y divide-gray-200;
+  }
+
+  .table-body td {
+    @apply px-4 py-3 text-sm text-gray-900;
+  }
+
+  @media (min-width: 1024px) {
+    .table-body td {
+      @apply px-6 py-4;
+    }
+  }
+}
+
+/* =============================================================================
+   UTILITY CLASSES
+   ============================================================================= */
+
+@layer utilities {
+  /* GPU acceleration for better performance */
+  .gpu-accelerated {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+  }
+
+  /* Touch optimization */
+  .touch-optimized {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Smooth scrolling */
+  .smooth-scroll {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Mobile-specific utilities */
+  @media (max-width: 639px) {
+    .mobile-full-width {
+      @apply w-full !important;
+    }
+
+    .mobile-single-column {
+      @apply grid-cols-1 !important;
+    }
+
+    .mobile-stack {
+      @apply flex-col !important;
+    }
+  }
+
+  /* Desktop-specific utilities */
+  @media (min-width: 1024px) {
+    .desktop-hover-lift {
+      @apply transition-transform duration-200;
+    }
+
+    .desktop-hover-lift:hover {
+      @apply transform -translate-y-1;
+    }
+  }
+}
+
+/* =============================================================================
+   ANIMATION SYSTEM
+   ============================================================================= */
+
+@layer utilities {
+  /* Fade in animation */
+  .fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Slide in from left (for mobile menu) */
+  .slide-in-left {
+    animation: slideInLeft 0.3s ease-out;
+  }
+
+  @keyframes slideInLeft {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+
+  /* Pulse animation for loading states */
+  .pulse-subtle {
+    animation: pulseSubtle 2s infinite;
+  }
+
+  @keyframes pulseSubtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+}
+
+/* =============================================================================
+   ACCESSIBILITY & PERFORMANCE
+   ============================================================================= */
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .responsive-card {
+    @apply border-2 border-gray-400;
+  }
+
+  .btn-primary {
+    @apply border-2 border-blue-800;
+  }
+}
+
+/* Dark mode preparation (for future implementation) */
+@media (prefers-color-scheme: dark) {
+  /* Dark mode styles will go here when implemented */
+}
+
+/* =============================================================================
+   PRINT STYLES
+   ============================================================================= */
+
+@media print {
+  .page-container {
+    @apply p-0 bg-white;
+  }
+
+  .responsive-card {
+    @apply shadow-none border border-gray-400;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    @apply bg-white text-black border border-gray-400;
+  }
+
+  /* Hide interactive elements */
+  button,
+  .btn-icon,
+  [role="button"] {
+    @apply hidden;
+  }
+}

@@ -1,0 +1,403 @@
+// 10-ui-frontend/sensemy-platform/src/components/EnhancedDeviceList.tsx
+// Version: 1.0.0 - 2025-08-08 06:30 UTC
+// Changelog:
+// - Enhanced device list with status detection (orphaned/partial/configured)
+// - Real-time search and filtering functionality
+// - Status summary dashboard with device count metrics
+// - Integration with DeviceConfigurationModal for device assignment
+// - Responsive design with mobile support
+
+import React, { useState, useEffect } from 'react';
+import { 
+  Search, 
+  Filter, 
+  Settings, 
+  Wifi, 
+  WifiOff, 
+  Clock, 
+  MapPin,
+  Zap,
+  AlertCircle,
+  CheckCircle,
+  Users,
+  RefreshCw
+} from 'lucide-react';
+import DeviceConfigurationModal from './DeviceConfigurationModal';
+
+interface Device {
+  deveui: string;
+  name?: string;
+  device_type_id?: number;
+  device_type?: string;
+  location_id?: string;
+  location_name?: string;
+  site_id?: string;
+  floor_id?: string;
+  room_id?: string;
+  zone_id?: string;
+  last_gateway?: string;
+  lifecycle_state?: string;
+  created_at?: string;
+  updated_at?: string;
+  assigned_at?: string;
+  last_uplink?: string;
+  status?: 'orphaned' | 'partial' | 'configured';
+}
+
+interface DeviceConfig {
+  device_type_id: number;
+  location_id: string;
+  name: string;
+  assigned_at: string;
+}
+
+const EnhancedDeviceList: React.FC = () => {
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [filteredDevices, setFilteredDevices] = useState<Device[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+
+  // Load devices on component mount
+  useEffect(() => {
+    loadDevices();
+  }, []);
+
+  // Filter devices based on search and status
+  useEffect(() => {
+    filterDevices();
+  }, [devices, searchTerm, statusFilter]);
+
+  const loadDevices = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch('https://api3.sensemy.cloud/v1/devices');
+      if (!response.ok) throw new Error('Failed to load devices');
+      
+      const deviceData = await response.json();
+      
+      // Add status detection logic
+      const devicesWithStatus = deviceData.map((device: Device) => ({
+        ...device,
+        status: getDeviceStatus(device)
+      }));
+      
+      setDevices(devicesWithStatus);
+    } catch (err) {
+      console.error('Error loading devices:', err);
+      setError('Failed to load devices. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getDeviceStatus = (device: Device): 'orphaned' | 'partial' | 'configured' => {
+    const hasType = Boolean(device.device_type_id);
+    const hasLocation = Boolean(device.location_id);
+    
+    if (!hasType && !hasLocation) return 'orphaned';
+    if (hasType && !hasLocation) return 'partial';
+    if (hasType && hasLocation) return 'configured';
+    return 'orphaned';
+  };
+
+  const filterDevices = () => {
+    let filtered = devices;
+
+    // Filter by search term
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(device =>
+        device.deveui.toLowerCase().includes(term) ||
+        device.name?.toLowerCase().includes(term) ||
+        device.device_type?.toLowerCase().includes(term) ||
+        device.location_name?.toLowerCase().includes(term)
+      );
+    }
+
+    // Filter by status
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(device => device.status === statusFilter);
+    }
+
+    setFilteredDevices(filtered);
+  };
+
+  const handleConfigureDevice = (device: Device) => {
+    setSelectedDevice(device);
+    setConfigModalOpen(true);
+  };
+
+  const handleSaveDeviceConfig = async (config: DeviceConfig) => {
+    if (!selectedDevice) return;
+
+    try {
+      // Update the device in our local state
+      setDevices(prevDevices =>
+        prevDevices.map(device =>
+          device.deveui === selectedDevice.deveui
+            ? {
+                ...device,
+                device_type_id: config.device_type_id,
+                location_id: config.location_id,
+                name: config.name,
+                assigned_at: config.assigned_at,
+                status: 'configured' as const
+              }
+            : device
+        )
+      );
+
+      // Optionally reload devices to get latest data
+      await loadDevices();
+    } catch (error) {
+      console.error('Error updating device:', error);
+      throw error;
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const configs = {
+      orphaned: {
+        color: 'bg-red-100 text-red-800 border-red-200',
+        icon: <AlertCircle className="w-3 h-3" />,
+        label: 'Orphaned'
+      },
+      partial: {
+        color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        icon: <Clock className="w-3 h-3" />,
+        label: 'Partial'
+      },
+      configured: {
+        color: 'bg-green-100 text-green-800 border-green-200',
+        icon: <CheckCircle className="w-3 h-3" />,
+        label: 'Configured'
+      }
+    };
+
+    const config = configs[status as keyof typeof configs] || configs.orphaned;
+
+    return (
+      <span className={`inline-flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium border ${config.color}`}>
+        {config.icon}
+        <span>{config.label}</span>
+      </span>
+    );
+  };
+
+  const getLastSeenDisplay = (lastUplink?: string) => {
+    if (!lastUplink) return 'Never';
+    
+    const date = new Date(lastUplink);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${Math.floor(diffHours)}h ago`;
+    return `${Math.floor(diffHours / 24)}d ago`;
+  };
+
+  const getStatusCounts = () => {
+    return {
+      total: devices.length,
+      orphaned: devices.filter(d => d.status === 'orphaned').length,
+      partial: devices.filter(d => d.status === 'partial').length,
+      configured: devices.filter(d => d.status === 'configured').length
+    };
+  };
+
+  const statusCounts = getStatusCounts();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="ml-2 text-gray-600">Loading devices...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 sm:space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-lg sm:text-2xl font-bold text-gray-900">Device Management</h1>
+          <p className="text-gray-600">Configure and monitor your IoT devices</p>
+        </div>
+        <button
+          onClick={loadDevices}
+          disabled={loading}
+          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <span>Refresh</span>
+        </button>
+      </div>
+
+      {/* Status Summary */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
+        <div className="bg-white rounded-lg border p-2 sm:p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs sm:text-sm text-gray-600">Total Devices</p>
+              <p className="text-lg sm:text-2xl font-bold">{statusCounts.total}</p>
+            </div>
+            <Users className="w-8 h-8 text-gray-400" />
+          </div>
+        </div>
+        <div className="bg-white rounded-lg border p-2 sm:p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs sm:text-sm text-gray-600">Configured</p>
+              <p className="text-lg sm:text-2xl font-bold text-green-600">{statusCounts.configured}</p>
+            </div>
+            <CheckCircle className="w-8 h-8 text-green-400" />
+          </div>
+        </div>
+        <div className="bg-white rounded-lg border p-2 sm:p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs sm:text-sm text-gray-600">Partial</p>
+              <p className="text-lg sm:text-2xl font-bold text-yellow-600">{statusCounts.partial}</p>
+            </div>
+            <Clock className="w-8 h-8 text-yellow-400" />
+          </div>
+        </div>
+        <div className="bg-white rounded-lg border p-2 sm:p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs sm:text-sm text-gray-600">Orphaned</p>
+              <p className="text-lg sm:text-2xl font-bold text-red-600">{statusCounts.orphaned}</p>
+            </div>
+            <AlertCircle className="w-8 h-8 text-red-400" />
+          </div>
+        </div>
+      </div>
+
+      {/* Search and Filters */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <input
+            type="text"
+            placeholder="Search devices, types, or locations..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+        <div className="flex items-center space-x-2">
+          <Filter className="w-4 h-4 text-gray-400" />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="all">All Status</option>
+            <option value="configured">Configured</option>
+            <option value="partial">Partial</option>
+            <option value="orphaned">Orphaned</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="flex items-center">
+            <AlertCircle className="w-5 h-5 text-red-400 mr-2" />
+            <span className="text-red-700">{error}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Device Grid */}
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-6">
+        {filteredDevices.map((device) => (
+          <div key={device.deveui} className="bg-white rounded-lg border border-gray-200 p-3 sm:p-6 hover:shadow-lg transition-shadow">
+            {/* Device Header */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-1">
+                  {device.name || `Device ${device.deveui.slice(-6)}`}
+                </h3>
+                <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600">
+                  {device.deveui}
+                </code>
+              </div>
+              {getStatusBadge(device.status || 'orphaned')}
+            </div>
+
+            {/* Device Details */}
+            <div className="space-y-3 mb-4">
+              <div className="flex items-center text-xs sm:text-sm text-gray-600">
+                <Zap className="w-4 h-4 mr-2 text-gray-400" />
+                <span>{device.device_type || 'No type assigned'}</span>
+              </div>
+              
+              <div className="flex items-center text-xs sm:text-sm text-gray-600">
+                <MapPin className="w-4 h-4 mr-2 text-gray-400" />
+                <span>{device.location_name || 'No location assigned'}</span>
+              </div>
+              
+              <div className="flex items-center text-xs sm:text-sm text-gray-600">
+                {device.last_uplink ? (
+                  <Wifi className="w-4 h-4 mr-2 text-green-400" />
+                ) : (
+                  <WifiOff className="w-4 h-4 mr-2 text-gray-400" />
+                )}
+                <span>Last seen: {getLastSeenDisplay(device.last_uplink)}</span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex space-x-2">
+              <button
+                onClick={() => handleConfigureDevice(device)}
+                className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                <span>Configure</span>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Empty State */}
+      {filteredDevices.length === 0 && !loading && (
+        <div className="text-center py-12">
+          <AlertCircle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No devices found</h3>
+          <p className="text-gray-600">
+            {searchTerm || statusFilter !== 'all'
+              ? 'Try adjusting your search or filter criteria.'
+              : 'No devices have been detected yet.'}
+          </p>
+        </div>
+      )}
+
+      {/* Configuration Modal */}
+      {selectedDevice && (
+        <DeviceConfigurationModal
+          device={selectedDevice}
+          isOpen={configModalOpen}
+          onClose={() => {
+            setConfigModalOpen(false);
+            setSelectedDevice(null);
+          }}
+          onSave={handleSaveDeviceConfig}
+        />
+      )}
+    </div>
+  );
+};
+
+export default EnhancedDeviceList;

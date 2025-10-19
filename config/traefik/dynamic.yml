@@ -1,0 +1,33 @@
+http:
+  middlewares:
+    # Basic auth for admin access
+    admin-auth:
+      basicAuth:
+        usersFile: /config/.htpasswd
+        realm: "Smart Parking Admin"
+
+    # Rewrite old webhook path to new uplink endpoint
+    rewrite-webhook:
+      replacePathRegex:
+        regex: "^/api/v1/webhook"
+        replacement: "/api/v1/uplink"
+
+    # CORS headers for API
+    api-cors:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        accessControlAllowOriginList:
+          - https://devices.verdegris.eu
+          - https://www.verdegris.eu
+          - http://localhost:3000
+        accessControlAllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-API-Key
+        accessControlMaxAge: 100
+        addVaryHeader: true

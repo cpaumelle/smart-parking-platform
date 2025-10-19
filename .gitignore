@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+
+# Environment
+.env
+*.env.local
+
+# Certificates (sensitive)
+certs/acme.json
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+backups/*.sql
+backups/*.gz
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db

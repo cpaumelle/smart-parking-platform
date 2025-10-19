@@ -1,0 +1,59 @@
+// src/App.jsx
+import { useState } from 'react';
+import Layout from './components/common/Layout.jsx';
+import DeviceManager from './pages/DeviceManager.jsx';
+import ApiTester from './components/ApiTester.jsx';
+
+function App() {
+  const [currentView, setCurrentView] = useState('devices');
+
+  const renderCurrentView = () => {
+    switch (currentView) {
+      case 'devices':
+        return <DeviceManager />;
+      case 'api-test':
+        return <ApiTester />;
+      default:
+        return (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🚧</div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Coming Soon</h2>
+            <p className="text-gray-600">This section is under development.</p>
+          </div>
+        );
+    }
+  };
+
+  return (
+    <Layout>
+      <div className="mb-6 bg-white p-4 rounded-lg border">
+        <div className="flex space-x-4">
+          <button
+            onClick={() => setCurrentView('devices')}
+            className={`px-4 py-2 rounded-md ${
+              currentView === 'devices'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            📱 Device Management
+          </button>
+          <button
+            onClick={() => setCurrentView('api-test')}
+            className={`px-4 py-2 rounded-md ${
+              currentView === 'api-test'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            🔧 API Test
+          </button>
+        </div>
+      </div>
+
+      {renderCurrentView()}
+    </Layout>
+  );
+}
+
+export default App;

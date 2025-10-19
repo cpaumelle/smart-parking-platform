@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kuando Busylight Control Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .device-selector {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .device-selector label {
+            display: block;
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .device-selector select {
+            padding: 10px 20px;
+            font-size: 1em;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            background: white;
+            color: #333;
+            cursor: pointer;
+            min-width: 200px;
+            font-family: monospace;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .device-selector select:hover {
+            border-color: #764ba2;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .device-selector select:focus {
+            outline: none;
+            border-color: #764ba2;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .device-info {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 0.85em;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .device-info .full-eui {
+            font-family: monospace;
+            color: #333;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .color-button {
+            padding: 20px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .color-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .color-button:active {
+            transform: translateY(0);
+        }
+
+        .color-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .color-button .use-case {
+            font-size: 0.8em;
+            font-weight: 400;
+            opacity: 0.9;
+            display: block;
+            margin-top: 5px;
+        }
+
+        /* Color-specific styles */
+        .btn-green {
+            background: linear-gradient(135deg, #00ff00, #00cc00);
+            color: white;
+        }
+
+        .btn-red {
+            background: linear-gradient(135deg, #ff0000, #cc0000);
+            color: white;
+        }
+
+        .btn-orange {
+            background: linear-gradient(135deg, #ff5722, #ff3300);
+            color: white;
+        }
+
+        .btn-purple {
+            background: linear-gradient(135deg, #9c27b0, #673ab7);
+            color: white;
+        }
+
+        .btn-blue {
+            background: linear-gradient(135deg, #2196f3, #0d47a1);
+            color: white;
+        }
+
+        .btn-cyan {
+            background: linear-gradient(135deg, #00ffff, #00bcd4);
+            color: #333;
+        }
+
+        .btn-yellow {
+            background: linear-gradient(135deg, #ffff00, #ffd700);
+            color: #333;
+        }
+
+        .btn-pink {
+            background: linear-gradient(135deg, #ff69b4, #ff1493);
+            color: white;
+        }
+
+        .btn-white {
+            background: linear-gradient(135deg, #ffffff, #f0f0f0);
+            color: #333;
+            border: 2px solid #ddd;
+        }
+
+        .btn-off {
+            background: linear-gradient(135deg, #444, #222);
+            color: white;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 500;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        .status.sending {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            display: block;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #999;
+            font-size: 0.85em;
+        }
+
+        .emoji {
+            font-size: 1.5em;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚦 Kuando Busylight Control Panel</h1>
+
+        <div class="device-selector">
+            <label for="deviceSelect">Select Device:</label>
+            <select id="deviceSelect" onchange="updateSelectedDevice()">
+                <option value="">Loading devices...</option>
+            </select>
+        </div>
+
+        <div class="device-info">
+            Full Device EUI: <span class="full-eui" id="fullEui"></span><br>
+            <span style="font-size: 0.9em;">Smart Parking Platform</span>
+        </div>
+
+        <div class="color-grid">
+            <button class="color-button btn-green" onclick="sendColor('0000FFFF00', 'Green', this)">
+                <span class="emoji">🟢</span> Green
+                <span class="use-case">Available</span>
+            </button>
+
+            <button class="color-button btn-red" onclick="sendColor('FF0000FF00', 'Red', this)">
+                <span class="emoji">🔴</span> Red
+                <span class="use-case">Occupied</span>
+            </button>
+
+            <button class="color-button btn-orange" onclick="sendColor('FF0032FF00', 'Orange', this)">
+                <span class="emoji">🟠</span> Orange
+                <span class="use-case">Reserved</span>
+            </button>
+
+            <button class="color-button btn-purple" onclick="sendColor('64B400FF00', 'Purple', this)">
+                <span class="emoji">🟣</span> Purple
+                <span class="use-case">VIP/Premium</span>
+            </button>
+
+            <button class="color-button btn-blue" onclick="sendColor('00FF00FF00', 'Blue', this)">
+                <span class="emoji">🔵</span> Blue
+                <span class="use-case">Maintenance</span>
+            </button>
+
+            <button class="color-button btn-cyan" onclick="sendColor('00FFFFFF00', 'Cyan', this)">
+                <span class="emoji">🔷</span> Cyan
+                <span class="use-case">EV Charging</span>
+            </button>
+
+            <button class="color-button btn-yellow" onclick="sendColor('FF00FFFF00', 'Yellow', this)">
+                <span class="emoji">🟡</span> Yellow
+                <span class="use-case">Warning/Expiring</span>
+            </button>
+
+            <button class="color-button btn-pink" onclick="sendColor('FF6400FF00', 'Pink', this)">
+                <span class="emoji">🩷</span> Pink
+                <span class="use-case">Handicap/Special</span>
+            </button>
+
+            <button class="color-button btn-white" onclick="sendColor('FFFFFFFF00', 'White', this)">
+                <span class="emoji">⚪</span> White
+                <span class="use-case">System Active</span>
+            </button>
+
+            <button class="color-button btn-off" onclick="sendColor('000000FF00', 'Off', this)">
+                <span class="emoji">⚫</span> Off
+                <span class="use-case">Light Off</span>
+            </button>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div class="footer">
+            Kuando Busylight IoT Omega LoRaWAN<br>
+            Class C Device • FPort 15 • R-B-G Format
+        </div>
+    </div>
+
+    <script>
+        const DOWNLINK_URL_TEMPLATE = "/api/v1/downlink/{device_eui}";
+        const DEVICES_API_URL = "/api/v1/devices/displays?dev_eui_prefix=202020";
+        const FPORT = 15;
+        const STORAGE_KEY = "kuando_selected_device";
+
+        // Fetch devices from API and populate dropdown
+        async function loadDevices() {
+            const deviceSelect = document.getElementById('deviceSelect');
+            const statusDiv = document.getElementById('status');
+
+            try {
+                console.log("🔍 Fetching Kuando devices from database...");
+                const response = await fetch(DEVICES_API_URL);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const devices = await response.json();
+                console.log(`✅ Found ${devices.length} Kuando devices`);
+
+                // Clear existing options
+                deviceSelect.innerHTML = '';
+
+                if (devices.length === 0) {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = '⚠️ No Kuando devices found in database';
+                    deviceSelect.innerHTML = '<option value="">No devices available</option>';
+                    return;
+                }
+
+                // Populate dropdown with devices from database
+                devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.dev_eui;
+                    // Show last 6 chars + space info if available
+                    const label = `...${device.dev_eui.slice(-6)}`;
+                    const spaceInfo = device.name ? ` - ${device.name}` : '';
+                    option.textContent = label + spaceInfo;
+                    deviceSelect.appendChild(option);
+                });
+
+                // Restore saved device or select first one
+                const savedDevice = localStorage.getItem(STORAGE_KEY);
+                if (savedDevice && devices.find(d => d.dev_eui === savedDevice)) {
+                    deviceSelect.value = savedDevice;
+                    console.log("💾 Restored saved device:", savedDevice);
+                } else {
+                    deviceSelect.value = devices[0].dev_eui;
+                    console.log("📍 Selected first device:", devices[0].dev_eui);
+                }
+
+                updateSelectedDevice();
+
+            } catch (error) {
+                console.error("❌ Error loading devices:", error);
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `❌ Error loading devices: ${error.message}`;
+                deviceSelect.innerHTML = '<option value="">Error loading devices</option>';
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("🔧 Kuando UI loaded");
+            loadDevices();
+        });
+
+        function updateSelectedDevice() {
+            const deviceSelect = document.getElementById('deviceSelect');
+            const selectedDevice = deviceSelect.value;
+            const fullEuiSpan = document.getElementById('fullEui');
+
+            // Update display
+            fullEuiSpan.textContent = selectedDevice;
+
+            // Save to localStorage
+            localStorage.setItem(STORAGE_KEY, selectedDevice);
+            console.log("✅ Device saved to localStorage:", selectedDevice);
+        }
+
+        function getSelectedDevice() {
+            return document.getElementById('deviceSelect').value;
+        }
+
+        async function sendColor(payload, colorName, button) {
+            const statusDiv = document.getElementById('status');
+            const allButtons = document.querySelectorAll('.color-button');
+            const selectedDevice = getSelectedDevice();
+
+            // Disable all buttons during request
+            allButtons.forEach(btn => btn.disabled = true);
+
+            // Show sending status
+            statusDiv.className = 'status sending';
+            statusDiv.textContent = `Sending ${colorName} to ...${selectedDevice.slice(-6)}...`;
+
+            try {
+                // Build URL with device_eui
+                const downlinkUrl = DOWNLINK_URL_TEMPLATE.replace('{device_eui}', selectedDevice);
+
+                const response = await fetch(downlinkUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        payload: payload,
+                        fport: FPORT,
+                        confirmed: false
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = `✅ ${colorName} sent successfully to ...${selectedDevice.slice(-6)}! (${payload})`;
+
+                    // Auto-hide after 3 seconds
+                    setTimeout(() => {
+                        statusDiv.className = 'status';
+                        statusDiv.style.display = 'none';
+                    }, 3000);
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `❌ Error: ${error.message}`;
+            } finally {
+                // Re-enable all buttons
+                allButtons.forEach(btn => btn.disabled = false);
+            }
+        }
+    </script>
+</body>
+</html>
