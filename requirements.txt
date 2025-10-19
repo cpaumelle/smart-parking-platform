@@ -21,6 +21,7 @@ python-json-logger==2.0.7
 python-multipart==0.0.6
 bcrypt==4.1.2
 python-dateutil==2.8.2
+pyjwt==2.9.0  # For JWT authentication in multi-tenancy
 
 # Monitoring (add later)
 # prometheus-client==0.19.0

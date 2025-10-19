@@ -812,3 +812,15 @@ async def close_db_pool():
     if _db_pool:
         await _db_pool.close()
         _db_pool = None
+
+async def get_db() -> DatabasePool:
+    """
+    FastAPI dependency to get database pool
+
+    Usage:
+        @app.get("/endpoint")
+        async def endpoint(db: Pool = Depends(get_db)):
+            result = await db.fetchrow("SELECT ...")
+    """
+    pool = await get_db_pool()
+    return pool

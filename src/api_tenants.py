@@ -3,11 +3,12 @@ Tenant Management & Authentication API Endpoints
 Handles tenant CRUD, user management, authentication, and RBAC
 """
 import logging
+import json
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from asyncpg import Pool
 
 from src.models import (
@@ -198,20 +199,23 @@ async def register(
                     INSERT INTO users (email, name, password_hash, metadata)
                     VALUES ($1, $2, $3, $4)
                     RETURNING id, email, name, is_active, email_verified, created_at, updated_at
-                """, user_create.email.lower(), user_create.name, hash_password(user_create.password), user_create.metadata)
+                """, user_create.email.lower(), user_create.name, hash_password(user_create.password),
+                json.dumps(user_create.metadata) if user_create.metadata else None)
 
                 # Create tenant
                 tenant_row = await conn.fetchrow("""
                     INSERT INTO tenants (name, slug, metadata, settings)
                     VALUES ($1, $2, $3, $4)
                     RETURNING id
-                """, tenant_create.name, tenant_create.slug.lower(), tenant_create.metadata, tenant_create.settings)
+                """, tenant_create.name, tenant_create.slug.lower(),
+                json.dumps(tenant_create.metadata) if tenant_create.metadata else None,
+                json.dumps(tenant_create.settings) if tenant_create.settings else None)
 
                 # Create default site
                 await conn.execute("""
                     INSERT INTO sites (tenant_id, name, timezone, location)
                     VALUES ($1, $2, $3, $4)
-                """, tenant_row['id'], f"{tenant_create.name} - Main Site", "UTC", {})
+                """, tenant_row['id'], f"{tenant_create.name} - Main Site", "UTC", json.dumps({}))
 
                 # Create user membership with OWNER role
                 await conn.execute("""
