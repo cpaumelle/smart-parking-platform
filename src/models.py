@@ -381,6 +381,7 @@ class TenantContext(BaseModel):
     user_id: Optional[UUID] = None
     user_role: Optional[UserRole] = None
     api_key_id: Optional[UUID] = None
+    api_key_scopes: Optional[List[str]] = None  # API key scopes for enforcement
 
     # Resolved from JWT or API key
     source: str  # 'jwt' or 'api_key'

@@ -19,11 +19,15 @@ SCOPE_HIERARCHY = {
     "reservations:read": ["reservations:read"],
     "telemetry:read": ["telemetry:read"],
     "users:read": ["users:read"],
+    "sites:read": ["sites:read"],
+    "tenants:read": ["tenants:read"],
 
     # Write scopes (include read)
     "spaces:write": ["spaces:read", "spaces:write"],
     "devices:write": ["devices:read", "devices:write"],
     "reservations:write": ["reservations:read", "reservations:write"],
+    "sites:write": ["sites:read", "sites:write"],
+    "tenants:write": ["tenants:read", "tenants:write"],
 
     # Special scopes
     "webhook:ingest": ["webhook:ingest"],
@@ -69,13 +73,36 @@ def check_scopes(required: Set[str], tenant: TenantContext):
 
     # API keys must have explicit scopes
     if tenant.source == "api_key":
-        # Get API key scopes from tenant context
-        # Note: This assumes scopes are attached to tenant context during resolution
-        # You may need to modify tenant_auth.py to include scopes
+        # Check if API key has scopes defined
+        if not tenant.api_key_scopes:
+            logger.error(f"API key {tenant.api_key_id} has no scopes defined")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="API key has no scopes defined"
+            )
 
-        # For now, log a warning - full implementation requires modifying resolve_tenant_from_api_key
-        logger.warning(f"Scope check for API key {tenant.api_key_id} - enforcement not fully wired")
-        # TODO: Fetch API key scopes from database and check
+        # Expand scopes based on hierarchy
+        expanded_required = expand_scopes(required)
+        expanded_available = expand_scopes(set(tenant.api_key_scopes))
+
+        # Wildcard grants everything
+        if "*" in expanded_available or "admin:*" in expanded_available:
+            logger.debug(f"API key {tenant.api_key_id} has wildcard access")
+            return
+
+        # Check if all required scopes are available
+        if not expanded_required.issubset(expanded_available):
+            missing = expanded_required - expanded_available
+            logger.warning(
+                f"API key {tenant.api_key_id} lacks required scopes. "
+                f"Required: {required}, Available: {tenant.api_key_scopes}, Missing: {missing}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"API key lacks required scopes: {', '.join(sorted(missing))}"
+            )
+
+        logger.debug(f"API key {tenant.api_key_id} has sufficient scopes for {required}")
         return
 
     # Unknown auth source

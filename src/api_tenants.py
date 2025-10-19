@@ -26,6 +26,9 @@ from src.tenant_auth import (
 )
 from src.auth import generate_api_key, hash_api_key
 from src.database import get_db
+from src.api_scopes import require_scopes
+from src.webhook_validation import get_or_create_webhook_secret, rotate_webhook_secret
+from src.orphan_devices import get_orphan_devices, assign_orphan_device, delete_orphan_device
 
 logger = logging.getLogger(__name__)
 
@@ -284,12 +287,12 @@ async def update_current_tenant(
 # Site Management
 # ============================================================
 
-@router.get("/sites", response_model=List[Site], summary="List Sites")
+@router.get("/sites", response_model=List[Site], summary="List Sites", dependencies=[Depends(require_scopes("sites:read"))])
 async def list_sites(
     tenant: TenantContext = Depends(get_current_tenant),
     db: Pool = Depends(get_db)
 ):
-    """List all sites in the current tenant"""
+    """List all sites in the current tenant (API key requires sites:read scope)"""
     rows = await db.fetch("""
         SELECT id, tenant_id, name, timezone, location, metadata, is_active, created_at, updated_at
         FROM sites
@@ -299,13 +302,13 @@ async def list_sites(
 
     return [Site(**dict(row)) for row in rows]
 
-@router.post("/sites", response_model=Site, status_code=status.HTTP_201_CREATED, summary="Create Site")
+@router.post("/sites", response_model=Site, status_code=status.HTTP_201_CREATED, summary="Create Site", dependencies=[Depends(require_scopes("sites:write"))])
 async def create_site(
     site_create: SiteCreate,
     tenant: TenantContext = Depends(require_admin),
     db: Pool = Depends(get_db)
 ):
-    """Create a new site (requires ADMIN role)"""
+    """Create a new site (requires ADMIN role, API key requires sites:write scope)"""
     # Ensure site is created in current tenant
     if site_create.tenant_id != tenant.tenant_id:
         raise HTTPException(
@@ -321,13 +324,13 @@ async def create_site(
 
     return Site(**dict(row))
 
-@router.get("/sites/{site_id}", response_model=Site, summary="Get Site")
+@router.get("/sites/{site_id}", response_model=Site, summary="Get Site", dependencies=[Depends(require_scopes("sites:read"))])
 async def get_site(
     site_id: UUID,
     tenant: TenantContext = Depends(get_current_tenant),
     db: Pool = Depends(get_db)
 ):
-    """Get a specific site"""
+    """Get a specific site (API key requires sites:read scope)"""
     row = await db.fetchrow("""
         SELECT id, tenant_id, name, timezone, location, metadata, is_active, created_at, updated_at
         FROM sites
@@ -339,14 +342,14 @@ async def get_site(
 
     return Site(**dict(row))
 
-@router.patch("/sites/{site_id}", response_model=Site, summary="Update Site")
+@router.patch("/sites/{site_id}", response_model=Site, summary="Update Site", dependencies=[Depends(require_scopes("sites:write"))])
 async def update_site(
     site_id: UUID,
     site_update: SiteUpdate,
     tenant: TenantContext = Depends(require_admin),
     db: Pool = Depends(get_db)
 ):
-    """Update a site (requires ADMIN role)"""
+    """Update a site (requires ADMIN role, API key requires sites:write scope)"""
     # Verify site belongs to tenant
     existing = await db.fetchrow("SELECT id FROM sites WHERE id = $1 AND tenant_id = $2", site_id, tenant.tenant_id)
     if not existing:
@@ -379,12 +382,12 @@ async def update_site(
 # User Management (Tenant Users)
 # ============================================================
 
-@router.get("/users", response_model=List[UserWithMemberships], summary="List Tenant Users")
+@router.get("/users", response_model=List[UserWithMemberships], summary="List Tenant Users", dependencies=[Depends(require_scopes("users:read"))])
 async def list_tenant_users(
     tenant: TenantContext = Depends(require_admin),
     db: Pool = Depends(get_db)
 ):
-    """List all users in the current tenant (requires ADMIN role)"""
+    """List all users in the current tenant (requires ADMIN role, API key requires users:read scope)"""
     rows = await db.fetch("""
         SELECT u.id, u.email, u.name, u.is_active, u.email_verified, u.created_at, u.updated_at, u.last_login_at,
                um.id as membership_id, um.role, um.is_active as membership_active, um.created_at as membership_created_at
@@ -498,3 +501,180 @@ async def revoke_api_key(
 
     logger.info(f"Revoked API key {key_id} for tenant {tenant.tenant_id}")
     return None
+
+# ============================================================
+# Webhook Secret Management
+# ============================================================
+
+@router.post("/webhook-secret", summary="Create Webhook Secret", status_code=status.HTTP_201_CREATED)
+async def create_webhook_secret(
+    tenant: TenantContext = Depends(require_owner),
+    db: Pool = Depends(get_db)
+):
+    """
+    Create a webhook secret for HMAC signature validation (requires OWNER role)
+
+    ⚠️ The plain text secret is only shown once - configure it in ChirpStack immediately!
+
+    This secret is used to validate X-Webhook-Signature headers from ChirpStack webhooks,
+    ensuring that uplinks come from your authorized Network Server.
+    """
+    try:
+        secret = await get_or_create_webhook_secret(tenant.tenant_id, db)
+
+        return {
+            "secret": secret,
+            "algorithm": "sha256",
+            "header_name": "X-Webhook-Signature",
+            "warning": "Save this secret securely - it cannot be retrieved after creation!"
+        }
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error creating webhook secret: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create webhook secret"
+        )
+
+@router.post("/webhook-secret/rotate", summary="Rotate Webhook Secret")
+async def rotate_webhook_secret_endpoint(
+    tenant: TenantContext = Depends(require_owner),
+    db: Pool = Depends(get_db)
+):
+    """
+    Rotate (replace) the webhook secret (requires OWNER role)
+
+    ⚠️ The new secret is only shown once - update ChirpStack immediately!
+    ⚠️ Old webhooks using the previous secret will fail after rotation!
+    """
+    try:
+        new_secret = await rotate_webhook_secret(tenant.tenant_id, db)
+
+        return {
+            "secret": new_secret,
+            "algorithm": "sha256",
+            "header_name": "X-Webhook-Signature",
+            "warning": "Update ChirpStack with this new secret immediately! Old secret is now inactive."
+        }
+
+    except Exception as e:
+        logger.error(f"Error rotating webhook secret: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to rotate webhook secret"
+        )
+
+# ============================================================
+# Orphan Device Management
+# ============================================================
+
+@router.get("/orphan-devices", summary="List Orphan Devices")
+async def list_orphan_devices(
+    include_assigned: bool = Query(False, description="Include devices already assigned"),
+    since_hours: Optional[int] = Query(None, description="Only show devices seen in last N hours"),
+    tenant: TenantContext = Depends(require_admin),
+    db: Pool = Depends(get_db)
+):
+    """
+    List orphan devices (devices sending uplinks but not assigned to spaces)
+
+    Requires: ADMIN role or higher
+
+    This helps with device provisioning by showing which devices are transmitting
+    but not yet configured in the system.
+    """
+    try:
+        orphans = await get_orphan_devices(db, include_assigned, since_hours)
+
+        return {
+            "orphan_devices": orphans,
+            "count": len(orphans),
+            "filters": {
+                "include_assigned": include_assigned,
+                "since_hours": since_hours
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error listing orphan devices: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list orphan devices"
+        )
+
+@router.post("/orphan-devices/{device_eui}/assign", summary="Assign Orphan Device")
+async def assign_orphan(
+    device_eui: str,
+    space_id: UUID,
+    tenant: TenantContext = Depends(require_admin),
+    db: Pool = Depends(get_db)
+):
+    """
+    Mark an orphan device as assigned to a space (requires ADMIN role)
+
+    Note: This only updates the tracking record. You still need to update
+    the space's sensor_eui field separately.
+    """
+    try:
+        success = await assign_orphan_device(db, device_eui, str(space_id))
+
+        if success:
+            return {
+                "message": "Orphan device marked as assigned",
+                "device_eui": device_eui,
+                "space_id": str(space_id)
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Orphan device {device_eui} not found"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error assigning orphan device: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to assign orphan device"
+        )
+
+@router.delete("/orphan-devices/{device_eui}", summary="Delete Orphan Device")
+async def delete_orphan(
+    device_eui: str,
+    tenant: TenantContext = Depends(require_admin),
+    db: Pool = Depends(get_db)
+):
+    """
+    Delete an orphan device record (requires ADMIN role)
+
+    Use this to clean up orphan records for devices that have been decommissioned
+    or were added by mistake.
+    """
+    try:
+        success = await delete_orphan_device(db, device_eui)
+
+        if success:
+            return {
+                "message": "Orphan device deleted",
+                "device_eui": device_eui
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Orphan device {device_eui} not found"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting orphan device: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete orphan device"
+        )

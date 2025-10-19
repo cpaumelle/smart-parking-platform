@@ -16,6 +16,7 @@ class ReservationCreate(BaseModel):
     id: uuid.UUID  # This is space_id in V4 API format
     reserved_from: datetime
     reserved_until: datetime
+    request_id: Optional[uuid.UUID] = None  # For idempotency (auto-generated if not provided)
     external_booking_id: Optional[str] = None
     external_system: Optional[str] = None
     reservation_type: Optional[str] = None
@@ -100,13 +101,50 @@ async def create_reservation(
     Create a new reservation for a parking space
 
     Accepts V4-compatible request format and returns V4-compatible response
+
+    Idempotency: Provide a request_id to ensure duplicate requests create only one reservation.
+    If a reservation with the same request_id already exists, it will be returned instead of creating a new one.
     """
     try:
         db_pool = request.app.state.db_pool
 
+        # Generate request_id if not provided (for idempotency)
+        request_id = reservation.request_id or uuid.uuid4()
+
+        # Check if request_id already exists (idempotency check)
+        existing = await db_pool.fetchrow("""
+            SELECT
+                id as reservation_id,
+                space_id as id,
+                start_time as reserved_from,
+                end_time as reserved_until,
+                status,
+                user_email,
+                user_phone,
+                metadata,
+                created_at
+            FROM reservations
+            WHERE request_id = $1
+        """, request_id)
+
+        if existing:
+            # Idempotent return - reservation already exists
+            return {
+                "reservation_id": str(existing["reservation_id"]),
+                "id": str(existing["id"]),  # space_id
+                "reserved_from": existing["reserved_from"].isoformat(),
+                "reserved_until": existing["reserved_until"].isoformat(),
+                "status": existing["status"],
+                "user_email": existing["user_email"],
+                "user_phone": existing["user_phone"],
+                "metadata": existing["metadata"] if existing["metadata"] else {},
+                "created_at": existing["created_at"].isoformat(),
+                "idempotent": True  # Indicates this was a duplicate request
+            }
+
         # Verify space exists
         space_check = await db_pool.fetchrow(
-            "SELECT id, name FROM spaces WHERE id = $1 AND deleted_at IS NULL",
+            "SELECT id, name, tenant_id FROM spaces WHERE id = $1 AND deleted_at IS NULL",
             reservation.id
         )
 
@@ -127,11 +165,11 @@ async def create_reservation(
         if reservation.grace_period_minutes is not None:
             metadata["grace_period_minutes"] = reservation.grace_period_minutes
 
-        # Create reservation
+        # Create reservation with request_id and tenant_id
         query = """
             INSERT INTO reservations (
-                space_id, start_time, end_time, user_email, user_phone, status, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                space_id, start_time, end_time, user_email, user_phone, status, metadata, request_id, tenant_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING
                 id as reservation_id,
                 space_id as id,
@@ -144,28 +182,77 @@ async def create_reservation(
                 created_at
         """
 
-        result = await db_pool.fetchrow(
-            query,
-            reservation.id,  # space_id
-            reservation.reserved_from,
-            reservation.reserved_until,
-            reservation.user_email,
-            reservation.user_phone,
-            "active",
-            json.dumps(metadata) if metadata else None
-        )
+        try:
+            result = await db_pool.fetchrow(
+                query,
+                reservation.id,  # space_id
+                reservation.reserved_from,
+                reservation.reserved_until,
+                reservation.user_email,
+                reservation.user_phone,
+                "active",
+                json.dumps(metadata) if metadata else None,
+                request_id,
+                space_check['tenant_id']  # tenant_id from space
+            )
 
-        return {
-            "reservation_id": str(result["reservation_id"]),
-            "id": str(result["id"]),  # space_id
-            "reserved_from": result["reserved_from"].isoformat(),
-            "reserved_until": result["reserved_until"].isoformat(),
-            "status": result["status"],
-            "user_email": result["user_email"],
-            "user_phone": result["user_phone"],
-            "metadata": result["metadata"] if result["metadata"] else {},
-            "created_at": result["created_at"].isoformat()
-        }
+            return {
+                "reservation_id": str(result["reservation_id"]),
+                "id": str(result["id"]),  # space_id
+                "reserved_from": result["reserved_from"].isoformat(),
+                "reserved_until": result["reserved_until"].isoformat(),
+                "status": result["status"],
+                "user_email": result["user_email"],
+                "user_phone": result["user_phone"],
+                "metadata": result["metadata"] if result["metadata"] else {},
+                "created_at": result["created_at"].isoformat()
+            }
+
+        except Exception as db_error:
+            error_msg = str(db_error).lower()
+
+            # Handle unique constraint violation (race condition on request_id)
+            if "unique" in error_msg and "request_id" in error_msg:
+                # Race condition - another request with same request_id succeeded
+                # Fetch and return the existing reservation
+                existing = await db_pool.fetchrow("""
+                    SELECT
+                        id as reservation_id,
+                        space_id as id,
+                        start_time as reserved_from,
+                        end_time as reserved_until,
+                        status,
+                        user_email,
+                        user_phone,
+                        metadata,
+                        created_at
+                    FROM reservations
+                    WHERE request_id = $1
+                """, request_id)
+
+                if existing:
+                    return {
+                        "reservation_id": str(existing["reservation_id"]),
+                        "id": str(existing["id"]),  # space_id
+                        "reserved_from": existing["reserved_from"].isoformat(),
+                        "reserved_until": existing["reserved_until"].isoformat(),
+                        "status": existing["status"],
+                        "user_email": existing["user_email"],
+                        "user_phone": existing["user_phone"],
+                        "metadata": existing["metadata"] if existing["metadata"] else {},
+                        "created_at": existing["created_at"].isoformat(),
+                        "idempotent": True
+                    }
+
+            # Handle overlap constraint violation (EXCLUDE constraint)
+            if "exclusion" in error_msg or "no_reservation_overlap" in error_msg:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Reservation conflicts with an existing reservation for space {reservation.id} during the requested time period"
+                )
+
+            # Re-raise other database errors
+            raise
 
     except HTTPException:
         raise

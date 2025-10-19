@@ -159,9 +159,9 @@ async def resolve_tenant_from_api_key(api_key_info: APIKeyInfo) -> Optional[Tena
         return None
 
     try:
-        # Get API key with tenant info
+        # Get API key with tenant info and scopes
         row = await _db_pool.fetchrow("""
-            SELECT ak.id, ak.tenant_id, t.name, t.slug, t.is_active
+            SELECT ak.id, ak.tenant_id, ak.scopes, t.name, t.slug, t.is_active
             FROM api_keys ak
             INNER JOIN tenants t ON ak.tenant_id = t.id
             WHERE ak.id = $1 AND ak.is_active = true AND t.is_active = true
@@ -176,6 +176,7 @@ async def resolve_tenant_from_api_key(api_key_info: APIKeyInfo) -> Optional[Tena
             tenant_name=row['name'],
             tenant_slug=row['slug'],
             api_key_id=UUID(api_key_info.id),
+            api_key_scopes=row['scopes'],
             source='api_key'
         )
 

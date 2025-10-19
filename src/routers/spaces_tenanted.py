@@ -14,12 +14,13 @@ from ..models import (
 )
 from ..tenant_auth import get_current_tenant, require_viewer, require_admin
 from ..rate_limit import get_rate_limiter
+from ..api_scopes import require_scopes
 
 router = APIRouter(prefix="/api/v1/spaces", tags=["spaces"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("/", response_model=Dict[str, Any])
+@router.get("/", response_model=Dict[str, Any], dependencies=[Depends(require_scopes("spaces:read"))])
 async def list_spaces(
     request: Request,
     building: Optional[str] = Query(None, description="Filter by building"),
@@ -33,7 +34,7 @@ async def list_spaces(
     """
     List all parking spaces in the current tenant with optional filters
 
-    Requires: VIEWER role or higher
+    Requires: VIEWER role or higher, API key requires spaces:read scope
     """
     try:
         db_pool = request.app.state.db_pool
@@ -130,7 +131,7 @@ async def list_spaces(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{space_id}", response_model=Dict[str, Any])
+@router.get("/{space_id}", response_model=Dict[str, Any], dependencies=[Depends(require_scopes("spaces:read"))])
 async def get_space(
     request: Request,
     space_id: UUID,
@@ -139,7 +140,7 @@ async def get_space(
     """
     Get a specific parking space by ID
 
-    Requires: VIEWER role or higher
+    Requires: VIEWER role or higher, API key requires spaces:read scope
     """
     try:
         db_pool = request.app.state.db_pool
@@ -200,7 +201,7 @@ async def get_space(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/", response_model=Dict[str, Any], status_code=201)
+@router.post("/", response_model=Dict[str, Any], status_code=201, dependencies=[Depends(require_scopes("spaces:write"))])
 async def create_space(
     request: Request,
     space: SpaceCreate,
@@ -209,7 +210,7 @@ async def create_space(
     """
     Create a new parking space
 
-    Requires: ADMIN role or higher
+    Requires: ADMIN role or higher, API key requires spaces:write scope
     """
     try:
         db_pool = request.app.state.db_pool
@@ -286,7 +287,7 @@ async def create_space(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/{space_id}", response_model=Dict[str, Any])
+@router.patch("/{space_id}", response_model=Dict[str, Any], dependencies=[Depends(require_scopes("spaces:write"))])
 async def update_space(
     request: Request,
     space_id: UUID,
@@ -296,7 +297,7 @@ async def update_space(
     """
     Update a parking space
 
-    Requires: ADMIN role or higher
+    Requires: ADMIN role or higher, API key requires spaces:write scope
     """
     try:
         db_pool = request.app.state.db_pool
@@ -370,7 +371,7 @@ async def update_space(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{space_id}", status_code=204)
+@router.delete("/{space_id}", status_code=204, dependencies=[Depends(require_scopes("spaces:write"))])
 async def delete_space(
     request: Request,
     space_id: UUID,
@@ -379,7 +380,7 @@ async def delete_space(
     """
     Soft delete a parking space
 
-    Requires: ADMIN role or higher
+    Requires: ADMIN role or higher, API key requires spaces:write scope
     """
     try:
         db_pool = request.app.state.db_pool
@@ -404,7 +405,7 @@ async def delete_space(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/stats/summary", response_model=Dict[str, Any])
+@router.get("/stats/summary", response_model=Dict[str, Any], dependencies=[Depends(require_scopes("spaces:read"))])
 async def get_space_stats(
     request: Request,
     site_id: Optional[UUID] = Query(None, description="Filter by site"),
@@ -415,7 +416,7 @@ async def get_space_stats(
 
     Returns counts by state (FREE, OCCUPIED, RESERVED, MAINTENANCE)
 
-    Requires: VIEWER role or higher
+    Requires: VIEWER role or higher, API key requires spaces:read scope
     """
     try:
         db_pool = request.app.state.db_pool
