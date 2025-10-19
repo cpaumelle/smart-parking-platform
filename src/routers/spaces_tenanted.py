@@ -1,0 +1,456 @@
+"""
+Spaces Router - Tenant-scoped CRUD API for parking spaces
+Multi-tenancy enabled with RBAC
+"""
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
+from typing import Optional, List, Dict, Any
+import logging
+from uuid import UUID
+from datetime import datetime
+
+from ..models import (
+    SpaceCreate, SpaceUpdate, Space, SpaceState,
+    TenantContext
+)
+from ..tenant_auth import get_current_tenant, require_viewer, require_admin
+from ..rate_limit import get_rate_limiter
+
+router = APIRouter(prefix="/api/v1/spaces", tags=["spaces"])
+logger = logging.getLogger(__name__)
+
+
+@router.get("/", response_model=Dict[str, Any])
+async def list_spaces(
+    request: Request,
+    building: Optional[str] = Query(None, description="Filter by building"),
+    floor: Optional[str] = Query(None, description="Filter by floor"),
+    zone: Optional[str] = Query(None, description="Filter by zone"),
+    state: Optional[SpaceState] = Query(None, description="Filter by current state"),
+    site_id: Optional[UUID] = Query(None, description="Filter by site"),
+    include_deleted: bool = Query(False, description="Include soft-deleted spaces"),
+    tenant: TenantContext = Depends(require_viewer)
+):
+    """
+    List all parking spaces in the current tenant with optional filters
+
+    Requires: VIEWER role or higher
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # Build dynamic query with filters - ALWAYS include tenant_id
+        conditions = ["s.tenant_id = $1"]
+        params = [tenant.tenant_id]
+        param_count = 2
+
+        if building is not None:
+            conditions.append(f"s.building = ${param_count}")
+            params.append(building)
+            param_count += 1
+
+        if floor is not None:
+            conditions.append(f"s.floor = ${param_count}")
+            params.append(floor)
+            param_count += 1
+
+        if zone is not None:
+            conditions.append(f"s.zone = ${param_count}")
+            params.append(zone)
+            param_count += 1
+
+        if state is not None:
+            conditions.append(f"s.state = ${param_count}")
+            params.append(state.value)
+            param_count += 1
+
+        if site_id is not None:
+            conditions.append(f"s.site_id = ${param_count}")
+            params.append(site_id)
+            param_count += 1
+
+        # Add soft delete filter
+        if not include_deleted:
+            conditions.append("s.deleted_at IS NULL")
+
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+        query = f"""
+            SELECT
+                s.id,
+                s.name,
+                s.code,
+                s.building,
+                s.floor,
+                s.zone,
+                s.state,
+                s.site_id,
+                s.tenant_id,
+                s.sensor_eui,
+                s.display_eui,
+                s.gps_latitude,
+                s.gps_longitude,
+                s.metadata,
+                s.created_at,
+                s.updated_at,
+                s.deleted_at
+            FROM spaces s
+            {where_clause}
+            ORDER BY s.code, s.name
+        """
+
+        results = await db_pool.fetch(query, *params)
+
+        spaces = []
+        for row in results:
+            spaces.append({
+                "id": str(row["id"]),
+                "name": row["name"],
+                "code": row["code"],
+                "building": row["building"],
+                "floor": row["floor"],
+                "zone": row["zone"],
+                "state": row["state"],
+                "site_id": str(row["site_id"]) if row["site_id"] else None,
+                "tenant_id": str(row["tenant_id"]) if row["tenant_id"] else None,
+                "sensor_eui": row["sensor_eui"],
+                "display_eui": row["display_eui"],
+                "gps_latitude": float(row["gps_latitude"]) if row["gps_latitude"] else None,
+                "gps_longitude": float(row["gps_longitude"]) if row["gps_longitude"] else None,
+                "metadata": row["metadata"],
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                "deleted_at": row["deleted_at"].isoformat() if row["deleted_at"] else None
+            })
+
+        logger.info(f"[Tenant:{tenant.tenant_id}] List spaces: count={len(spaces)} filters={len(conditions)-1}")
+        return {"spaces": spaces, "count": len(spaces)}
+
+    except Exception as e:
+        logger.error(f"[Tenant:{tenant.tenant_id}] Error listing spaces: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{space_id}", response_model=Dict[str, Any])
+async def get_space(
+    request: Request,
+    space_id: UUID,
+    tenant: TenantContext = Depends(require_viewer)
+):
+    """
+    Get a specific parking space by ID
+
+    Requires: VIEWER role or higher
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # CRITICAL: Always scope by tenant_id to prevent cross-tenant access
+        query = """
+            SELECT
+                s.id,
+                s.name,
+                s.code,
+                s.building,
+                s.floor,
+                s.zone,
+                s.state,
+                s.site_id,
+                s.tenant_id,
+                s.sensor_eui,
+                s.display_eui,
+                s.gps_latitude,
+                s.gps_longitude,
+                s.metadata,
+                s.created_at,
+                s.updated_at
+            FROM spaces s
+            WHERE s.id = $1 AND s.tenant_id = $2 AND s.deleted_at IS NULL
+        """
+
+        row = await db_pool.fetchrow(query, space_id, tenant.tenant_id)
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Space not found")
+
+        space = {
+            "id": str(row["id"]),
+            "name": row["name"],
+            "code": row["code"],
+            "building": row["building"],
+            "floor": row["floor"],
+            "zone": row["zone"],
+            "state": row["state"],
+            "site_id": str(row["site_id"]) if row["site_id"] else None,
+            "tenant_id": str(row["tenant_id"]),
+            "sensor_eui": row["sensor_eui"],
+            "display_eui": row["display_eui"],
+            "gps_latitude": float(row["gps_latitude"]) if row["gps_latitude"] else None,
+            "gps_longitude": float(row["gps_longitude"]) if row["gps_longitude"] else None,
+            "metadata": row["metadata"],
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
+        }
+
+        return space
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Tenant:{tenant.tenant_id}] Error getting space {space_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/", response_model=Dict[str, Any], status_code=201)
+async def create_space(
+    request: Request,
+    space: SpaceCreate,
+    tenant: TenantContext = Depends(require_admin)
+):
+    """
+    Create a new parking space
+
+    Requires: ADMIN role or higher
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # Verify site belongs to tenant
+        site_check = await db_pool.fetchrow("""
+            SELECT id, tenant_id FROM sites
+            WHERE id = $1 AND tenant_id = $2 AND is_active = true
+        """, space.site_id, tenant.tenant_id)
+
+        if not site_check:
+            raise HTTPException(
+                status_code=400,
+                detail="Site not found or does not belong to your tenant"
+            )
+
+        # Check for duplicate space code within tenant+site
+        existing = await db_pool.fetchrow("""
+            SELECT id FROM spaces
+            WHERE tenant_id = $1 AND site_id = $2 AND code = $3 AND deleted_at IS NULL
+        """, tenant.tenant_id, space.site_id, space.code)
+
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Space with code '{space.code}' already exists in this site"
+            )
+
+        # Create space (tenant_id will be auto-synced by trigger)
+        query = """
+            INSERT INTO spaces (
+                name, code, building, floor, zone,
+                site_id, sensor_eui, display_eui,
+                state, gps_latitude, gps_longitude, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            RETURNING id, name, code, building, floor, zone, state, site_id, tenant_id,
+                      sensor_eui, display_eui, gps_latitude, gps_longitude,
+                      metadata, created_at, updated_at
+        """
+
+        row = await db_pool.fetchrow(
+            query,
+            space.name, space.code, space.building, space.floor, space.zone,
+            space.site_id, space.sensor_eui, space.display_eui,
+            space.state.value, space.gps_latitude, space.gps_longitude, space.metadata
+        )
+
+        result = {
+            "id": str(row["id"]),
+            "name": row["name"],
+            "code": row["code"],
+            "building": row["building"],
+            "floor": row["floor"],
+            "zone": row["zone"],
+            "state": row["state"],
+            "site_id": str(row["site_id"]),
+            "tenant_id": str(row["tenant_id"]),
+            "sensor_eui": row["sensor_eui"],
+            "display_eui": row["display_eui"],
+            "gps_latitude": float(row["gps_latitude"]) if row["gps_latitude"] else None,
+            "gps_longitude": float(row["gps_longitude"]) if row["gps_longitude"] else None,
+            "metadata": row["metadata"],
+            "created_at": row["created_at"].isoformat(),
+            "updated_at": row["updated_at"].isoformat()
+        }
+
+        logger.info(f"[Tenant:{tenant.tenant_id}] Created space {row['code']} in site {space.site_id}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Tenant:{tenant.tenant_id}] Error creating space: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{space_id}", response_model=Dict[str, Any])
+async def update_space(
+    request: Request,
+    space_id: UUID,
+    space_update: SpaceUpdate,
+    tenant: TenantContext = Depends(require_admin)
+):
+    """
+    Update a parking space
+
+    Requires: ADMIN role or higher
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # Verify space exists and belongs to tenant
+        existing = await db_pool.fetchrow("""
+            SELECT id FROM spaces
+            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+        """, space_id, tenant.tenant_id)
+
+        if not existing:
+            raise HTTPException(status_code=404, detail="Space not found")
+
+        # Build dynamic update query
+        update_fields = []
+        params = []
+        param_count = 1
+
+        for field, value in space_update.dict(exclude_unset=True).items():
+            if value is not None:
+                if field == "state":
+                    update_fields.append(f"{field} = ${param_count}")
+                    params.append(value.value)
+                else:
+                    update_fields.append(f"{field} = ${param_count}")
+                    params.append(value)
+                param_count += 1
+
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        params.extend([space_id, tenant.tenant_id])
+
+        query = f"""
+            UPDATE spaces
+            SET {', '.join(update_fields)}, updated_at = NOW()
+            WHERE id = ${param_count} AND tenant_id = ${param_count + 1}
+            RETURNING id, name, code, building, floor, zone, state, site_id, tenant_id,
+                      sensor_eui, display_eui, gps_latitude, gps_longitude,
+                      metadata, created_at, updated_at
+        """
+
+        row = await db_pool.fetchrow(query, *params)
+
+        result = {
+            "id": str(row["id"]),
+            "name": row["name"],
+            "code": row["code"],
+            "building": row["building"],
+            "floor": row["floor"],
+            "zone": row["zone"],
+            "state": row["state"],
+            "site_id": str(row["site_id"]) if row["site_id"] else None,
+            "tenant_id": str(row["tenant_id"]),
+            "sensor_eui": row["sensor_eui"],
+            "display_eui": row["display_eui"],
+            "gps_latitude": float(row["gps_latitude"]) if row["gps_latitude"] else None,
+            "gps_longitude": float(row["gps_longitude"]) if row["gps_longitude"] else None,
+            "metadata": row["metadata"],
+            "created_at": row["created_at"].isoformat(),
+            "updated_at": row["updated_at"].isoformat()
+        }
+
+        logger.info(f"[Tenant:{tenant.tenant_id}] Updated space {space_id}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Tenant:{tenant.tenant_id}] Error updating space {space_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{space_id}", status_code=204)
+async def delete_space(
+    request: Request,
+    space_id: UUID,
+    tenant: TenantContext = Depends(require_admin)
+):
+    """
+    Soft delete a parking space
+
+    Requires: ADMIN role or higher
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # Soft delete (set deleted_at) - always scope by tenant
+        result = await db_pool.execute("""
+            UPDATE spaces
+            SET deleted_at = NOW()
+            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+        """, space_id, tenant.tenant_id)
+
+        if result == "UPDATE 0":
+            raise HTTPException(status_code=404, detail="Space not found")
+
+        logger.info(f"[Tenant:{tenant.tenant_id}] Deleted space {space_id}")
+        return None
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Tenant:{tenant.tenant_id}] Error deleting space {space_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats/summary", response_model=Dict[str, Any])
+async def get_space_stats(
+    request: Request,
+    site_id: Optional[UUID] = Query(None, description="Filter by site"),
+    tenant: TenantContext = Depends(require_viewer)
+):
+    """
+    Get space statistics for the current tenant
+
+    Returns counts by state (FREE, OCCUPIED, RESERVED, MAINTENANCE)
+
+    Requires: VIEWER role or higher
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # Build query with optional site filter
+        site_condition = "AND site_id = $2" if site_id else ""
+        params = [tenant.tenant_id, site_id] if site_id else [tenant.tenant_id]
+
+        query = f"""
+            SELECT
+                state,
+                COUNT(*) as count
+            FROM spaces
+            WHERE tenant_id = $1 {site_condition} AND deleted_at IS NULL
+            GROUP BY state
+        """
+
+        results = await db_pool.fetch(query, *params)
+
+        # Build stats dict
+        stats = {
+            "FREE": 0,
+            "OCCUPIED": 0,
+            "RESERVED": 0,
+            "MAINTENANCE": 0,
+            "total": 0
+        }
+
+        for row in results:
+            stats[row["state"]] = row["count"]
+            stats["total"] += row["count"]
+
+        logger.info(f"[Tenant:{tenant.tenant_id}] Space stats: {stats}")
+        return stats
+
+    except Exception as e:
+        logger.error(f"[Tenant:{tenant.tenant_id}] Error getting space stats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

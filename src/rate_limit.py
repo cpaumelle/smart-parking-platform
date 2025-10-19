@@ -25,6 +25,13 @@ class RateLimitConfig:
     requests_per_minute: int = 60
     burst_size: int = 10  # Allow bursts up to this many requests
 
+@dataclass
+class TenantRateLimitConfig:
+    """Per-tenant rate limit configuration"""
+    webhook_qps: int = 10  # Webhook requests per second
+    downlink_ops_per_minute: int = 100  # Downlink operations per minute
+    reservation_attempts_per_minute: int = 50  # Reservation attempts per minute
+
 
 class RateLimiter:
     """Token bucket rate limiter using Redis"""
@@ -46,6 +53,36 @@ class RateLimiter:
         """Close Redis connection"""
         if self.redis_client:
             await self.redis_client.close()
+
+    async def check_tenant_rate_limit(
+        self,
+        tenant_id: str,
+        limit_type: str,
+        requests_per_minute: int,
+        burst_size: Optional[int] = None
+    ) -> tuple[bool, dict]:
+        """
+        Check tenant-specific rate limit
+
+        Args:
+            tenant_id: Tenant UUID
+            limit_type: Type of operation (webhook, downlink, reservation)
+            requests_per_minute: Rate limit
+            burst_size: Optional burst size (defaults to requests_per_minute / 6)
+
+        Returns:
+            Tuple of (allowed: bool, headers: dict)
+        """
+        if burst_size is None:
+            burst_size = max(10, requests_per_minute // 6)
+
+        config = RateLimitConfig(
+            requests_per_minute=requests_per_minute,
+            burst_size=burst_size
+        )
+
+        key = f"tenant:{tenant_id}:{limit_type}"
+        return await self.check_rate_limit(key, config)
 
     async def check_rate_limit(
         self,

@@ -33,6 +33,13 @@ class DeviceType(str, Enum):
     DISPLAY = "display"
     GATEWAY = "gateway"
 
+class UserRole(str, Enum):
+    """User roles for RBAC"""
+    OWNER = "owner"       # Full access including billing and API keys
+    ADMIN = "admin"       # Manage sites, spaces, devices, users (not billing)
+    OPERATOR = "operator" # Manage reservations, view telemetry, trigger displays
+    VIEWER = "viewer"     # Read-only access
+
 # ============================================================
 # Base Models
 # ============================================================
@@ -81,6 +88,7 @@ class SpaceCreate(SpaceBase, DevEUIMixin):
     sensor_eui: Optional[str] = Field(None, description="16-character hex DevEUI")
     display_eui: Optional[str] = Field(None, description="16-character hex DevEUI")
     state: SpaceState = Field(default=SpaceState.FREE)
+    site_id: UUID = Field(..., description="Site ID this space belongs to")
     metadata: Optional[Dict[str, Any]] = None
 
 class SpaceUpdate(DevEUIMixin):
@@ -101,6 +109,8 @@ class Space(SpaceBase, DevEUIMixin, TimestampMixin):
     sensor_eui: Optional[str] = None
     display_eui: Optional[str] = None
     state: SpaceState
+    site_id: Optional[UUID] = None
+    tenant_id: Optional[UUID] = None  # Denormalized for fast lookups
     metadata: Optional[Dict[str, Any]] = None
     deleted_at: Optional[datetime] = None
 
@@ -234,3 +244,221 @@ class ReservationFilters(PaginationParams):
     status: Optional[ReservationStatus] = None
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
+
+# ============================================================
+# Multi-Tenancy & RBAC Models
+# ============================================================
+
+class TenantBase(BaseModel):
+    """Base tenant model"""
+    name: str = Field(..., min_length=1, max_length=255)
+    slug: str = Field(..., min_length=1, max_length=100, pattern=r'^[a-z0-9-]+$')
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+class TenantCreate(TenantBase):
+    """Model for creating a tenant"""
+    pass
+
+class TenantUpdate(BaseModel):
+    """Model for updating a tenant"""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    metadata: Optional[Dict[str, Any]] = None
+    settings: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+class Tenant(TenantBase, TimestampMixin):
+    """Complete tenant model"""
+    id: UUID
+    is_active: bool = True
+
+    class Config:
+        orm_mode = True
+
+class SiteBase(BaseModel):
+    """Base site model"""
+    name: str = Field(..., min_length=1, max_length=255)
+    timezone: str = Field(default="UTC", max_length=50)
+    location: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Address, city, coordinates, etc")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+class SiteCreate(SiteBase):
+    """Model for creating a site"""
+    tenant_id: UUID
+
+class SiteUpdate(BaseModel):
+    """Model for updating a site"""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    timezone: Optional[str] = Field(None, max_length=50)
+    location: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+class Site(SiteBase, TimestampMixin):
+    """Complete site model"""
+    id: UUID
+    tenant_id: UUID
+    is_active: bool = True
+
+    class Config:
+        orm_mode = True
+
+class UserBase(BaseModel):
+    """Base user model"""
+    email: str = Field(..., max_length=255)
+    name: str = Field(..., min_length=1, max_length=255)
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v):
+        """Basic email validation"""
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
+            raise ValueError("Invalid email format")
+        return v.lower()
+
+class UserCreate(UserBase):
+    """Model for creating a user"""
+    password: str = Field(..., min_length=8, max_length=100)
+
+class UserUpdate(BaseModel):
+    """Model for updating a user"""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    metadata: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+class UserPasswordUpdate(BaseModel):
+    """Model for updating user password"""
+    current_password: str
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+class User(UserBase, TimestampMixin):
+    """Complete user model (without password)"""
+    id: UUID
+    is_active: bool = True
+    email_verified: bool = False
+    last_login_at: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
+
+class UserMembershipBase(BaseModel):
+    """Base user membership model"""
+    role: UserRole
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+class UserMembershipCreate(UserMembershipBase):
+    """Model for creating a user membership"""
+    user_id: UUID
+    tenant_id: UUID
+
+class UserMembershipUpdate(BaseModel):
+    """Model for updating a user membership"""
+    role: Optional[UserRole] = None
+    is_active: Optional[bool] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class UserMembership(UserMembershipBase, TimestampMixin):
+    """Complete user membership model"""
+    id: UUID
+    user_id: UUID
+    tenant_id: UUID
+    is_active: bool = True
+
+    class Config:
+        orm_mode = True
+        use_enum_values = True
+
+class UserWithMemberships(User):
+    """User model with their tenant memberships"""
+    memberships: List[UserMembership] = []
+
+class TenantContext(BaseModel):
+    """Current tenant context for authenticated requests"""
+    tenant_id: UUID
+    tenant_name: str
+    tenant_slug: str
+    user_id: Optional[UUID] = None
+    user_role: Optional[UserRole] = None
+    api_key_id: Optional[UUID] = None
+
+    # Resolved from JWT or API key
+    source: str  # 'jwt' or 'api_key'
+
+# ============================================================
+# Authentication Models
+# ============================================================
+
+class LoginRequest(BaseModel):
+    """User login request"""
+    email: str
+    password: str
+
+class LoginResponse(BaseModel):
+    """User login response"""
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: User
+    tenants: List[Dict[str, Any]]  # Available tenants for this user
+
+class TokenData(BaseModel):
+    """JWT token payload"""
+    user_id: UUID
+    tenant_id: UUID
+    role: UserRole
+    exp: datetime
+
+class UserInvite(BaseModel):
+    """User invitation model"""
+    email: str
+    tenant_id: UUID
+    role: UserRole
+    message: Optional[str] = None
+
+class UserInviteAccept(BaseModel):
+    """Accept user invitation"""
+    token: str
+    password: str = Field(..., min_length=8, max_length=100)
+    name: str = Field(..., min_length=1, max_length=255)
+
+class RegistrationRequest(BaseModel):
+    """Combined user and tenant registration request"""
+    user: UserCreate
+    tenant: TenantCreate
+
+# ============================================================
+# API Key Models (Extended for Multi-Tenancy)
+# ============================================================
+
+class APIKeyCreate(BaseModel):
+    """Model for creating an API key"""
+    name: str = Field(..., min_length=1, max_length=100, description="Friendly name for the API key")
+    tenant_id: UUID
+    scopes: List[str] = Field(
+        default_factory=lambda: ["spaces:read", "devices:read"],
+        description="API key scopes (e.g., spaces:read, spaces:write, webhook:ingest)"
+    )
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+class APIKeyResponse(BaseModel):
+    """Response when creating an API key (includes plain key once)"""
+    id: UUID
+    name: str
+    key: str  # Plain text key - only shown once!
+    tenant_id: UUID
+    scopes: List[str]
+    created_at: datetime
+
+class APIKey(BaseModel):
+    """API key model (without the actual key)"""
+    id: UUID
+    name: str
+    tenant_id: UUID
+    scopes: List[str] = []
+    last_used_at: Optional[datetime] = None
+    is_active: bool = True
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
