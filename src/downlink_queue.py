@@ -23,6 +23,9 @@ import time
 import uuid
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any, List
+
+# Import metrics tracking
+from . import metrics
 from datetime import datetime, timedelta
 
 import redis.asyncio as redis
@@ -119,6 +122,7 @@ class DownlinkQueue:
                 f"content_hash={content_hash} matches last sent"
             )
             await self._increment_metric("deduplicated")
+            metrics.downlink_deduplicated_total.labels(tenant_id=tenant_id).inc()
             return None
 
         # Check for coalescing: if there's already a pending command for this device
@@ -135,6 +139,7 @@ class DownlinkQueue:
                 f"replaced {existing_cmd_id} with newer command"
             )
             await self._increment_metric("coalesced")
+            metrics.downlink_coalesced_total.labels(tenant_id=tenant_id).inc()
 
         # Create new command
         cmd_id = str(uuid.uuid4())
@@ -171,6 +176,8 @@ class DownlinkQueue:
 
         # Metrics
         await self._increment_metric("enqueued")
+        metrics.downlink_enqueued_total.labels(tenant_id=tenant_id).inc()
+        metrics.track_downlink_enqueue(tenant_id=tenant_id)
 
         logger.info(
             f"Enqueued downlink {cmd_id} for {device_eui}: "
@@ -248,6 +255,9 @@ class DownlinkQueue:
         latency_ms = int((time.time() - cmd.created_at) * 1000)
         await self._record_latency(latency_ms)
 
+        # Prometheus metrics
+        metrics.track_downlink_success(tenant_id=cmd.tenant_id, latency_ms=latency_ms)
+
         logger.info(
             f"Downlink {cmd.id} succeeded for {cmd.device_eui} "
             f"(attempts={cmd.attempts}, latency={latency_ms}ms)"
@@ -279,6 +289,7 @@ class DownlinkQueue:
                 f"{error} (attempts={cmd.attempts})"
             )
             await self._increment_metric("dead_lettered")
+            metrics.track_downlink_dead_letter(tenant_id=cmd.tenant_id)
             return
 
         # Calculate backoff delay
@@ -350,7 +361,9 @@ class DownlinkQueue:
 
         results = await pipe.execute()
 
-        latencies = [int(x) for x in results[9] if x]
+        latencies = [int(x) for x in results[8] if x]
+
+        sorted_latencies = sorted(latencies) if latencies else []
 
         return {
             "queue_depth": results[0] or 0,
@@ -365,8 +378,8 @@ class DownlinkQueue:
                 int(results[3] or 0) / int(results[2] or 1) * 100
                 if int(results[2] or 0) > 0 else 0
             ),
-            "latency_p50_ms": sorted(latencies)[len(latencies)//2] if latencies else 0,
-            "latency_p99_ms": sorted(latencies)[int(len(latencies)*0.99)] if latencies else 0
+            "latency_p50_ms": sorted_latencies[len(sorted_latencies)//2] if sorted_latencies else 0,
+            "latency_p99_ms": sorted_latencies[int(len(sorted_latencies)*0.99)] if len(sorted_latencies) > 1 else (sorted_latencies[0] if sorted_latencies else 0)
         }
 
     async def _increment_metric(self, metric_name: str):

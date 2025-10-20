@@ -34,6 +34,7 @@ from .rate_limit import RateLimiter, set_rate_limiter, RateLimitConfig
 from .api_tenants import router as tenants_router
 from .routers.spaces_tenanted import router as spaces_router  # Tenanted version
 from .routers.downlink_monitor import router as downlink_monitor_router
+from .routers.metrics import router as metrics_router
 # from .routers.devices import router as devices_router  # TODO: Add tenant scoping
 # from .routers.reservations import router as reservations_router  # TODO: Add tenant scoping
 # from .routers.gateways import router as gateways_router  # Can remain public or add tenant scoping
@@ -227,6 +228,9 @@ app.include_router(spaces_router)
 # Downlink queue monitoring (requires admin auth)
 app.include_router(downlink_monitor_router)
 
+# Observability endpoints
+app.include_router(metrics_router)
+
 # TODO: Add tenant scoping to these routers
 # app.include_router(devices_router)
 # app.include_router(reservations_router)
@@ -331,14 +335,124 @@ async def health_check(request: Request):
     )
 
 @app.get("/health/ready", tags=["System"])
-async def readiness_check():
-    """Kubernetes readiness probe - checks if app can serve traffic"""
-    return {"status": "ready"}
+async def readiness_check(request: Request):
+    """
+    Kubernetes readiness probe - checks if app can serve traffic
+
+    Returns 200 if all critical dependencies are available:
+    - Database connectivity
+    - Redis connectivity
+    - ChirpStack MQTT connection
+
+    Returns 503 if any dependency is unavailable
+    """
+    checks = {}
+    all_ready = True
+
+    # Check database
+    try:
+        db_pool = request.app.state.db_pool
+        async with db_pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        checks["database"] = "ready"
+    except Exception as e:
+        checks["database"] = f"not ready: {str(e)[:100]}"
+        all_ready = False
+
+    # Check Redis
+    try:
+        state_manager = request.app.state.state_manager
+        await state_manager.ping()
+        checks["redis"] = "ready"
+    except Exception as e:
+        checks["redis"] = f"not ready: {str(e)[:100]}"
+        all_ready = False
+
+    # Check ChirpStack connection
+    try:
+        chirpstack_client = request.app.state.chirpstack_client
+        if chirpstack_client and chirpstack_client.mqtt_client and chirpstack_client.mqtt_client.is_connected():
+            checks["chirpstack_mqtt"] = "ready"
+        else:
+            checks["chirpstack_mqtt"] = "not connected"
+            all_ready = False
+    except Exception as e:
+        checks["chirpstack_mqtt"] = f"not ready: {str(e)[:100]}"
+        all_ready = False
+
+    # Check downlink worker
+    try:
+        downlink_worker = request.app.state.downlink_worker
+        if downlink_worker and downlink_worker.running:
+            checks["downlink_worker"] = "ready"
+        else:
+            checks["downlink_worker"] = "not running"
+            # Don't fail readiness for worker - degraded mode OK
+    except Exception as e:
+        checks["downlink_worker"] = f"error: {str(e)[:100]}"
+
+    if all_ready:
+        return {"status": "ready", "checks": checks}
+    else:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "checks": checks}
+        )
+
 
 @app.get("/health/live", tags=["System"])
-async def liveness_check():
-    """Kubernetes liveness probe - checks if app is alive"""
-    return {"status": "live"}
+async def liveness_check(request: Request):
+    """
+    Kubernetes liveness probe - checks if app is alive
+
+    Returns 200 if:
+    - Process is running
+    - Background workers are alive (not deadlocked)
+
+    Returns 503 if process is deadlocked or unhealthy
+    """
+    checks = {}
+    is_alive = True
+
+    # Check task manager is running
+    try:
+        task_manager = request.app.state.task_manager
+        if task_manager and task_manager.running:
+            checks["task_manager"] = "alive"
+        else:
+            checks["task_manager"] = "stopped"
+            is_alive = False
+    except Exception as e:
+        checks["task_manager"] = f"error: {str(e)[:100]}"
+        is_alive = False
+
+    # Check downlink worker heartbeat
+    try:
+        downlink_worker = request.app.state.downlink_worker
+        if downlink_worker:
+            checks["downlink_worker"] = "alive" if downlink_worker.running else "stopped"
+        else:
+            checks["downlink_worker"] = "not initialized"
+    except Exception as e:
+        checks["downlink_worker"] = f"error: {str(e)[:100]}"
+
+    # Check webhook spool worker
+    try:
+        webhook_spool = request.app.state.webhook_spool
+        if webhook_spool:
+            checks["webhook_spool"] = "alive" if webhook_spool.running else "stopped"
+        else:
+            checks["webhook_spool"] = "not initialized"
+    except Exception as e:
+        checks["webhook_spool"] = f"error: {str(e)[:100]}"
+
+    if is_alive:
+        return {"status": "live", "checks": checks}
+    else:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "dead", "checks": checks}
+        )
 
 # ============================================================
 # Request ID Middleware (for logging)
