@@ -586,9 +586,12 @@ class DownlinkWorker:
             # Send downlink via ChirpStack
             logger.debug(f"Sending downlink {cmd.id} to {cmd.device_eui}")
 
+            # Convert hex payload to bytes
+            payload_bytes = bytes.fromhex(cmd.payload)
+
             result = await self.chirpstack_client.queue_downlink(
                 device_eui=cmd.device_eui,
-                payload_hex=cmd.payload,
+                payload=payload_bytes,
                 fport=cmd.fport,
                 confirmed=cmd.confirmed
             )

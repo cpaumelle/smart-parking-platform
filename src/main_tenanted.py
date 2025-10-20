@@ -21,6 +21,7 @@ from .chirpstack_client import ChirpStackClient
 from .gateway_monitor import GatewayMonitor
 from .device_handlers import DeviceHandlerRegistry
 from .background_tasks import BackgroundTaskManager
+from .downlink_queue import DownlinkQueue, DownlinkRateLimiter, DownlinkWorker
 from .models import HealthStatus
 from .exceptions import ParkingException
 
@@ -31,6 +32,7 @@ from .rate_limit import RateLimiter, set_rate_limiter, RateLimitConfig
 # Routers
 from .api_tenants import router as tenants_router
 from .routers.spaces_tenanted import router as spaces_router  # Tenanted version
+from .routers.downlink_monitor import router as downlink_monitor_router
 # from .routers.devices import router as devices_router  # TODO: Add tenant scoping
 # from .routers.reservations import router as reservations_router  # TODO: Add tenant scoping
 # from .routers.gateways import router as gateways_router  # Can remain public or add tenant scoping
@@ -38,7 +40,7 @@ from .routers.spaces_tenanted import router as spaces_router  # Tenanted version
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
-    format='%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
@@ -71,21 +73,29 @@ async def lifespan(app: FastAPI):
     set_jwt_secret(jwt_secret)
     logger.info("[OK] Multi-tenancy authentication initialized")
 
-    # Initialize rate limiter
+    # Initialize rate limiter (for API requests)
     rate_limiter = RateLimiter(settings.redis_url)
     await rate_limiter.initialize()
     set_rate_limiter(rate_limiter)
     app.state.rate_limiter = rate_limiter
     logger.info("[OK] Rate limiter initialized")
 
-    # Initialize Redis and state manager
+    # Initialize downlink queue and worker (for Class-C displays)
+    downlink_queue = DownlinkQueue(rate_limiter.redis_client)
+    downlink_rate_limiter = DownlinkRateLimiter(rate_limiter.redis_client)
+    app.state.downlink_queue = downlink_queue
+    app.state.downlink_rate_limiter = downlink_rate_limiter
+    logger.info("[OK] Downlink queue initialized")
+
+    # Initialize Redis and state manager (with downlink queue)
     state_manager = StateManager(
         db_pool=db_pool,
-        redis_url=settings.redis_url
+        redis_url=settings.redis_url,
+        downlink_queue=downlink_queue  # Enable durable downlink queue
     )
     await state_manager.initialize()
     app.state.state_manager = state_manager
-    logger.info("[OK] State manager initialized")
+    logger.info("[OK] State manager initialized with durable downlink queue")
 
     # Initialize ChirpStack client
     chirpstack_client = ChirpStackClient(
@@ -113,6 +123,17 @@ async def lifespan(app: FastAPI):
     app.state.device_registry = device_registry
     logger.info(f"[OK] Device registry initialized with handlers: {device_registry.list_handlers()}")
 
+    # Initialize downlink worker (processes queue in background)
+    downlink_worker = DownlinkWorker(
+        queue=downlink_queue,
+        rate_limiter=downlink_rate_limiter,
+        chirpstack_client=chirpstack_client,
+        worker_id="worker-1"
+    )
+    await downlink_worker.start()
+    app.state.downlink_worker = downlink_worker
+    logger.info("[OK] Downlink worker started")
+
     # Initialize background tasks
     task_manager = BackgroundTaskManager(
         db_pool=db_pool,
@@ -124,7 +145,7 @@ async def lifespan(app: FastAPI):
     app.state.task_manager = task_manager
     logger.info("[OK] Background task manager started")
 
-    logger.info(f">> {settings.app_name} v{settings.app_version} is ready with multi-tenancy!")
+    logger.info(f">> {settings.app_name} v{settings.app_version} is ready with multi-tenancy and durable downlink queue!")
 
     yield
 
@@ -134,6 +155,10 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, 'task_manager'):
         await app.state.task_manager.stop()
         logger.info("[OK] Background tasks stopped")
+
+    if hasattr(app.state, 'downlink_worker'):
+        await app.state.downlink_worker.stop()
+        logger.info("[OK] Downlink worker stopped")
 
     if hasattr(app.state, 'gateway_monitor'):
         await app.state.gateway_monitor.disconnect()
@@ -186,6 +211,9 @@ app.include_router(tenants_router)
 
 # Tenant-scoped resource endpoints
 app.include_router(spaces_router)
+
+# Downlink queue monitoring (requires admin auth)
+app.include_router(downlink_monitor_router)
 
 # TODO: Add tenant scoping to these routers
 # app.include_router(devices_router)
