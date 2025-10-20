@@ -39,11 +39,12 @@ class StateManager:
         SpaceState.MAINTENANCE: [SpaceState.FREE]
     }
 
-    def __init__(self, db_pool, redis_url: str, chirpstack_client=None):
+    def __init__(self, db_pool, redis_url: str, chirpstack_client=None, downlink_queue=None):
         self.db_pool = db_pool
         self.redis_url = redis_url
         self.redis_client: Optional[redis.Redis] = None
         self.chirpstack_client = chirpstack_client
+        self.downlink_queue = downlink_queue  # DownlinkQueue instance
         self.lock_timeout = 5  # seconds
         self.cache_ttl = 300  # 5 minutes
 
@@ -268,23 +269,58 @@ class StateManager:
             fport = display['fport']
             confirmed = display['confirmed_downlinks']
 
-            # Queue downlink via ChirpStack
-            result = await self.chirpstack_client.queue_downlink(
-                device_eui=display_eui,
-                payload=payload,
-                fport=fport,
-                confirmed=confirmed
-            )
+            # Get tenant_id and gateway_id for the space
+            space_info = await self.db_pool.fetchrow("""
+                SELECT tenant_id FROM spaces WHERE id = $1
+            """, space_id)
 
-            queue_id = result.get('id')
-            downlink_sent = True
+            tenant_id = str(space_info['tenant_id']) if space_info else None
+
+            # Use durable downlink queue if available, otherwise fallback to direct ChirpStack
+            if self.downlink_queue:
+                # Enqueue via durable queue (idempotent, rate-limited, persistent)
+                queue_id = await self.downlink_queue.enqueue(
+                    device_eui=display_eui,
+                    payload=payload_hex,
+                    fport=fport,
+                    tenant_id=tenant_id,
+                    confirmed=confirmed,
+                    gateway_id=None,  # TODO: Track gateway association
+                    space_id=space_id,
+                    trigger_source=trigger_source
+                )
+
+                if queue_id:
+                    downlink_sent = True
+                    logger.info(
+                        f"Enqueued downlink {queue_id} for display {display_eui} ({display['device_type']}): "
+                        f"state={new_state.value}, payload={payload_hex}, fport={fport}"
+                    )
+                else:
+                    logger.debug(
+                        f"Downlink deduplicated for {display_eui}: "
+                        f"identical command already sent"
+                    )
+                    downlink_sent = False  # Deduplicated
+
+            else:
+                # Fallback: Direct ChirpStack API (legacy behavior)
+                result = await self.chirpstack_client.queue_downlink(
+                    device_eui=display_eui,
+                    payload=payload,
+                    fport=fport,
+                    confirmed=confirmed
+                )
+
+                queue_id = result.get('id')
+                downlink_sent = True
+                logger.info(
+                    f"Queued downlink (direct) for display {display_eui} ({display['device_type']}): "
+                    f"state={new_state.value}, payload={payload_hex}, fport={fport}, queue_id={queue_id}"
+                )
+
             end_time = datetime.utcnow()
             response_time_ms = int((end_time - start_time).total_seconds() * 1000)
-
-            logger.info(
-                f"Queued downlink for display {display_eui} ({display['device_type']}): "
-                f"state={new_state.value}, payload={payload_hex}, fport={fport}, queue_id={queue_id}"
-            )
 
             # Log actuation to database
             await self.db_pool.execute("""
