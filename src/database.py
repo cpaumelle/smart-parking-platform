@@ -687,19 +687,33 @@ class DatabasePool:
         battery: Optional[float],
         rssi: Optional[int],
         snr: Optional[float],
-        timestamp: Optional[datetime] = None
+        timestamp: Optional[datetime] = None,
+        fcnt: Optional[int] = None,
+        tenant_id: Optional[str] = None
     ):
-        """Insert sensor reading"""
+        """
+        Insert sensor reading with idempotency via fcnt
+
+        Args:
+            fcnt: LoRaWAN frame counter for deduplication
+            tenant_id: Tenant ID for multi-tenant deduplication
+
+        Note:
+            If fcnt and tenant_id are provided, duplicate uplinks (same dev_eui + fcnt)
+            will be silently ignored via ON CONFLICT clause.
+        """
 
         query = """
             INSERT INTO sensor_readings (
                 device_eui, space_id, occupancy_state,
-                battery, temperature, rssi, snr, timestamp
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                battery, temperature, rssi, snr, timestamp, fcnt, tenant_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (tenant_id, device_eui, fcnt) WHERE fcnt IS NOT NULL
+            DO NOTHING
         """
 
         async with self.acquire() as conn:
-            await conn.execute(
+            result = await conn.execute(
                 query,
                 device_eui.lower(),
                 space_id,
@@ -708,7 +722,9 @@ class DatabasePool:
                 None,  # temperature
                 rssi,
                 snr,
-                timestamp or utcnow()
+                timestamp or utcnow(),
+                fcnt,
+                tenant_id
             )
 
     async def insert_telemetry(self, device_eui: str, data: Any):

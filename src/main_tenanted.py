@@ -22,6 +22,7 @@ from .gateway_monitor import GatewayMonitor
 from .device_handlers import DeviceHandlerRegistry
 from .background_tasks import BackgroundTaskManager
 from .downlink_queue import DownlinkQueue, DownlinkRateLimiter, DownlinkWorker
+from .webhook_spool import WebhookSpool, set_spool
 from .models import HealthStatus
 from .exceptions import ParkingException
 
@@ -79,6 +80,13 @@ async def lifespan(app: FastAPI):
     set_rate_limiter(rate_limiter)
     app.state.rate_limiter = rate_limiter
     logger.info("[OK] Rate limiter initialized")
+
+    # Initialize webhook spool for back-pressure handling
+    webhook_spool = WebhookSpool()
+    await webhook_spool.start_worker()
+    set_spool(webhook_spool)
+    app.state.webhook_spool = webhook_spool
+    logger.info("[OK] Webhook spool initialized")
 
     # Initialize downlink queue and worker (for Class-C displays)
     downlink_queue = DownlinkQueue(rate_limiter.redis_client)
@@ -159,6 +167,10 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, 'downlink_worker'):
         await app.state.downlink_worker.stop()
         logger.info("[OK] Downlink worker stopped")
+
+    if hasattr(app.state, 'webhook_spool'):
+        await app.state.webhook_spool.stop_worker()
+        logger.info("[OK] Webhook spool worker stopped")
 
     if hasattr(app.state, 'gateway_monitor'):
         await app.state.gateway_monitor.disconnect()

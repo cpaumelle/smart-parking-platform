@@ -36,6 +36,9 @@ from .exceptions import (
 )
 from .utils import generate_request_id, normalize_deveui, utcnow
 from .routers import spaces_router, devices_router, reservations_router, gateways_router
+from .webhook_validation import verify_webhook_signature
+from .orphan_devices import handle_orphan_device
+from .webhook_spool import spool_webhook_on_error
 
 # Configure logging
 logging.basicConfig(
@@ -285,7 +288,12 @@ async def health_check(request: Request):
 @app.post("/api/v1/uplink", response_model=ProcessingResult, tags=["ChirpStack"])
 async def process_uplink(request: Request, webhook_data: Dict[str, Any]):
     """
-    Process ChirpStack uplink webhook
+    Process ChirpStack uplink webhook with signature validation and idempotency
+
+    Security:
+    - Validates webhook HMAC signature (per-tenant secrets)
+    - Deduplicates uplinks via (tenant_id, device_eui, fcnt) unique constraint
+
     Handles sensor data, device discovery, and Kuando verification
     """
     start_time = datetime.utcnow()
@@ -309,6 +317,18 @@ async def process_uplink(request: Request, webhook_data: Dict[str, Any]):
 
         # Query device from database to get handler_class
         device_record = await db_pool.get_sensor_device_by_deveui(device_eui)
+
+        # Check if device is assigned to a space (for tenant_id lookup)
+        space = await db_pool.get_space_by_sensor(device_eui)
+        tenant_id = space.tenant_id if space else None
+
+        # Validate webhook signature (if tenant has a secret configured)
+        # Note: We read raw body for HMAC validation
+        body = await request.body()
+        await verify_webhook_signature(request, tenant_id, db_pool.pool, body)
+
+        if tenant_id:
+            logger.debug(f"[{request_id}] Webhook signature validated for tenant {tenant_id}")
 
         # Get handler for device (try database first, fallback to EUI matching)
         handler = None
@@ -429,12 +449,19 @@ async def process_uplink(request: Request, webhook_data: Dict[str, Any]):
             device_model=device_type["type_code"]
         )
 
-        # Check if device is assigned to a space
-        space = await db_pool.get_space_by_sensor(device_eui)
-
+        # Check if device is assigned to a space (already queried earlier for tenant_id)
         if not space:
-            # ORPHAN device - log data but don't actuate
-            logger.info(f"[{request_id}] ORPHAN device {device_eui} - data stored, no actuation")
+            # ORPHAN device - track in orphan_devices table
+            logger.info(f"[{request_id}] ORPHAN device {device_eui} - tracking uplink")
+
+            # Track orphan device
+            orphan_info = await handle_orphan_device(
+                db=db_pool.pool,
+                device_eui=device_eui,
+                payload=parsed_data.get("payload", "").encode() if parsed_data.get("payload") else None,
+                rssi=parsed_data.get("rssi"),
+                snr=parsed_data.get("snr")
+            )
 
             # Store telemetry for orphan device
             if uplink:
@@ -464,7 +491,7 @@ async def process_uplink(request: Request, webhook_data: Dict[str, Any]):
                 request_id=request_id
             )
 
-            # Store sensor reading
+            # Store sensor reading (with fcnt for idempotency)
             await db_pool.insert_sensor_reading(
                 device_eui=device_eui,
                 space_id=str(space.id),
@@ -472,7 +499,9 @@ async def process_uplink(request: Request, webhook_data: Dict[str, Any]):
                 battery=uplink.battery,
                 rssi=uplink.rssi,
                 snr=uplink.snr,
-                timestamp=uplink.timestamp
+                timestamp=uplink.timestamp,
+                fcnt=parsed_data.get("fcnt"),
+                tenant_id=str(space.tenant_id) if space.tenant_id else None
             )
 
             logger.info(
@@ -506,8 +535,48 @@ async def process_uplink(request: Request, webhook_data: Dict[str, Any]):
                 processing_time_ms=processing_time_ms
             )
 
+    except DatabaseError as e:
+        # Database error - try to spool webhook for later retry
+        logger.error(f"[{request_id}] Database error during uplink processing: {e}")
+
+        spooled = await spool_webhook_on_error(
+            webhook_data=webhook_data,
+            device_eui=device_eui,
+            request_id=request_id,
+            error=e
+        )
+
+        if spooled:
+            # Return 202 Accepted - webhook is spooled and will be processed later
+            return ProcessingResult(
+                status="spooled",
+                device_eui=device_eui,
+                space_code=None,
+                state=None,
+                request_id=request_id,
+                processing_time_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+            )
+        else:
+            # Spooling failed - return error
+            raise HTTPException(
+                status_code=503,
+                detail="Database unavailable and spool failed - webhook lost"
+            )
+
     except Exception as e:
         logger.error(f"[{request_id}] Uplink processing failed: {e}", exc_info=True)
+
+        # Try to spool for non-critical errors (but don't fail if spooling fails)
+        try:
+            await spool_webhook_on_error(
+                webhook_data=webhook_data,
+                device_eui=device_eui if 'device_eui' in locals() else "unknown",
+                request_id=request_id,
+                error=e
+            )
+        except:
+            pass  # Best effort
+
         raise HTTPException(
             status_code=500,
             detail=f"Uplink processing failed: {str(e)}"
