@@ -157,6 +157,123 @@ async def get_sensor_list(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{space_id}/availability", response_model=Dict[str, Any])
+async def get_space_availability(
+    request: Request,
+    space_id: UUID,
+    from_time: datetime = Query(..., alias="from", description="Start of availability check period (ISO 8601)"),
+    to_time: datetime = Query(..., alias="to", description="End of availability check period (ISO 8601)")
+):
+    """
+    Check parking space availability for a given time range
+
+    Returns:
+    - is_available: True if no confirmed/pending reservations overlap with the requested period
+    - reservations: List of all reservations overlapping with the period
+    - current_state: Current space state from sensor/manual updates
+
+    The DB EXCLUDE constraint prevents overlapping confirmed/pending reservations,
+    so this endpoint queries the DB truth without cache correctness bugs.
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # Validate time range
+        if to_time <= from_time:
+            raise HTTPException(
+                status_code=400,
+                detail="'to' time must be after 'from' time"
+            )
+
+        # Check space exists
+        space_query = """
+            SELECT id, code, name, state, tenant_id
+            FROM spaces
+            WHERE id = $1 AND deleted_at IS NULL
+        """
+        space = await db_pool.fetchrow(space_query, str(space_id))
+
+        if not space:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Space {space_id} not found"
+            )
+
+        # Find all reservations overlapping with the requested period
+        # Uses PostgreSQL range overlap operator &&
+        reservations_query = """
+            SELECT
+                id,
+                space_id,
+                tenant_id,
+                start_time,
+                end_time,
+                status,
+                user_email,
+                user_phone,
+                metadata,
+                created_at,
+                updated_at
+            FROM reservations
+            WHERE space_id = $1
+              AND status IN ('pending', 'confirmed')
+              AND tstzrange(start_time, end_time, '[)') && tstzrange($2, $3, '[)')
+            ORDER BY start_time ASC
+        """
+
+        reservation_rows = await db_pool.fetch(
+            reservations_query,
+            str(space_id),
+            from_time,
+            to_time
+        )
+
+        # Convert to response format
+        reservations = []
+        for row in reservation_rows:
+            reservations.append({
+                "id": str(row["id"]),
+                "space_id": str(row["space_id"]),
+                "tenant_id": str(row["tenant_id"]),
+                "start_time": row["start_time"].isoformat(),
+                "end_time": row["end_time"].isoformat(),
+                "status": row["status"],
+                "user_email": row["user_email"],
+                "user_phone": row["user_phone"],
+                "metadata": row["metadata"] or {},
+                "created_at": row["created_at"].isoformat(),
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
+            })
+
+        # Space is available if no overlapping reservations
+        is_available = len(reservations) == 0
+
+        logger.info(
+            f"Availability check for space {space['code']}: "
+            f"{from_time.isoformat()} to {to_time.isoformat()} - "
+            f"{'AVAILABLE' if is_available else 'OCCUPIED'} "
+            f"({len(reservations)} overlapping reservations)"
+        )
+
+        return {
+            "space_id": str(space["id"]),
+            "space_code": space["code"],
+            "space_name": space["name"],
+            "query_start": from_time.isoformat(),
+            "query_end": to_time.isoformat(),
+            "is_available": is_available,
+            "reservations": reservations,
+            "current_state": space["state"],
+            "tenant_id": str(space["tenant_id"]) if space["tenant_id"] else None
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking availability for space {space_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{space_id}", response_model=Dict[str, Any])
 async def get_space(
     request: Request,
@@ -220,7 +337,7 @@ async def get_space(
                 metadata
             FROM reservations
             WHERE space_id = $1
-              AND status = 'active'
+              AND status IN ('pending', 'confirmed')
               AND end_time > NOW()
             ORDER BY start_time DESC
             LIMIT 1
@@ -655,4 +772,121 @@ async def restore_space(
         raise
     except Exception as e:
         logger.error(f"Error restoring space {space_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{space_id}/availability", response_model=Dict[str, Any])
+async def get_space_availability(
+    request: Request,
+    space_id: UUID,
+    from_time: datetime = Query(..., alias="from", description="Start of availability check period (ISO 8601)"),
+    to_time: datetime = Query(..., alias="to", description="End of availability check period (ISO 8601)")
+):
+    """
+    Check parking space availability for a given time range
+
+    Returns:
+    - is_available: True if no confirmed/pending reservations overlap with the requested period
+    - reservations: List of all reservations overlapping with the period
+    - current_state: Current space state from sensor/manual updates
+
+    The DB EXCLUDE constraint prevents overlapping confirmed/pending reservations,
+    so this endpoint queries the DB truth without cache correctness bugs.
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # Validate time range
+        if to_time <= from_time:
+            raise HTTPException(
+                status_code=400,
+                detail="'to' time must be after 'from' time"
+            )
+
+        # Check space exists
+        space_query = """
+            SELECT id, code, name, state, tenant_id
+            FROM spaces
+            WHERE id = $1 AND deleted_at IS NULL
+        """
+        space = await db_pool.fetchrow(space_query, str(space_id))
+
+        if not space:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Space {space_id} not found"
+            )
+
+        # Find all reservations overlapping with the requested period
+        # Uses PostgreSQL range overlap operator &&
+        reservations_query = """
+            SELECT
+                id,
+                space_id,
+                tenant_id,
+                start_time,
+                end_time,
+                status,
+                user_email,
+                user_phone,
+                metadata,
+                created_at,
+                updated_at
+            FROM reservations
+            WHERE space_id = $1
+              AND status IN ('pending', 'confirmed')
+              AND tstzrange(start_time, end_time, '[)') && tstzrange($2, $3, '[)')
+            ORDER BY start_time ASC
+        """
+
+        reservation_rows = await db_pool.fetch(
+            reservations_query,
+            str(space_id),
+            from_time,
+            to_time
+        )
+
+        # Convert to response format
+        reservations = []
+        for row in reservation_rows:
+            reservations.append({
+                "id": str(row["id"]),
+                "space_id": str(row["space_id"]),
+                "tenant_id": str(row["tenant_id"]),
+                "start_time": row["start_time"].isoformat(),
+                "end_time": row["end_time"].isoformat(),
+                "status": row["status"],
+                "user_email": row["user_email"],
+                "user_phone": row["user_phone"],
+                "metadata": row["metadata"] or {},
+                "created_at": row["created_at"].isoformat(),
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
+            })
+
+        # Space is available if no overlapping reservations
+        is_available = len(reservations) == 0
+
+        logger.info(
+            f"Availability check for space {space['code']}: "
+            f"{from_time.isoformat()} to {to_time.isoformat()} - "
+            f"{'AVAILABLE' if is_available else 'OCCUPIED'} "
+            f"({len(reservations)} overlapping reservations)"
+        )
+
+        return {
+            "space_id": str(space["id"]),
+            "space_code": space["code"],
+            "space_name": space["name"],
+            "query_start": from_time.isoformat(),
+            "query_end": to_time.isoformat(),
+            "is_available": is_available,
+            "reservations": reservations,
+            "current_state": space["state"],
+            "tenant_id": str(space["tenant_id"]) if space["tenant_id"] else None
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking availability for space {space_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

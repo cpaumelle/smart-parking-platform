@@ -40,6 +40,7 @@ class BackgroundTaskManager:
         self._monitoring_task: Optional[asyncio.Task] = None
         self._queue_cleanup_task: Optional[asyncio.Task] = None
         self._reconciliation_task: Optional[asyncio.Task] = None
+        self._reservation_expiry_task: Optional[asyncio.Task] = None
 
     async def start(self):
         """Start background task manager"""
@@ -61,6 +62,10 @@ class BackgroundTaskManager:
         # Start display reconciliation task
         self._reconciliation_task = asyncio.create_task(self._reconciliation_loop())
         logger.info("Started display reconciliation task")
+
+        # Start reservation expiry task
+        self._reservation_expiry_task = asyncio.create_task(self._reservation_expiry_loop())
+        logger.info("Started reservation expiry task")
 
         # Load and schedule active reservations
         await self._load_active_reservations()
@@ -91,6 +96,8 @@ class BackgroundTaskManager:
             self._queue_cleanup_task.cancel()
         if self._reconciliation_task:
             self._reconciliation_task.cancel()
+        if self._reservation_expiry_task:
+            self._reservation_expiry_task.cancel()
 
         logger.info("Background task manager stopped")
 
@@ -207,11 +214,11 @@ class BackgroundTaskManager:
                 request_id=f"bg_task_{reservation_id}"
             )
 
-            # Mark reservation as completed
+            # Mark reservation as expired (v5.3)
             await self.db_pool.execute("""
                 UPDATE reservations
-                SET status = 'completed', updated_at = NOW()
-                WHERE id = $1 AND status = 'active'
+                SET status = 'expired', updated_at = NOW()
+                WHERE id = $1 AND status IN ('pending', 'confirmed')
             """, reservation_id)
 
             # Remove from scheduled tasks
@@ -242,13 +249,8 @@ class BackgroundTaskManager:
                 if deleted:
                     logger.info(f"Cleaned {deleted} old sensor readings")
 
-                # Mark no-show reservations
-                await self.db_pool.execute("""
-                    UPDATE reservations
-                    SET status = 'no_show', updated_at = NOW()
-                    WHERE status = 'active'
-                    AND end_time < NOW() - INTERVAL '1 hour'
-                """)
+                # NOTE: Reservation expiry now handled by dedicated _reservation_expiry_loop
+                # This cleanup task only handles old data deletion
 
                 # Clean old state changes (keep 90 days)
                 cutoff = datetime.utcnow() - timedelta(days=90)
@@ -312,13 +314,13 @@ class BackgroundTaskManager:
                 logger.error(f"Monitoring loop error: {e}", exc_info=True)
 
     async def _load_active_reservations(self):
-        """Load and schedule existing active reservations on startup"""
+        """Load and schedule existing active/confirmed reservations on startup"""
         try:
-            # Get all active reservations with future times
+            # Get all pending/confirmed reservations with future times
             reservations = await self.db_pool.fetch("""
                 SELECT *
                 FROM reservations
-                WHERE status = 'active'
+                WHERE status IN ('pending', 'confirmed')
                 AND end_time > NOW()
                 ORDER BY start_time
             """)
@@ -527,3 +529,57 @@ class BackgroundTaskManager:
                 break
             except Exception as e:
                 logger.error(f"Reconciliation loop error: {e}", exc_info=True)
+
+    async def _reservation_expiry_loop(self):
+        """
+        Periodic task to expire reservations past their end_time
+        Runs every 60 seconds to ensure timely expiry
+        """
+        while self.running:
+            try:
+                await asyncio.sleep(60)  # Run every minute
+
+                # Call the PostgreSQL function to expire old reservations
+                result = await self.db_pool.fetchrow("SELECT * FROM expire_old_reservations()")
+
+                if result and result['expired_count'] > 0:
+                    expired_count = result['expired_count']
+                    expired_ids = result['reservation_ids']
+
+                    logger.info(
+                        f"⏰ Expired {expired_count} reservation(s): "
+                        f"{', '.join(str(rid) for rid in expired_ids[:5])}"
+                        f"{' ...' if expired_count > 5 else ''}"
+                    )
+
+                    # Optionally: Update space states for expired reservations
+                    # This ensures spaces are marked FREE after reservation expires
+                    for reservation_id in expired_ids:
+                        try:
+                            # Get the space_id for this reservation
+                            res_info = await self.db_pool.fetchrow("""
+                                SELECT space_id, end_time
+                                FROM reservations
+                                WHERE id = $1
+                            """, reservation_id)
+
+                            if res_info:
+                                # Update space to FREE (if not already occupied by sensor)
+                                space_id = str(res_info['space_id'])
+
+                                await self.state_manager.update_space_state(
+                                    space_id=space_id,
+                                    new_state=SpaceState.FREE,
+                                    source="reservation_expired",
+                                    request_id=f"expiry_{reservation_id}"
+                                )
+
+                                logger.debug(f"Updated space {space_id} to FREE after reservation expired")
+
+                        except Exception as e:
+                            logger.error(f"Failed to update space state for expired reservation {reservation_id}: {e}")
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Reservation expiry loop error: {e}", exc_info=True)

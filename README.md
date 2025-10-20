@@ -2,9 +2,9 @@
 
 A production-ready smart parking management system using LoRaWAN sensors, ChirpStack network server, and a consolidated REST API.
 
-**Version:** 5.2.1
+**Version:** 5.3.0
 **Status:** ✅ Production Deployment
-**Deployed:** 2025-10-17
+**Deployed:** 2025-10-20
 
 ---
 
@@ -30,8 +30,10 @@ A production-ready smart parking management system using LoRaWAN sensors, ChirpS
 
 Smart Parking v5 is a complete rewrite of the parking management platform, consolidating 7 microservices into a single, maintainable FastAPI application. It provides:
 
+- **Multi-tenancy with RBAC** - Complete tenant isolation with 4-level role hierarchy (v5.3.0)
+- **Dual authentication** - JWT tokens + API keys with scope enforcement (v5.3.0)
 - **Real-time occupancy tracking** via LoRaWAN sensors
-- **Reservation management** with conflict detection
+- **Reservation engine** with DB-level overlap prevention and idempotency (v5.3.0)
 - **Display control** for LED/E-ink indicators
 - **ChirpStack integration** for LoRaWAN device management
 - **ORPHAN device auto-discovery** - zero-touch device provisioning (v5.2.0)
@@ -122,20 +124,65 @@ State Manager → Database + Redis → Display Downlink
 - `parking-display.verdegris.eu` → redirects to `api.verdegris.eu`
 - `parking-api.verdegris.eu` → redirects to `api.verdegris.eu`
 
+### Multi-Tenancy Architecture (v5.3.0)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                         TENANT A                              │
+├──────────────────────────────────────────────────────────────┤
+│  Users (Owner/Admin/Operator/Viewer)                         │
+│    ↓                                                          │
+│  JWT Auth + API Keys with Scopes                             │
+│    ↓                                                          │
+│  Sites → Spaces → Reservations → Devices                     │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│                         TENANT B                              │
+├──────────────────────────────────────────────────────────────┤
+│  Users (Owner/Admin/Operator/Viewer)                         │
+│    ↓                                                          │
+│  JWT Auth + API Keys with Scopes                             │
+│    ↓                                                          │
+│  Sites → Spaces → Reservations → Devices                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Key Features:**
+- **Strict tenant isolation** - Database-level enforcement via `tenant_id` foreign keys
+- **4-level RBAC** - Owner → Admin → Operator → Viewer hierarchy
+- **API key scopes** - Least-privilege access control (read, write, manage, admin)
+- **JWT authentication** - User sessions with 24-hour expiry
+- **Per-tenant rate limiting** - Redis-based token bucket algorithm
+- **Webhook signature validation** - HMAC-SHA256 for external integrations
+
 ### Database Schema
 
 ```sql
+-- Multi-tenancy tables (v5.3.0)
+tenants             -- Tenant organizations
+sites               -- Physical locations per tenant
+users               -- User accounts
+user_memberships    -- User-tenant-role mappings (RBAC)
+webhook_secrets     -- Per-tenant webhook signing keys
+orphan_devices      -- Auto-discovered devices awaiting assignment
+
 -- Core tables
-spaces              -- Parking space definitions
-reservations        -- Reservation records
+spaces              -- Parking space definitions (tenant_id, site_id)
+reservations        -- Reservation records (tenant_id, request_id for idempotency)
 sensor_readings     -- Time-series sensor data
 state_changes       -- State change audit log
-api_keys           -- API authentication
+api_keys           -- API authentication (tenant_id, scopes)
 
 -- Relationships
+sites.tenant_id → tenants.id
+spaces.tenant_id → tenants.id
+spaces.site_id → sites.id
+reservations.tenant_id → tenants.id
 reservations.space_id → spaces.id
-sensor_readings.space_id → spaces.id (optional)
-state_changes.space_id → spaces.id
+user_memberships.tenant_id → tenants.id
+user_memberships.user_id → users.id
+api_keys.tenant_id → tenants.id
 ```
 
 ---
@@ -620,13 +667,220 @@ cat /opt/v5-smart-parking/config/traefik/ADMIN-CREDENTIALS.txt
 
 ### Authentication
 
-API key authentication via header:
+#### Multi-Tenancy Authentication (v5.3.0)
 
+The platform supports two authentication methods:
+
+1. **JWT Tokens** - For user authentication with RBAC
+2. **API Keys** - For service accounts with scope-based access
+
+**JWT Authentication:**
+```bash
+# Register tenant and owner user
+curl -X POST https://api.verdegris.eu/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant": {
+      "name": "Acme Corporation",
+      "slug": "acme"
+    },
+    "user": {
+      "email": "admin@acme.com",
+      "name": "Admin User",
+      "password": "secure-password"
+    }
+  }'
+
+# Login to get JWT token
+curl -X POST https://api.verdegris.eu/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@acme.com",
+    "password": "secure-password"
+  }'
+
+# Response:
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 86400,
+  "user": {
+    "id": "user-uuid",
+    "email": "admin@acme.com",
+    "name": "Admin User"
+  }
+}
+
+# Use JWT token
+curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  https://api.verdegris.eu/api/v1/spaces
+```
+
+**API Key Authentication:**
 ```bash
 curl -H "X-API-Key: your-api-key" https://api.verdegris.eu/api/v1/spaces
 ```
 
+**Role-Based Access Control (RBAC):**
+
+| Role | Permissions |
+|------|-------------|
+| **Owner** | Full access: manage users, delete tenant, all admin operations |
+| **Admin** | Manage spaces, reservations, devices, API keys |
+| **Operator** | Create/update spaces and reservations, view all resources |
+| **Viewer** | Read-only access to spaces, reservations, and sensor data |
+
+**API Key Scopes:**
+
+| Scope | Permissions |
+|-------|-------------|
+| `read` | Read-only access to spaces and reservations |
+| `write` | Create/update spaces and reservations |
+| `manage` | Full resource management (spaces, reservations, devices) |
+| `admin` | Administrative operations (users, API keys, webhooks) |
+
 ### Endpoints
+
+#### Authentication & Tenant Management
+
+##### `POST /api/v1/auth/register`
+
+Register a new tenant and owner user.
+
+**Request Body:**
+```json
+{
+  "tenant": {
+    "name": "Acme Corporation",
+    "slug": "acme",
+    "metadata": {"industry": "parking"},
+    "settings": {"timezone": "UTC"}
+  },
+  "user": {
+    "email": "admin@acme.com",
+    "name": "Admin User",
+    "password": "secure-password",
+    "metadata": {"phone": "+1234567890"}
+  }
+}
+```
+
+**Response:** `201 Created`
+```json
+{
+  "tenant": {
+    "id": "tenant-uuid",
+    "name": "Acme Corporation",
+    "slug": "acme",
+    "created_at": "2025-10-20T10:00:00Z"
+  },
+  "user": {
+    "id": "user-uuid",
+    "email": "admin@acme.com",
+    "name": "Admin User",
+    "role": "owner"
+  },
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 86400
+}
+```
+
+---
+
+##### `POST /api/v1/auth/login`
+
+Login and receive JWT access token.
+
+**Request Body:**
+```json
+{
+  "email": "admin@acme.com",
+  "password": "secure-password",
+  "tenant_slug": "acme"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 86400,
+  "user": {
+    "id": "user-uuid",
+    "email": "admin@acme.com",
+    "name": "Admin User",
+    "tenant_id": "tenant-uuid",
+    "role": "owner"
+  }
+}
+```
+
+---
+
+##### `GET /api/v1/tenants/{tenant_id}`
+
+Get tenant details (requires authentication).
+
+**Response:**
+```json
+{
+  "id": "tenant-uuid",
+  "name": "Acme Corporation",
+  "slug": "acme",
+  "is_active": true,
+  "metadata": {"industry": "parking"},
+  "settings": {"timezone": "UTC"},
+  "created_at": "2025-10-20T10:00:00Z",
+  "updated_at": "2025-10-20T10:00:00Z"
+}
+```
+
+---
+
+##### `GET /api/v1/tenants/{tenant_id}/users`
+
+List users in tenant (requires Admin or Owner role).
+
+**Query Parameters:**
+- `limit` (int) - Results per page (default: 100)
+- `offset` (int) - Pagination offset
+
+**Response:**
+```json
+[
+  {
+    "id": "user-uuid",
+    "email": "admin@acme.com",
+    "name": "Admin User",
+    "role": "owner",
+    "is_active": true,
+    "email_verified": true,
+    "created_at": "2025-10-20T10:00:00Z"
+  }
+]
+```
+
+---
+
+##### `POST /api/v1/tenants/{tenant_id}/users`
+
+Invite a new user to the tenant (requires Admin or Owner role).
+
+**Request Body:**
+```json
+{
+  "email": "operator@acme.com",
+  "name": "Operator User",
+  "password": "secure-password",
+  "role": "operator"
+}
+```
+
+**Response:** `201 Created` with user object
+
+---
 
 #### Health & Monitoring
 
@@ -759,7 +1013,7 @@ Soft delete a parking space.
 
 ##### `POST /api/v1/reservations`
 
-Create a parking reservation.
+Create a parking reservation with **DB-level overlap prevention** and **idempotency guarantees**.
 
 **Request Body:**
 ```json
@@ -769,16 +1023,27 @@ Create a parking reservation.
   "end_time": "2025-10-16T16:00:00Z",
   "user_email": "user@example.com",
   "user_phone": "+1234567890",
+  "request_id": "optional-uuid-for-idempotency",
   "metadata": {"vehicle": "ABC123"}
 }
 ```
 
+**Key Features (v5.3):**
+- **Overlap Prevention:** PostgreSQL EXCLUDE constraint prevents double-booking even under concurrency
+- **Idempotency:** Provide `request_id` to ensure duplicate requests return existing reservation
+- **Automatic Expiry:** Background job expires reservations after `end_time`
+- **Tenant Scoping:** Reservations are tenant-isolated via `tenant_id`
+
 **Validations:**
 - Maximum reservation duration: 24 hours
-- Space must be available for time range
+- Space must be available for time range (checked at DB level)
 - End time must be after start time
 
 **Response:** `201 Created` with reservation object
+
+**Error Responses:**
+- `409 Conflict` - Overlapping reservation exists (EXCLUDE constraint violation)
+- `404 Not Found` - Space does not exist
 
 ---
 
@@ -789,15 +1054,57 @@ List reservations with filtering.
 **Query Parameters:**
 - `space_id` (UUID)
 - `user_email` (string)
-- `status` (enum): active, completed, cancelled, no_show
+- `status` (enum): pending, confirmed, cancelled, expired
 - `date_from` (ISO datetime)
 - `date_to` (ISO datetime)
 - `limit` (int)
 - `offset` (int)
 
+**Status Values (v5.3):**
+- `pending` - Awaiting payment/approval
+- `confirmed` - Active reservation
+- `cancelled` - Cancelled by user/admin
+- `expired` - Past end_time (auto-expired by background job)
+
 **Example:**
 ```bash
-curl "https://api.verdegris.eu/api/v1/reservations?status=active&limit=10"
+curl "https://api.verdegris.eu/api/v1/reservations?status=confirmed&limit=10"
+```
+
+---
+
+##### `GET /api/v1/spaces/{space_id}/availability`
+
+Check parking space availability for a given time range.
+
+**Query Parameters:**
+- `from` (ISO 8601 datetime, required) - Start of availability check period
+- `to` (ISO 8601 datetime, required) - End of availability check period
+
+**Response:**
+```json
+{
+  "space_id": "550e8400-e29b-41d4-a716-446655440000",
+  "space_code": "A001",
+  "space_name": "Parking A-001",
+  "query_start": "2025-10-21T10:00:00Z",
+  "query_end": "2025-10-21T12:00:00Z",
+  "is_available": true,
+  "reservations": [],
+  "current_state": "FREE",
+  "tenant_id": "tenant-uuid"
+}
+```
+
+**Features:**
+- Returns all overlapping reservations (pending/confirmed only)
+- `is_available: true` if no overlapping reservations exist
+- Queries DB truth directly (no cache correctness bugs)
+- Uses PostgreSQL range overlap operator `&&` for efficiency
+
+**Example:**
+```bash
+curl "https://api.verdegris.eu/api/v1/spaces/550e8400-e29b-41d4-a716-446655440000/availability?from=2025-10-21T10:00:00Z&to=2025-10-21T12:00:00Z"
 ```
 
 ---
@@ -1622,15 +1929,52 @@ When reporting issues, include:
 
 ### Version History
 
+- **v5.3.0** (2025-10-20) - Multi-Tenancy with RBAC + Reservation Engine
+
+  **Multi-Tenancy & Authentication:**
+  - **Complete tenant isolation** - Database-level enforcement via `tenant_id` foreign keys
+  - **JWT authentication** - User sessions with 24-hour expiry, bcrypt password hashing (12 rounds)
+  - **4-level RBAC** - Owner → Admin → Operator → Viewer role hierarchy
+  - **API key scopes** - Least-privilege access control (read, write, manage, admin)
+  - **Per-tenant rate limiting** - Redis-based token bucket algorithm
+  - **Webhook signature validation** - HMAC-SHA256 infrastructure for external integrations
+  - **Registration endpoint** - Self-service tenant and owner user creation
+  - **Login endpoint** - Email/password authentication with JWT tokens
+  - **User management API** - Invite users, manage roles, list members
+
+  **Database Schema:**
+  - New tables: `tenants`, `sites`, `users`, `user_memberships`, `webhook_secrets`, `orphan_devices`
+  - Updated tables: `api_keys` (added `tenant_id`, `scopes`), `spaces` (added `tenant_id`, `site_id`), `reservations` (added `tenant_id`, `request_id`)
+  - Database triggers: Automatic `tenant_id` synchronization with validation
+  - Materialized view: `v_spaces` with pre-joined tenant/site data
+  - Migrations: `002_multi_tenancy_rbac.sql`, `003_multi_tenancy_hardening.sql`, `004_reservations_and_webhook_hardening.sql`, `005_reservation_statuses.sql`
+
+  **Reservation Engine:**
+  - **PostgreSQL EXCLUDE constraint** prevents overlapping reservations at DB level
+  - **Idempotent reservation API** via `request_id` field
+  - **Automatic expiry** background job (runs every 60 seconds)
+  - **Availability endpoint** (`GET /spaces/{id}/availability`) queries DB truth
+  - **Updated status values**: `pending` → `confirmed` → `expired` (or `cancelled`)
+  - **Tenant scoping** for multi-tenant reservation isolation
+  - **fcnt deduplication** - Prevents duplicate sensor readings
+
+  **Deployment:**
+  - Dockerfile updated to use `main_tenanted:app`
+  - Added PyJWT dependency for JWT token generation
+  - JSON serialization fixes for PostgreSQL JSONB columns
+  - Added `get_db()` FastAPI dependency
+
 - **v5.2.0** (2025-10-17) - ORPHAN device auto-discovery + Admin API endpoints
   - Auto-discovery of LoRaWAN devices from ChirpStack
   - Device lifecycle management (orphan → active → inactive → decommissioned)
   - Admin API endpoints for device assignment
   - Database views for unassigned device management
+
 - **v2.0.0** (2025-10-16) - Initial v5 production release
+
 - **v1.x** - Legacy v4 platform (deprecated)
 
 ---
 
-**Last Updated:** 2025-10-17
+**Last Updated:** 2025-10-20
 **Maintained By:** Verdegris Engineering Team

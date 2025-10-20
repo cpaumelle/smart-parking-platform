@@ -190,7 +190,7 @@ async def create_reservation(
                 reservation.reserved_until,
                 reservation.user_email,
                 reservation.user_phone,
-                "active",
+                "confirmed",  # v5.3: use "confirmed" instead of "active"
                 json.dumps(metadata) if metadata else None,
                 request_id,
                 space_check['tenant_id']  # tenant_id from space

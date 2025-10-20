@@ -21,11 +21,16 @@ class SpaceState(str, Enum):
     MAINTENANCE = "MAINTENANCE"
 
 class ReservationStatus(str, Enum):
-    """Reservation statuses"""
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-    NO_SHOW = "no_show"
+    """Reservation statuses (v5.3 spec)"""
+    PENDING = "pending"      # Awaiting payment/approval
+    CONFIRMED = "confirmed"  # Active reservation
+    CANCELLED = "cancelled"  # Cancelled by user/admin
+    EXPIRED = "expired"      # Past end_time
+
+    # Legacy values for backward compatibility
+    ACTIVE = "active"        # Deprecated: use CONFIRMED
+    COMPLETED = "completed"  # Deprecated: use EXPIRED
+    NO_SHOW = "no_show"      # Deprecated: use EXPIRED
 
 class DeviceType(str, Enum):
     """Device types"""
@@ -147,16 +152,37 @@ class ReservationBase(BaseModel):
 
 class ReservationCreate(ReservationBase):
     """Model for creating a reservation"""
-    pass
+    request_id: Optional[UUID] = Field(None, description="Idempotency key - if provided, duplicate requests return existing reservation")
+    tenant_id: Optional[UUID] = Field(None, description="Tenant ID (auto-populated from auth context)")
 
 class Reservation(ReservationBase, TimestampMixin):
     """Complete reservation model"""
     id: UUID
+    request_id: UUID
+    tenant_id: UUID
     status: ReservationStatus
 
     class Config:
         orm_mode = True
         use_enum_values = True
+
+class AvailabilitySlot(BaseModel):
+    """Availability time slot"""
+    start_time: datetime
+    end_time: datetime
+    available: bool
+    reservation_id: Optional[UUID] = None
+
+class SpaceAvailability(BaseModel):
+    """Space availability response"""
+    space_id: UUID
+    space_code: str
+    space_name: str
+    query_start: datetime
+    query_end: datetime
+    is_available: bool  # True if completely free during period
+    reservations: List[Reservation] = []
+    current_state: SpaceState
 
 # ============================================================
 # Sensor/Device Models

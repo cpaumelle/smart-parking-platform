@@ -360,10 +360,10 @@ class StateManager:
         return overlapping == 0
 
     async def get_active_reservation_count(self) -> int:
-        """Get count of active reservations"""
+        """Get count of active (pending/confirmed) reservations"""
         return await self.db_pool.fetchval("""
             SELECT COUNT(*) FROM reservations
-            WHERE status = 'active'
+            WHERE status IN ('pending', 'confirmed')
             AND end_time > NOW()
         """) or 0
 
