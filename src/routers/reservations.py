@@ -246,9 +246,39 @@ async def create_reservation(
 
             # Handle overlap constraint violation (EXCLUDE constraint)
             if "exclusion" in error_msg or "no_reservation_overlap" in error_msg:
+                # Fetch the conflicting reservation(s) for better error message
+                conflicting = await db_pool.fetch("""
+                    SELECT id, start_time, end_time, status, user_email
+                    FROM reservations
+                    WHERE space_id = $1
+                      AND status IN ('pending', 'confirmed')
+                      AND tstzrange(start_time, end_time, '[)') && tstzrange($2, $3, '[)')
+                    ORDER BY start_time
+                    LIMIT 3
+                """, reservation.id, reservation.reserved_from, reservation.reserved_until)
+
+                conflict_details = []
+                for res in conflicting:
+                    conflict_details.append({
+                        "reservation_id": str(res['id']),
+                        "start_time": res['start_time'].isoformat(),
+                        "end_time": res['end_time'].isoformat(),
+                        "status": res['status'],
+                        "user_email": res['user_email']
+                    })
+
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Reservation conflicts with an existing reservation for space {reservation.id} during the requested time period"
+                    detail={
+                        "error": "reservation_conflict",
+                        "message": f"Reservation conflicts with {len(conflicting)} existing reservation(s) for space {reservation.id}",
+                        "requested": {
+                            "space_id": str(reservation.id),
+                            "start_time": reservation.reserved_from.isoformat(),
+                            "end_time": reservation.reserved_until.isoformat()
+                        },
+                        "conflicts": conflict_details
+                    }
                 )
 
             # Re-raise other database errors

@@ -273,9 +273,15 @@ async def create_display_policy(
             policy.allow_sensor_override
         )
 
-        # Invalidate policy cache
+        # Invalidate policy cache + bump Redis version key for distributed cache coherence
         if hasattr(request.app.state, 'display_state_machine'):
             await request.app.state.display_state_machine.invalidate_policy_cache(str(tenant_id))
+
+        # Bump Redis version key to invalidate all app-level caches
+        if hasattr(request.app.state, 'redis_client'):
+            redis_client = request.app.state.redis_client
+            await redis_client.incr(f"display_policy:tenant:{tenant_id}:v")
+            logger.info(f"Bumped policy version for tenant {tenant_id}")
 
         # Trigger recompute for all spaces
         if hasattr(request.app.state, 'display_state_machine'):
@@ -346,9 +352,14 @@ async def update_display_policy(
 
         tenant_id = str(result['tenant_id'])
 
-        # Invalidate cache
+        # Invalidate cache + bump Redis version key
         if hasattr(request.app.state, 'display_state_machine'):
             await request.app.state.display_state_machine.invalidate_policy_cache(tenant_id)
+
+        if hasattr(request.app.state, 'redis_client'):
+            redis_client = request.app.state.redis_client
+            await redis_client.incr(f"display_policy:tenant:{tenant_id}:v")
+            logger.info(f"Bumped policy version for tenant {tenant_id}")
 
         # Trigger recompute
         if hasattr(request.app.state, 'display_state_machine'):

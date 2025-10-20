@@ -116,9 +116,10 @@ class DisplayStateMachine:
     7. default (free)
     """
 
-    def __init__(self, db_pool):
+    def __init__(self, db_pool, redis_client=None):
         self.db_pool = db_pool
-        self._policy_cache: Dict[str, DisplayPolicy] = {}
+        self.redis_client = redis_client
+        self._policy_cache: Dict[str, Tuple[DisplayPolicy, int]] = {}  # (policy, version)
         self._policy_cache_ttl = 300  # 5 minutes
         self._policy_cache_time: Dict[str, datetime] = {}
 
@@ -285,14 +286,29 @@ class DisplayStateMachine:
         return recomputed
 
     async def _get_display_policy(self, tenant_id: str) -> DisplayPolicy:
-        """Get display policy for tenant (cached)"""
+        """Get display policy for tenant (cached with Redis version key)"""
 
-        # Check cache
+        # Get current version from Redis
+        current_version = 0
+        if self.redis_client:
+            try:
+                version_key = f"display_policy:tenant:{tenant_id}:v"
+                version_bytes = await self.redis_client.get(version_key)
+                current_version = int(version_bytes.decode()) if version_bytes else 0
+            except Exception as e:
+                logger.warning(f"Failed to get policy version from Redis: {e}")
+
+        # Check cache with version matching
         cache_time = self._policy_cache_time.get(tenant_id)
         if cache_time and (datetime.utcnow() - cache_time).total_seconds() < self._policy_cache_ttl:
-            cached = self._policy_cache.get(tenant_id)
-            if cached:
-                return cached
+            cached_entry = self._policy_cache.get(tenant_id)
+            if cached_entry:
+                cached_policy, cached_version = cached_entry
+                # Only use cache if version matches
+                if cached_version == current_version:
+                    return cached_policy
+                else:
+                    logger.debug(f"Policy cache stale for tenant {tenant_id}: v{cached_version} != v{current_version}")
 
         # Fetch from database
         row = await self.db_pool.fetchrow("""
@@ -327,10 +343,11 @@ class DisplayStateMachine:
                 name="Default Policy"
             )
 
-        # Cache it
-        self._policy_cache[tenant_id] = policy
+        # Cache it with version
+        self._policy_cache[tenant_id] = (policy, current_version)
         self._policy_cache_time[tenant_id] = datetime.utcnow()
 
+        logger.debug(f"Cached policy for tenant {tenant_id} at version {current_version}")
         return policy
 
     async def _get_debounce_state(self, space_id: str) -> DebounceState:

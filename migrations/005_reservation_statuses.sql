@@ -4,6 +4,13 @@
 -- Run after: 004_reservations_and_webhook_hardening.sql
 
 -- ============================================================
+-- Required Extensions (Idempotent)
+-- ============================================================
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+-- ============================================================
 -- Update Reservation Status Values
 -- ============================================================
 

@@ -41,13 +41,17 @@ CREATE TABLE IF NOT EXISTS display_policies (
     updated_at TIMESTAMPTZ,
     created_by UUID REFERENCES users(id),
 
-    -- Constraint: one active policy per tenant
-    CONSTRAINT unique_active_policy_per_tenant
-        UNIQUE (tenant_id, is_active)
-        WHERE (is_active = true)
+    -- Constraint: one active policy per tenant (handled by partial unique index below)
 );
 
-CREATE INDEX idx_display_policies_tenant ON display_policies(tenant_id, is_active);
+-- Partial unique index: ONE active policy per tenant (enforced at DB level)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_display_policies_active_per_tenant
+    ON display_policies(tenant_id)
+    WHERE is_active = TRUE;
+
+-- Performance index for tenant lookups
+CREATE INDEX IF NOT EXISTS idx_display_policies_tenant
+    ON display_policies(tenant_id, is_active);
 
 COMMENT ON TABLE display_policies IS
     'Per-tenant display policies defining color mappings, thresholds, and behaviors for the occupancy display state machine';
@@ -89,8 +93,10 @@ CREATE TABLE IF NOT EXISTS sensor_debounce_state (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_sensor_debounce_space ON sensor_debounce_state(space_id);
-CREATE INDEX idx_sensor_debounce_pending ON sensor_debounce_state(pending_sensor_state, pending_since)
+-- Hot-path index for space lookups (PRIMARY KEY on space_id already covers this)
+-- Additional index for monitoring pending debounce states
+CREATE INDEX IF NOT EXISTS idx_sensor_debounce_pending
+    ON sensor_debounce_state(pending_sensor_state, pending_since)
     WHERE pending_sensor_state IS NOT NULL;
 
 COMMENT ON TABLE sensor_debounce_state IS
@@ -122,10 +128,14 @@ CREATE TABLE IF NOT EXISTS space_admin_overrides (
     is_active BOOLEAN NOT NULL DEFAULT true
 );
 
-CREATE INDEX idx_admin_overrides_space ON space_admin_overrides(space_id, is_active);
-CREATE INDEX idx_admin_overrides_tenant ON space_admin_overrides(tenant_id, is_active);
-CREATE INDEX idx_admin_overrides_active_time ON space_admin_overrides(space_id, start_time, end_time)
-    WHERE is_active = true;
+-- Performance indexes for hot-path queries with tenant scoping
+CREATE INDEX IF NOT EXISTS idx_admin_overrides_tenant_space
+    ON space_admin_overrides(tenant_id, space_id, is_active)
+    WHERE is_active = TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_admin_overrides_active_time
+    ON space_admin_overrides(space_id, start_time, end_time)
+    WHERE is_active = TRUE;
 
 COMMENT ON TABLE space_admin_overrides IS
     'Admin overrides for parking spaces (blocked, out_of_service). Highest priority in state machine.';
