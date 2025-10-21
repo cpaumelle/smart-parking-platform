@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Radio,
   Car,
+  Building2,
   LogOut,
   User as UserIcon
 } from 'lucide-react';
@@ -28,10 +29,10 @@ import {
 import Dashboard from "../components/Dashboard.jsx";
 import Devices from "../pages/Devices.jsx";
 import Gateways from "../pages/Gateways.jsx";
-import Locations from "../pages/Locations.jsx";
+import Sites from "../pages/Sites.jsx";
+import ParkingSpaces from "../pages/ParkingSpaces.jsx";
 import Analytics from "../pages/Analytics.jsx";
 import ChirpStackDevices from "../pages/ChirpStackDevices.jsx";
-import ParkingSpaces from "../pages/ParkingSpaces.jsx";
 
 // Custom hook for sidebar state management
 const useSidebar = () => {
@@ -72,10 +73,10 @@ const SenseMyIoTPlatform: React.FC = () => {
 
   const navigationItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, disabled: false },
+    { id: 'sites', label: 'Sites', icon: Building2, disabled: false },
+    { id: 'parking', label: 'Parking Spaces', icon: Car, disabled: false },
     { id: 'devices', label: 'Devices', icon: Wifi, disabled: false },
     { id: 'gateways', label: 'Gateways', icon: Settings, disabled: false },
-    { id: 'locations', label: 'Locations', icon: MapPin, disabled: false },
-    { id: 'parking', label: 'Parking Spaces', icon: Car, disabled: false },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, disabled: false },
     { id: 'chirpstack', label: 'ChirpStack Manager', icon: Radio, disabled: false },
     { id: 'users', label: 'Users', icon: Users, disabled: true },
@@ -95,14 +96,14 @@ const SenseMyIoTPlatform: React.FC = () => {
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard onNavigate={handleNavigate} />;
+      case 'sites':
+        return <Sites />;
+      case 'parking':
+        return <ParkingSpaces />;
       case 'devices':
         return <Devices initialFilters={pageFilters} />;
       case 'gateways':
         return <Gateways initialFilters={pageFilters} />;
-      case 'locations':
-        return <Locations initialFilters={pageFilters} />;
-      case 'parking':
-        return <ParkingSpaces />;
       case 'analytics':
         return <Analytics />;
       case 'chirpstack':

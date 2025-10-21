@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "7",
-  "buildNumber": "20251021.7",
-  "buildTimestamp": "2025-10-21T13:00:00Z",
-  "buildDate": "2025-10-21T13:00:00Z",
-  "gitCommit": "fix-use-spaces-not-sites",
-  "commit": "fix-use-spaces-not-sites",
-  "description": "Fixed all references: parking spaces not sites/locations, removed transform references",
+  "build": "8",
+  "buildNumber": "20251021.8",
+  "buildTimestamp": "2025-10-21T14:00:00Z",
+  "buildDate": "2025-10-21T14:00:00Z",
+  "gitCommit": "implement-sites-api",
+  "commit": "implement-sites-api",
+  "description": "Implemented Sites API and Sites management page, updated navigation: Sites (buildings) → Spaces (parking)",
   "environment": "production"
 }
