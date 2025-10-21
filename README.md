@@ -34,7 +34,12 @@ Smart Parking v5 is a complete rewrite of the parking management platform, conso
 - **Dual authentication** - JWT tokens + API keys with scope enforcement (v5.3.0)
 - **Real-time occupancy tracking** via LoRaWAN sensors
 - **Reservation engine** with DB-level overlap prevention and idempotency (v5.3.0)
-- **Display control** for LED/E-ink indicators
+- **Display state machine** - Policy-driven display control with cache invalidation (v5.3.0)
+- **Class-C downlink queue** - Durable, rate-limited downlink delivery with Redis (v5.3.0)
+- **Webhook hardening** - Signature validation, idempotency, back-pressure handling (v5.3.0)
+- **Comprehensive observability** - Prometheus metrics, enhanced health checks, operational runbooks (v5.3.0)
+- **Security hardening** - Append-only audit log, API key revocation, refresh tokens (v5.3.0)
+- **Complete test coverage** - Property-based, integration, and load tests with CI/CD (v5.3.0)
 - **ChirpStack integration** for LoRaWAN device management
 - **ORPHAN device auto-discovery** - zero-touch device provisioning (v5.2.0)
 - **Admin device management API** - assign/unassign devices to spaces (v5.2.0)
@@ -158,6 +163,8 @@ State Manager → Database + Redis → Display Downlink
 
 ### Database Schema
 
+**For complete schema documentation, see:** `docs/V5_DATABASE_SCHEMA.md`
+
 ```sql
 -- Multi-tenancy tables (v5.3.0)
 tenants             -- Tenant organizations
@@ -170,9 +177,18 @@ orphan_devices      -- Auto-discovered devices awaiting assignment
 -- Core tables
 spaces              -- Parking space definitions (tenant_id, site_id)
 reservations        -- Reservation records (tenant_id, request_id for idempotency)
-sensor_readings     -- Time-series sensor data
+sensor_readings     -- Time-series sensor data (fcnt deduplication)
 state_changes       -- State change audit log
-api_keys           -- API authentication (tenant_id, scopes)
+api_keys           -- API authentication (tenant_id, scopes, revoked_at)
+
+-- Display & Downlink (v5.3.0)
+display_policies    -- Policy-driven display control rules
+display_state_cache -- Redis cache version tracking
+sensor_debounce_state -- Duplicate sensor event prevention
+
+-- Security & Audit (v5.3.0)
+audit_log          -- Append-only audit trail (immutable via trigger)
+refresh_tokens     -- JWT refresh tokens (30-day expiry)
 
 -- Relationships
 sites.tenant_id → tenants.id
@@ -183,7 +199,183 @@ reservations.space_id → spaces.id
 user_memberships.tenant_id → tenants.id
 user_memberships.user_id → users.id
 api_keys.tenant_id → tenants.id
+display_policies.tenant_id → tenants.id
+audit_log.tenant_id → tenants.id
 ```
+
+---
+
+## v5.3 Features Deep Dive
+
+### Display State Machine (v5.3.0)
+
+**Policy-driven display control** with database-enforced business rules.
+
+**Key Features:**
+- **Active policy enforcement** - One active policy per tenant (enforced by partial unique index)
+- **State machine transitions** - Deterministic state changes (FREE ↔ OCCUPIED ↔ RESERVED)
+- **Redis cache invalidation** - Version-based cache busting on policy changes
+- **Display code mapping** - Database-driven color/pattern assignments
+
+**Implementation:**
+- Migration: `migrations/006_display_state_machine.sql`
+- Code: `src/display_state_machine.py`, `src/routers/display_policies.py`
+- Documentation: Embedded in migration comments
+
+**Example Policy:**
+```json
+{
+  "tenant_id": "uuid",
+  "policy_name": "Standard 3-Color",
+  "display_codes": {
+    "free": {"led_color": "green"},
+    "occupied": {"led_color": "red"},
+    "reserved": {"led_color": "blue"}
+  },
+  "is_active": true
+}
+```
+
+### Class-C Downlink Queue (v5.3.0)
+
+**Durable, rate-limited downlink delivery** with Redis-backed FIFO queue.
+
+**Key Features:**
+- **Exactly-once delivery** - SHA256 content hashing prevents duplicates
+- **Automatic coalescing** - Newer commands replace pending ones for same device
+- **Rate limiting** - Per-gateway (30/min) and per-tenant (100/min) limits
+- **Exponential backoff** - 2s, 4s, 8s, 16s, 32s (max 60s)
+- **Dead-letter queue** - Failed commands after 5 attempts
+- **Survives API restarts** - Redis persistence
+
+**Implementation:**
+- Code: `src/downlink_queue.py`, `src/routers/downlink_monitor.py`
+- Documentation: `docs/CLASS_C_DOWNLINK_QUEUE.md`
+- Tests: `tests/test_downlink_queue.py`
+
+**Monitoring Endpoints:**
+- `GET /api/v1/downlinks/queue/metrics` - Queue depth, throughput, success rate
+- `GET /api/v1/downlinks/queue/health` - Health status
+
+### Webhook Hardening (v5.3.0)
+
+**Production-grade webhook ingestion** with idempotency and back-pressure handling.
+
+**Key Features:**
+- **HMAC-SHA256 signature validation** - Per-tenant webhook secrets
+- **fcnt deduplication** - Unique constraint on (tenant_id, device_eui, fcnt)
+- **File spool for back-pressure** - Disk buffer when database unavailable
+- **Orphan device tracking** - Auto-discovery with uplink counter
+- **Exponential backoff** - Automatic retry with backoff on DB errors
+
+**Implementation:**
+- Database: `migrations/005_reservation_statuses.sql` (fcnt integration)
+- Code: `src/webhook_spool.py`, `src/main.py` (webhook validation)
+- Documentation: `docs/WEBHOOK_INGEST_IMPLEMENTATION.md`
+
+**Webhook Spool:**
+```
+/var/spool/parking-uplinks/
+├── pending/          # Queued for processing
+├── processing/       # Currently being processed
+└── dead-letter/      # Failed after 5 attempts
+```
+
+### Observability & Ops (v5.3.0)
+
+**Comprehensive monitoring** with Prometheus metrics and operational runbooks.
+
+**Prometheus Metrics (30+):**
+- **Ingest:** `uplink_requests_total`, `duplicate_uplinks_total`, `orphan_devices_gauge`
+- **Reservations:** `reservation_attempts_total`, `reservation_conflicts_total`, `active_reservations_gauge`
+- **Downlinks:** `downlink_queue_depth`, `downlink_sent_total`, `downlink_latency_seconds`
+- **Infrastructure:** `db_connection_pool_size`, `redis_latency_seconds`, `chirpstack_api_latency_seconds`
+- **Business:** `actuation_latency_seconds` (end-to-end SLO tracking)
+
+**Enhanced Health Checks:**
+- `GET /health/ready` - Readiness probe (DB, Redis, ChirpStack, workers)
+- `GET /health/live` - Liveness probe (worker heartbeats)
+- `GET /metrics` - Prometheus scraping endpoint
+
+**Operational Runbooks:**
+- ChirpStack down recovery
+- Redis OOM handling
+- PostgreSQL failover procedures
+- Downlink queue troubleshooting
+- Orphan device management
+- Rate limiting alerts
+- Backup & restore procedures
+
+**Implementation:**
+- Code: `src/metrics.py`, `src/routers/metrics.py`, `src/main_tenanted.py`
+- Documentation: `docs/OPERATIONAL_RUNBOOKS.md`
+
+### Security & Tenancy (v5.3.0)
+
+**Enterprise-grade security** with audit logging and API key management.
+
+**Append-Only Audit Log:**
+- **Immutable trail** - Database trigger prevents UPDATE/DELETE
+- **Actor tracking** - Records user, API key, system, or webhook actions
+- **Change tracking** - Stores old_values → new_values for updates
+- **Request correlation** - request_id for distributed tracing
+- **Tenant-scoped** - All logs include tenant_id
+
+**Refresh Tokens:**
+- **30-day expiry** - Long-lived tokens for JWT rotation
+- **SHA-256 hashed storage** - Secure token storage
+- **Device fingerprinting** - IP address and user_agent tracking
+- **Revocation support** - Immediate token invalidation
+
+**API Key Revocation:**
+- **Immediate revocation** - revoked_at column with index
+- **Audit trail** - revoked_by tracks who revoked
+- **Quarterly rotation** - Best practice documentation
+
+**Implementation:**
+- Database: `migrations/007_audit_log.sql`
+- Code: `src/audit.py`
+- Documentation: `docs/SECURITY_TENANCY.md`
+
+**Penetration Testing Verified:**
+- ✅ Tenant isolation (cross-tenant access denied)
+- ✅ API key revocation is immediate
+- ✅ All admin actions traceable in audit log
+
+### Testing Strategy (v5.3.0)
+
+**Comprehensive test coverage** with property-based, integration, and load tests.
+
+**Property-Based Tests (Hypothesis):**
+- **8 invariant tests** - Time range validity, overlap detection, idempotency, state machine determinism
+- **Test data strategies** - Datetime generation, time ranges, reservations
+- **Automatic counterexample discovery** - Finds edge cases
+
+**Integration Tests (Docker-based):**
+- **13 end-to-end scenarios** - Full API lifecycle with real PostgreSQL, Redis, Mosquitto
+- **Tenant isolation testing** - Cross-tenant access prevention
+- **Webhook ingestion** - Signature validation and state changes
+- **Idempotent reservations** - Same request_id returns existing reservation
+
+**Load Tests (Locust):**
+- **500 spaces** with assigned devices
+- **50 concurrent users** - Simulated API usage and webhook uplinks
+- **SLO verification** - p95 actuation latency < 5s, error rate < 1%
+- **Burst handling** - 100 reservations in quick succession
+
+**CI/CD Pipeline (GitHub Actions):**
+- **unit-tests** - Every PR (< 1 min)
+- **lint** - black, isort, ruff, mypy
+- **security** - Trivy, Bandit
+- **integration-tests** - Nightly (~ 10 min)
+- **load-tests** - Nightly (~ 10 min)
+- **build** - Docker image push to Docker Hub
+
+**Implementation:**
+- Tests: `tests/test_reservation_properties.py`, `tests/integration/test_api_integration.py`, `tests/load/locustfile.py`
+- CI/CD: `.github/workflows/ci.yml`
+- Test environment: `docker-compose.test.yml`
+- Documentation: `docs/TESTING_STRATEGY_IMPLEMENTATION.md`
 
 ---
 
@@ -1449,11 +1641,53 @@ frontend/                  # Frontend applications
 
 ### Testing
 
-#### Manual Testing
+**For comprehensive testing documentation, see:** `docs/TESTING_STRATEGY_IMPLEMENTATION.md`
+
+#### Run All Tests
+
+```bash
+# Unit tests (fast, no external dependencies)
+pytest tests/ -m "not integration and not load"
+
+# Property-based tests with hypothesis
+pytest tests/test_reservation_properties.py -m property
+
+# Integration tests (requires docker-compose.test.yml)
+docker compose -f docker-compose.test.yml up -d
+pytest tests/integration/ -m integration
+docker compose -f docker-compose.test.yml down -v
+
+# Load tests with Locust
+docker compose -f docker-compose.test.yml up -d
+locust -f tests/load/locustfile.py --host http://localhost:8001 \
+  --users 50 --spawn-rate 10 --run-time 5m --headless
+docker compose -f docker-compose.test.yml down -v
+
+# With coverage
+pytest tests/ --cov=src --cov-report=html
+open htmlcov/index.html
+```
+
+#### CI/CD Pipeline
+
+Tests run automatically via GitHub Actions:
+- **Every PR:** unit-tests, lint, security, migration-check
+- **Nightly:** integration-tests, load-tests
+- **Manual trigger:** All jobs via workflow_dispatch
+
+See `.github/workflows/ci.yml` for pipeline configuration.
+
+#### Manual API Testing
 
 ```bash
 # Test health endpoint
 curl http://localhost:8000/health
+
+# Test readiness (checks dependencies)
+curl http://localhost:8000/health/ready
+
+# Test metrics endpoint
+curl http://localhost:8000/metrics
 
 # Test spaces endpoint
 curl http://localhost:8000/api/v1/spaces
@@ -1465,19 +1699,6 @@ curl -X POST http://localhost:8000/api/v1/uplink \
     "deviceInfo": {"devEui": "0004a30b001a2b3c"},
     "data": "AQIDBAUGBw=="
   }'
-```
-
-#### Unit Tests (To Be Implemented)
-
-```bash
-# Run tests
-pytest tests/
-
-# Run with coverage
-pytest --cov=src tests/
-
-# Run specific test file
-pytest tests/test_api.py -v
 ```
 
 ---
@@ -1929,7 +2150,7 @@ When reporting issues, include:
 
 ### Version History
 
-- **v5.3.0** (2025-10-20) - Multi-Tenancy with RBAC + Reservation Engine
+- **v5.3.0** (2025-10-20) - Multi-Tenancy + Reservation Engine + Production Hardening
 
   **Multi-Tenancy & Authentication:**
   - **Complete tenant isolation** - Database-level enforcement via `tenant_id` foreign keys
@@ -1942,13 +2163,6 @@ When reporting issues, include:
   - **Login endpoint** - Email/password authentication with JWT tokens
   - **User management API** - Invite users, manage roles, list members
 
-  **Database Schema:**
-  - New tables: `tenants`, `sites`, `users`, `user_memberships`, `webhook_secrets`, `orphan_devices`
-  - Updated tables: `api_keys` (added `tenant_id`, `scopes`), `spaces` (added `tenant_id`, `site_id`), `reservations` (added `tenant_id`, `request_id`)
-  - Database triggers: Automatic `tenant_id` synchronization with validation
-  - Materialized view: `v_spaces` with pre-joined tenant/site data
-  - Migrations: `002_multi_tenancy_rbac.sql`, `003_multi_tenancy_hardening.sql`, `004_reservations_and_webhook_hardening.sql`, `005_reservation_statuses.sql`
-
   **Reservation Engine:**
   - **PostgreSQL EXCLUDE constraint** prevents overlapping reservations at DB level
   - **Idempotent reservation API** via `request_id` field
@@ -1956,13 +2170,70 @@ When reporting issues, include:
   - **Availability endpoint** (`GET /spaces/{id}/availability`) queries DB truth
   - **Updated status values**: `pending` → `confirmed` → `expired` (or `cancelled`)
   - **Tenant scoping** for multi-tenant reservation isolation
-  - **fcnt deduplication** - Prevents duplicate sensor readings
+
+  **Display State Machine & Downlink Queue:**
+  - **Policy-driven display control** - Active policy per tenant with Redis cache invalidation
+  - **State machine** - Deterministic FREE ↔ OCCUPIED ↔ RESERVED transitions
+  - **Durable downlink queue** - Redis-backed FIFO with exactly-once delivery
+  - **Rate limiting** - Per-gateway (30/min) and per-tenant (100/min) limits
+  - **Automatic coalescing** - Newer commands replace pending ones
+  - **Dead-letter queue** - Failed commands after 5 attempts
+  - **Exponential backoff** - 2s, 4s, 8s, 16s, 32s retry delays
+  - Migrations: `006_display_state_machine.sql`
+
+  **Webhook Hardening:**
+  - **HMAC-SHA256 signature validation** - Per-tenant webhook secrets
+  - **fcnt deduplication** - Unique constraint on (tenant_id, device_eui, fcnt)
+  - **File spool for back-pressure** - Disk buffer when DB unavailable (/var/spool/parking-uplinks)
+  - **Orphan device tracking** - Auto-discovery with uplink counter
+  - **Exponential backoff** - Automatic retry with backoff on DB errors
+  - Migration: `005_reservation_statuses.sql` (fcnt integration)
+
+  **Observability & Operations:**
+  - **Prometheus metrics (30+)** - Ingest, reservations, downlinks, infrastructure, business SLOs
+  - **Enhanced health checks** - /health/ready (readiness), /health/live (liveness)
+  - **Metrics endpoint** - GET /metrics for Prometheus scraping
+  - **Operational runbooks** - ChirpStack down, Redis OOM, PostgreSQL failover, etc.
+  - **SLO tracking** - actuation_latency_seconds (p95 < 5s target)
+
+  **Security Hardening:**
+  - **Append-only audit log** - Immutable trail with database trigger
+  - **Actor tracking** - User, API key, system, webhook actions
+  - **Change tracking** - old_values → new_values for updates
+  - **Refresh tokens** - 30-day JWT refresh with SHA-256 hashing
+  - **API key revocation** - Immediate revocation with revoked_at/revoked_by columns
+  - **Device fingerprinting** - IP address and user_agent tracking
+  - Migration: `007_audit_log.sql`
+
+  **Testing Infrastructure:**
+  - **Property-based tests** - 8 invariant tests with hypothesis library
+  - **Integration tests** - 13 end-to-end scenarios with docker-compose.test.yml
+  - **Load tests** - Locust-based with 500 spaces, 50 concurrent users
+  - **SLO verification** - p95 latency < 5s, error rate < 1%
+  - **CI/CD pipeline** - GitHub Actions with unit, lint, security, integration, load tests
+  - **Test coverage** - Property, integration, load tests with comprehensive scenarios
+
+  **Database Schema:**
+  - **Multi-tenancy tables:** `tenants`, `sites`, `users`, `user_memberships`, `webhook_secrets`, `orphan_devices`
+  - **Display & downlink:** `display_policies`, `display_state_cache`, `sensor_debounce_state`
+  - **Security:** `audit_log`, `refresh_tokens`, `api_keys` (added revoked_at)
+  - **Updated tables:** `spaces`, `reservations`, `sensor_readings` (fcnt deduplication)
+  - **Migrations:** `002` through `007` (multi-tenancy, reservations, display, audit)
+
+  **Documentation:**
+  - `docs/CLASS_C_DOWNLINK_QUEUE.md` - Downlink queue implementation
+  - `docs/WEBHOOK_INGEST_IMPLEMENTATION.md` - Webhook hardening guide
+  - `docs/OPERATIONAL_RUNBOOKS.md` - Incident response procedures
+  - `docs/SECURITY_TENANCY.md` - Security and tenancy isolation
+  - `docs/TESTING_STRATEGY_IMPLEMENTATION.md` - Comprehensive testing guide
+  - `HARDENING_FIXES_v5.3.md` - Production hardening checklist
 
   **Deployment:**
   - Dockerfile updated to use `main_tenanted:app`
-  - Added PyJWT dependency for JWT token generation
+  - Added PyJWT, hypothesis, locust dependencies
   - JSON serialization fixes for PostgreSQL JSONB columns
   - Added `get_db()` FastAPI dependency
+  - Integrated downlink queue, metrics, audit logging into main app
 
 - **v5.2.0** (2025-10-17) - ORPHAN device auto-discovery + Admin API endpoints
   - Auto-discovery of LoRaWAN devices from ChirpStack

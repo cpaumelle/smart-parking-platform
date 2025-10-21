@@ -45,10 +45,19 @@ The schema follows a **multi-tenant device registry pattern** with strict tenant
 9. **display_devices** - Display device registry with per-device configuration (tenant-scoped)
 10. **spaces** - Parking space definitions and current state (tenant and site scoped)
 11. **actuations** - Display update audit trail with success/failure tracking
-12. **sensor_readings** - Historical sensor data from IoT devices
+12. **sensor_readings** - Historical sensor data from IoT devices (fcnt deduplication)
 13. **state_changes** - Audit log of all state transitions
 14. **reservations** - Parking space reservations with tenant isolation and idempotency
 15. **api_keys** - API authentication credentials with tenant scoping and scope enforcement
+
+**Display & Downlink Tables (v5.3.0):**
+16. **display_policies** - Policy-driven display control rules (one active per tenant)
+17. **display_state_cache** - Redis cache version tracking for policy invalidation
+18. **sensor_debounce_state** - Duplicate sensor event prevention
+
+**Security & Audit Tables (v5.3.0):**
+19. **audit_log** - Append-only audit trail (immutable via database trigger)
+20. **refresh_tokens** - JWT refresh tokens with 30-day expiry and device fingerprinting
 
 ### Views
 
@@ -63,6 +72,11 @@ The schema follows a **multi-tenant device registry pattern** with strict tenant
 > **Note:** For detailed device types architecture, see `/docs/DEVICE_TYPES_ARCHITECTURE.md`
 > **Note:** For ORPHAN device auto-discovery pattern, see `/docs/ORPHAN_DEVICE_ARCHITECTURE.md`
 > **Note:** For downlink reliability and reconciliation system, see `/docs/DOWNLINK_RELIABILITY_IMPLEMENTATION_COMPLETE.md`
+> **Note:** For Class-C downlink queue implementation, see `/docs/CLASS_C_DOWNLINK_QUEUE.md`
+> **Note:** For webhook hardening, see `/docs/WEBHOOK_INGEST_IMPLEMENTATION.md`
+> **Note:** For observability and operations, see `/docs/OPERATIONAL_RUNBOOKS.md`
+> **Note:** For security and audit logging, see `/docs/SECURITY_TENANCY.md`
+> **Note:** For testing strategy, see `/docs/TESTING_STRATEGY_IMPLEMENTATION.md`
 
 ### Background Processes & Data Integrity
 
