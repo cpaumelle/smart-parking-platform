@@ -9,25 +9,25 @@
 ## Overview
 
 The Smart Parking Platform uses PostgreSQL with the following extensions:
-- `uuid-ossp` - UUID generation functions
-- `pgcrypto` - Cryptographic functions for API key hashing and password hashing
-- `btree_gist` - Support for EXCLUDE constraints (reservation overlap prevention)
+- `pgcrypto` - UUID generation (gen_random_uuid) and cryptographic functions for API key/password hashing
+- `btree_gist` - Support for EXCLUDE constraints (reservation overlap prevention and Row-Level Security)
 
 ### Architecture
 
-The schema follows a **multi-tenant device registry pattern** with strict tenant isolation:
+The schema follows a **multi-tenant device registry pattern** with strict tenant isolation enforced via Row-Level Security (RLS):
 
 **Multi-Tenancy Layer (v5.3.0):**
 - **Tenant management:** `tenants`, `sites` (organizational hierarchy)
 - **User management:** `users`, `user_memberships` (RBAC with 4-level role hierarchy)
 - **Security:** `api_keys` (tenant-scoped API keys with scope enforcement), `webhook_secrets` (per-tenant webhook signing)
 - **Device tracking:** `orphan_devices` (auto-discovered devices awaiting assignment)
+- **Row-Level Security:** Database-level tenant isolation using `app.current_tenant` setting
 
 **Device & Space Management:**
-- **Device registries:** `sensor_devices`, `display_devices` (device metadata, capabilities, tenant-scoped)
-- **Space management:** `spaces` (location metadata, current state, tenant and site scoped)
-- **Operational logs:** `sensor_readings`, `state_changes`, `actuations` (time-series and audit data)
-- **Business logic:** `reservations` (tenant-scoped booking with overlap prevention and idempotency)
+- **Device registries:** `sensor_devices`, `display_devices` (device metadata, capabilities, tenant-scoped, EUI normalization)
+- **Space management:** `spaces` (location metadata, current state, tenant and site scoped, unique display/sensor EUI enforcement)
+- **Operational logs:** `sensor_readings` (with fcnt deduplication and tenant_id), `state_changes`, `actuations` (time-series and audit data with tenant_id)
+- **Business logic:** `reservations` (tenant-scoped booking with overlap prevention, idempotency via request_id, and status filtering)
 
 ### Tables
 
@@ -41,14 +41,14 @@ The schema follows a **multi-tenant device registry pattern** with strict tenant
 
 **Core Tables:**
 7. **device_types** - Centralized device type registry with handler and configuration metadata
-8. **sensor_devices** - Sensor device registry with metadata and capabilities (tenant-scoped)
-9. **display_devices** - Display device registry with per-device configuration (tenant-scoped)
-10. **spaces** - Parking space definitions and current state (tenant and site scoped)
-11. **actuations** - Display update audit trail with success/failure tracking
-12. **sensor_readings** - Historical sensor data from IoT devices (fcnt deduplication)
-13. **state_changes** - Audit log of all state transitions
-14. **reservations** - Parking space reservations with tenant isolation and idempotency
-15. **api_keys** - API authentication credentials with tenant scoping and scope enforcement
+8. **sensor_devices** - Sensor device registry with EUI normalization and hex validation (16 uppercase chars)
+9. **display_devices** - Display device registry with EUI normalization and hex validation (16 uppercase chars)
+10. **spaces** - Parking space definitions with unique sensor/display EUI constraints (tenant and site scoped)
+11. **actuations** - Display update audit trail with tenant_id denormalization and success/failure tracking
+12. **sensor_readings** - Historical sensor data with fcnt deduplication (unique per tenant+device+fcnt) and tenant_id
+13. **state_changes** - Audit log of all state transitions with tenant_id denormalization
+14. **reservations** - Parking space reservations with idempotency (request_id) and overlap prevention (status-filtered EXCLUDE constraint)
+15. **api_keys** - API authentication credentials with tenant scoping, scope enforcement, and revocation support
 
 **Display & Downlink Tables (v5.3.0):**
 16. **display_policies** - Policy-driven display control rules (one active per tenant)
@@ -61,11 +61,11 @@ The schema follows a **multi-tenant device registry pattern** with strict tenant
 
 ### Views
 
-1. **v_spaces** - Materialized view with pre-joined tenant/site data (v5.3.0)
-2. **unassigned_sensors** - Sensors with status='orphan' not linked to any space
-3. **unassigned_displays** - Displays with status='orphan' not linked to any space
-4. **all_unassigned_devices** - Union of unassigned sensors and displays
-5. **orphan_devices** - All orphan devices with device type metadata
+1. **v_spaces** - Materialized view with pre-joined tenant/site data (v5.3.0) - ACCESS RESTRICTED to prevent cross-tenant leakage
+2. **v_orphan_devices** - All orphan devices with device type metadata (renamed from orphan_devices to avoid table/view collision)
+3. **unassigned_sensors** - Sensors with status='orphan' not linked to any space
+4. **unassigned_displays** - Displays with status='orphan' not linked to any space
+5. **all_unassigned_devices** - Union of unassigned sensors and displays
 6. **orphan_device_types** - Device types with status='orphan' and device counts
 7. **inconsistent_devices** - Devices with status mismatches (active but unassigned, orphan but assigned)
 
@@ -318,10 +318,10 @@ NOTES:
 
 **Constraints:**
 - `PRIMARY KEY` (id)
-- `UNIQUE` (email) - Case-insensitive unique constraint
+- `UNIQUE INDEX` uq_users_email_ci (LOWER(email)) - Case-insensitive unique constraint (prevents user@example.com and USER@example.com)
 
 **Indexes:**
-- `idx_users_email` (LOWER(email)) WHERE is_active = true
+- `uq_users_email_ci` (LOWER(email)) - Unique case-insensitive email index
 - `idx_users_active` (is_active, created_at)
 
 **Triggers:**
@@ -500,14 +500,14 @@ This table enables:
 
 ---
 
-### 2. sensor_devices
+### 8. sensor_devices
 
-**Purpose:** Device registry for occupancy sensors with metadata, capabilities, and configuration.
+**Purpose:** Device registry for occupancy sensors with metadata, capabilities, and EUI normalization (uppercase hex validation).
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | uuid | NOT NULL | gen_random_uuid() | Primary key |
-| `dev_eui` | varchar(16) | NOT NULL | - | LoRaWAN device EUI (unique) |
+| `dev_eui` | varchar(16) | NOT NULL | - | LoRaWAN device EUI (16 uppercase hex chars, auto-normalized) |
 | `device_type` | varchar(50) | NOT NULL | - | Device type (browan_tabs, dragino, etc.) |
 | `device_type_id` | uuid | NULL | - | FK to device_types (centralized type registry) |
 | `device_model` | varchar(100) | NULL | - | Manufacturer's model name |
@@ -525,6 +525,7 @@ This table enables:
 - `UNIQUE` (dev_eui) - One registry entry per device
 - `FOREIGN KEY` (device_type_id) REFERENCES device_types(id)
 - `CHECK` (status IN ('orphan', 'active', 'inactive', 'decommissioned'))
+- `CHECK` chk_sensor_dev_eui_hex - Ensures dev_eui matches '^[0-9A-F]{16}$' (16 uppercase hex chars)
 
 **Indexes:**
 - `idx_sensor_devices_deveui` (dev_eui, enabled) WHERE enabled = TRUE
@@ -532,6 +533,7 @@ This table enables:
 
 **Triggers:**
 - `update_sensor_devices_updated_at` - Automatically updates `updated_at` on row modification
+- `trg_sensor_eui_upper` - Automatically normalizes dev_eui to uppercase before INSERT/UPDATE
 
 **Example Data:**
 ```json
@@ -547,14 +549,14 @@ This table enables:
 
 ---
 
-### 3. display_devices
+### 9. display_devices
 
-**Purpose:** Device registry for display devices with per-device configuration (color codes, FPort, etc.).
+**Purpose:** Device registry for display devices with per-device configuration (color codes, FPort, etc.) and EUI normalization.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | uuid | NOT NULL | gen_random_uuid() | Primary key |
-| `dev_eui` | varchar(16) | NOT NULL | - | LoRaWAN device EUI (unique) |
+| `dev_eui` | varchar(16) | NOT NULL | - | LoRaWAN device EUI (16 uppercase hex chars, auto-normalized) |
 | `device_type` | varchar(50) | NOT NULL | - | Display type (kuando_busylight, led_matrix) |
 | `device_type_id` | uuid | NULL | - | FK to device_types (centralized type registry) |
 | `device_model` | varchar(100) | NULL | - | Manufacturer's model name |
@@ -573,6 +575,7 @@ This table enables:
 - `UNIQUE` (dev_eui) - One registry entry per device
 - `FOREIGN KEY` (device_type_id) REFERENCES device_types(id)
 - `CHECK` (status IN ('orphan', 'active', 'inactive', 'decommissioned'))
+- `CHECK` chk_display_dev_eui_hex - Ensures dev_eui matches '^[0-9A-F]{16}$' (16 uppercase hex chars)
 
 **Indexes:**
 - `idx_display_devices_deveui` (dev_eui, enabled) WHERE enabled = TRUE
@@ -580,6 +583,7 @@ This table enables:
 
 **Triggers:**
 - `update_display_devices_updated_at` - Automatically updates `updated_at` on row modification
+- `trg_display_eui_upper` - Automatically normalizes dev_eui to uppercase before INSERT/UPDATE
 
 **Example Data:**
 ```json
@@ -632,11 +636,13 @@ This table enables:
 - `FOREIGN KEY` (tenant_id) REFERENCES tenants(id) (v5.3.0)
 - `FOREIGN KEY` (site_id) REFERENCES sites(id) (v5.3.0)
 - `UNIQUE` (tenant_id, code) - Space codes unique within tenant (v5.3.0)
-- `UNIQUE` (sensor_eui) - One sensor per space
+- `UNIQUE` (sensor_eui) WHERE deleted_at IS NULL - One sensor per space (partial unique)
+- `UNIQUE INDEX` uq_spaces_display_eui (display_eui) WHERE display_eui IS NOT NULL AND deleted_at IS NULL - One display per active space
 - `FOREIGN KEY` (sensor_device_id) REFERENCES sensor_devices(id)
 - `FOREIGN KEY` (display_device_id) REFERENCES display_devices(id)
 - `CHECK valid_state` - State ∈ {FREE, OCCUPIED, RESERVED, MAINTENANCE}
 - `CHECK valid_gps` - GPS coordinates within valid ranges
+- `CHECK` chk_spaces_eui_hex - Ensures sensor_eui and display_eui are 16 uppercase hex chars when present
 
 **Indexes:**
 - `idx_spaces_tenant` (tenant_id, deleted_at) WHERE deleted_at IS NULL (v5.3.0)
@@ -653,6 +659,10 @@ This table enables:
 - `update_spaces_updated_at` - Automatically updates `updated_at` on row modification
 - `spaces_sync_deveuis` - Automatically syncs denormalized sensor_eui and display_eui from device registries
 - `spaces_sync_tenant_id` - Automatically syncs tenant_id from site (v5.3.0)
+- `trg_spaces_eui_upper` - Automatically normalizes sensor_eui and display_eui to uppercase before INSERT/UPDATE
+
+**Row-Level Security:**
+- RLS enabled with policy `p_spaces_tenant` - Enforces tenant isolation using `app.current_tenant` setting
 
 **Design Pattern:**
 This table uses a **hybrid approach** with both foreign keys and denormalized DevEUIs:
@@ -662,19 +672,20 @@ This table uses a **hybrid approach** with both foreign keys and denormalized De
 
 ---
 
-### 5. actuations
+### 11. actuations
 
-**Purpose:** Complete audit trail of display update attempts with success/failure tracking and performance metrics.
+**Purpose:** Complete audit trail of display update attempts with success/failure tracking, performance metrics, and tenant denormalization.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | uuid | NOT NULL | gen_random_uuid() | Primary key |
 | `space_id` | uuid | NOT NULL | - | Foreign key to spaces |
+| `tenant_id` | uuid | NULL | - | Tenant ID (denormalized from space for RLS performance) |
 | `trigger_type` | varchar(30) | NOT NULL | - | What triggered the update (enum) |
 | `trigger_source` | varchar(100) | NULL | - | Request ID, uplink ID, etc. |
 | `previous_state` | varchar(20) | NULL | - | State before transition |
 | `new_state` | varchar(20) | NOT NULL | - | State after transition |
-| `display_deveui` | varchar(16) | NOT NULL | - | Target display EUI |
+| `display_eui` | varchar(16) | NOT NULL | - | Target display EUI (standardized naming) |
 | `display_device_id` | uuid | NULL | - | FK to display_devices |
 | `display_code` | varchar(20) | NOT NULL | - | Hex payload sent |
 | `fport` | integer | NOT NULL | - | LoRaWAN FPort used |
@@ -698,7 +709,13 @@ This table uses a **hybrid approach** with both foreign keys and denormalized De
 - `idx_actuations_space_time` (space_id, created_at DESC)
 - `idx_actuations_trigger` (trigger_type, created_at DESC)
 - `idx_actuations_errors` (downlink_sent, downlink_error) WHERE downlink_sent = FALSE OR downlink_error IS NOT NULL
-- `idx_actuations_display` (display_deveui, created_at DESC)
+- `idx_actuations_display` (display_eui, created_at DESC)
+
+**Triggers:**
+- `trg_actuations_sync_tenant` - Automatically syncs tenant_id from space before INSERT/UPDATE
+
+**Row-Level Security:**
+- RLS enabled with policy `p_actuations_tenant` - Enforces tenant isolation using `app.current_tenant` setting
 
 **Use Cases:**
 - Operational debugging (why didn't display update?)
@@ -708,15 +725,17 @@ This table uses a **hybrid approach** with both foreign keys and denormalized De
 
 ---
 
-### 6. sensor_readings
+### 12. sensor_readings
 
-**Purpose:** Time-series data from occupancy sensors and environmental metrics.
+**Purpose:** Time-series data from occupancy sensors with fcnt deduplication and tenant denormalization for RLS.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | bigint | NOT NULL | nextval() | Primary key (auto-increment) |
 | `device_eui` | varchar(16) | NOT NULL | - | Sensor LoRaWAN EUI |
 | `space_id` | uuid | NULL | - | Foreign key to spaces |
+| `tenant_id` | uuid | NULL | - | Tenant ID (denormalized from space for RLS performance) |
+| `fcnt` | integer | NULL | - | LoRaWAN frame counter (for deduplication) |
 | `occupancy_state` | varchar(20) | NULL | - | Detected occupancy state |
 | `battery` | numeric(3,2) | NULL | - | Battery level (0.00-1.00) |
 | `temperature` | numeric(4,1) | NULL | - | Temperature in Celsius |
@@ -727,24 +746,33 @@ This table uses a **hybrid approach** with both foreign keys and denormalized De
 **Constraints:**
 - `PRIMARY KEY` (id)
 - `FOREIGN KEY` (space_id) REFERENCES spaces(id)
+- `UNIQUE INDEX` uq_readings_device_fcnt (tenant_id, device_eui, fcnt) WHERE fcnt IS NOT NULL - Prevents duplicate readings from same device/fcnt
 
 **Indexes:**
 - `idx_sensor_readings_device_time` (device_eui, timestamp DESC)
 - `idx_sensor_readings_space_time` (space_id, timestamp DESC) WHERE space_id IS NOT NULL
 - `idx_sensor_readings_timestamp_brin` BRIN (timestamp) - Efficient for time-series queries
+- `uq_readings_device_fcnt` (tenant_id, device_eui, fcnt) WHERE fcnt IS NOT NULL - Idempotent webhook ingestion
+
+**Triggers:**
+- `trg_sensor_readings_sync_tenant` - Automatically syncs tenant_id from space before INSERT/UPDATE
+
+**Row-Level Security:**
+- RLS enabled with policy `p_sensor_readings_tenant` - Enforces tenant isolation using `app.current_tenant` setting
 
 **Sequence:** `sensor_readings_id_seq` (START 1, INCREMENT 1)
 
 ---
 
-### 7. state_changes
+### 13. state_changes
 
-**Purpose:** Audit log of all parking space state transitions with full context.
+**Purpose:** Audit log of all parking space state transitions with full context and tenant denormalization.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | bigint | NOT NULL | nextval() | Primary key (auto-increment) |
 | `space_id` | uuid | NOT NULL | - | Foreign key to spaces |
+| `tenant_id` | uuid | NULL | - | Tenant ID (denormalized from space for RLS performance) |
 | `previous_state` | varchar(20) | NULL | - | State before transition |
 | `new_state` | varchar(20) | NOT NULL | - | State after transition |
 | `source` | varchar(50) | NOT NULL | - | Trigger source (sensor/manual/reservation) |
@@ -759,6 +787,12 @@ This table uses a **hybrid approach** with both foreign keys and denormalized De
 **Indexes:**
 - `idx_state_changes_space` (space_id, timestamp DESC)
 - `idx_state_changes_timestamp_brin` BRIN (timestamp) - Efficient for time-series queries
+
+**Triggers:**
+- `trg_state_changes_sync_tenant` - Automatically syncs tenant_id from space before INSERT/UPDATE
+
+**Row-Level Security:**
+- RLS enabled with policy `p_state_changes_tenant` - Enforces tenant isolation using `app.current_tenant` setting
 
 **Sequence:** `state_changes_id_seq` (START 1, INCREMENT 1)
 
@@ -790,11 +824,12 @@ This table uses a **hybrid approach** with both foreign keys and denormalized De
 - `CHECK valid_times` - end_time > start_time
 - `CHECK valid_duration` - (end_time - start_time) ≤ 24 hours
 - `CHECK valid_status` - Status ∈ {pending, confirmed, expired, cancelled} (v5.3.0)
-- `EXCLUDE CONSTRAINT` - Prevents overlapping reservations using btree_gist (v5.3.0):
+- `UNIQUE INDEX` uq_reservations_request_id (tenant_id, request_id) WHERE request_id IS NOT NULL - Idempotency enforcement
+- `EXCLUDE CONSTRAINT` uq_reservations_no_overlap - Prevents overlapping active reservations using btree_gist (v5.3.0):
   ```sql
   EXCLUDE USING gist (
     space_id WITH =,
-    tstzrange(start_time, end_time) WITH &&
+    tstzrange(reserved_from, reserved_until, '[)') WITH &&
   ) WHERE (status IN ('pending', 'confirmed'))
   ```
 
@@ -802,20 +837,23 @@ This table uses a **hybrid approach** with both foreign keys and denormalized De
 - `idx_reservations_tenant` (tenant_id, status) (v5.3.0)
 - `idx_reservations_space` (space_id)
 - `idx_reservations_status` (status) WHERE status IN ('pending', 'confirmed') (v5.3.0)
-- `idx_reservations_time` (start_time, end_time) WHERE status IN ('pending', 'confirmed') (v5.3.0)
-- `idx_reservations_request_id` (request_id) WHERE request_id IS NOT NULL (v5.3.0)
+- `idx_reservations_time` (reserved_from, reserved_until) WHERE status IN ('pending', 'confirmed') (v5.3.0)
+- `uq_reservations_request_id` (tenant_id, request_id) WHERE request_id IS NOT NULL - Idempotency index (v5.3.0)
 
 **Triggers:**
 - `update_reservations_updated_at` - Automatically updates `updated_at` on row modification
 - `reservations_sync_tenant_id` - Automatically syncs tenant_id from space (v5.3.0)
 
+**Row-Level Security:**
+- RLS enabled with policy `p_reservations_tenant` - Enforces tenant isolation using `app.current_tenant` setting
+
 **Key Features (v5.3.0):**
 
 **1. Database-Level Overlap Prevention:**
-The EXCLUDE constraint guarantees no two active reservations (`pending` or `confirmed`) can overlap for the same space, even under high concurrency. This prevents double-booking at the database level.
+The EXCLUDE constraint `uq_reservations_no_overlap` guarantees no two active reservations (`pending` or `confirmed`) can overlap for the same space, even under high concurrency. This prevents double-booking at the database level. Only active reservations are checked - cancelled and expired reservations are ignored.
 
 **2. Idempotency:**
-The `request_id` field enables idempotent reservation creation. If a client retries the same request with the same `request_id`, the API returns the existing reservation instead of creating a duplicate.
+The `request_id` field with unique index `uq_reservations_request_id` enforces idempotent reservation creation per tenant. If a client retries the same request with the same `request_id`, the database unique constraint prevents duplicates, allowing the API to return the existing reservation instead of creating a duplicate.
 
 **3. Updated Status Values:**
 - `pending` - Awaiting payment or approval
@@ -1537,8 +1575,126 @@ Migrations are managed manually. See `README.md` for migration procedures.
   - **Database extensions:** Added btree_gist for EXCLUDE constraint support
   - **Migrations:** 002_multi_tenancy_rbac.sql, 003_multi_tenancy_hardening.sql, 004_reservations_and_webhook_hardening.sql, 005_reservation_statuses.sql
 
-**Current Schema Version:** v5.5.0
-**Last Updated:** 2025-10-20
+- **v5.6.0** (2025-10-21): **Critical Database Hardening**
+  - **Email uniqueness:** Case-insensitive unique index on users.email (prevents user@example.com and USER@example.com)
+  - **Display EUI uniqueness:** Partial unique index on spaces.display_eui (one display per active space)
+  - **Reservation idempotency:** Unique index on (tenant_id, request_id) prevents duplicate bookings on retry
+  - **Sensor reading deduplication:** Unique index on (tenant_id, device_eui, fcnt) prevents duplicate uplink processing
+  - **EUI normalization:** Triggers auto-uppercase dev_eui, sensor_eui, display_eui + CHECK constraints enforce hex format
+  - **Row-Level Security (RLS):** Enabled on all tenant-scoped tables with policies using app.current_tenant setting
+  - **Tenant denormalization:** Added tenant_id to sensor_readings, state_changes, actuations with auto-sync triggers
+  - **View rename:** orphan_devices view renamed to v_orphan_devices (resolves table/view collision)
+  - **Materialized view security:** Revoked public access to v_spaces (prevents cross-tenant data leakage)
+  - **Column rename:** actuations.display_deveui → actuations.display_eui (naming consistency)
+  - **Overlap constraint fix:** Updated to use status filter (pending/confirmed) and correct column names
+  - **Migration:** 008_critical_fixes.sql
+
+**Current Schema Version:** v5.6.0
+**Last Updated:** 2025-10-21
+
+---
+
+## Row-Level Security (RLS)
+
+**Purpose:** Database-level tenant isolation that prevents cross-tenant data access even if application code has bugs.
+
+### How It Works
+
+Row-Level Security uses PostgreSQL's built-in RLS feature with a session variable `app.current_tenant` to filter rows:
+
+```sql
+-- Application sets the tenant context for each request
+SET LOCAL app.current_tenant = '550e8400-e29b-41d4-a716-446655440000';
+
+-- All queries automatically filtered by tenant_id
+SELECT * FROM spaces;  -- Only returns spaces for current tenant
+
+-- Attempts to access other tenant's data are blocked
+SELECT * FROM spaces WHERE tenant_id = 'other-tenant-uuid';  -- Returns empty
+```
+
+### RLS Policies
+
+All tenant-scoped tables have RLS policies that enforce `tenant_id = app.current_tenant`:
+
+**Tables with RLS enabled:**
+- `tenants` - Users can only see their own tenant
+- `sites` - Scoped by tenant_id
+- `spaces` - Scoped by tenant_id
+- `reservations` - Scoped by tenant_id
+- `api_keys` - Scoped by tenant_id
+- `webhook_secrets` - Scoped by tenant_id
+- `sensor_readings` - Scoped by tenant_id (denormalized from space)
+- `state_changes` - Scoped by tenant_id (denormalized from space)
+- `actuations` - Scoped by tenant_id (denormalized from space)
+- `display_policies` - Scoped by tenant_id
+- `audit_log` - Scoped by tenant_id
+
+**Example policy:**
+```sql
+-- RLS policy for spaces table
+CREATE POLICY p_spaces_tenant ON spaces
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+```
+
+### Tenant Denormalization for Performance
+
+To avoid expensive joins in RLS policies, `tenant_id` is denormalized to operational tables:
+
+- **sensor_readings**: `tenant_id` auto-synced from `spaces` via trigger
+- **state_changes**: `tenant_id` auto-synced from `spaces` via trigger
+- **actuations**: `tenant_id` auto-synced from `spaces` via trigger
+
+This allows fast RLS filtering without joining to `spaces` table:
+
+```sql
+-- Fast RLS check (no join needed)
+SELECT * FROM sensor_readings WHERE tenant_id = current_setting('app.current_tenant')::uuid;
+
+-- vs. slow RLS check (requires join)
+SELECT * FROM sensor_readings WHERE space_id IN (SELECT id FROM spaces WHERE tenant_id = ...);
+```
+
+### Application Integration
+
+The application must set `app.current_tenant` for every database session:
+
+```python
+# FastAPI dependency that sets tenant context
+async def get_db_with_tenant(tenant_id: UUID):
+    async with db_session() as session:
+        # Set tenant context for RLS
+        await session.execute(text(f"SET LOCAL app.current_tenant = '{tenant_id}'"))
+        yield session
+```
+
+### Security Benefits
+
+1. **Defense in depth:** Even if application code has bugs, database enforces isolation
+2. **Prevents privilege escalation:** Users cannot modify `app.current_tenant` mid-transaction
+3. **Audit trail:** Audit log automatically scoped to tenant
+4. **Zero-trust:** Database trusts nothing - always validates tenant_id
+
+### Materialized View Security
+
+The materialized view `v_spaces` is **not protected by RLS** (materialized views don't support RLS). Therefore:
+
+- Public SELECT access is **REVOKED**
+- Only backend role can access it
+- Backend must filter by `app.current_tenant` manually
+- Consider using non-materialized views with RLS instead
+
+### Testing RLS
+
+```sql
+-- Test tenant isolation
+SET LOCAL app.current_tenant = 'tenant-a-uuid';
+SELECT COUNT(*) FROM spaces;  -- Should only count tenant A's spaces
+
+SET LOCAL app.current_tenant = 'tenant-b-uuid';
+SELECT COUNT(*) FROM spaces;  -- Should only count tenant B's spaces
+```
 
 ---
 
