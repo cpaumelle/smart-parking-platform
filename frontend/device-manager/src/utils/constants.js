@@ -34,18 +34,16 @@ export const NAVIGATION_ITEMS = [
 
 export const DEVICE_FILTERS = {
   ALL: 'all',
-  ORPHANED: 'orphaned',
-  PARTIAL: 'partial',
-  CONFIGURED: 'configured',
+  UNASSIGNED: 'unassigned',     // No site assigned (Build 18+)
+  ASSIGNED: 'assigned',          // Site assigned (Build 18+)
   ARCHIVED: 'archived',
   RECENTLY_ACTIVE: 'recently_active'
 };
 
 export const FILTER_LABELS = {
   [DEVICE_FILTERS.ALL]: 'All Devices',
-  [DEVICE_FILTERS.ORPHANED]: 'Orphaned',
-  [DEVICE_FILTERS.PARTIAL]: 'Partially Configured',
-  [DEVICE_FILTERS.CONFIGURED]: 'Configured',
+  [DEVICE_FILTERS.UNASSIGNED]: 'Unassigned',
+  [DEVICE_FILTERS.ASSIGNED]: 'Assigned to Site',
   [DEVICE_FILTERS.ARCHIVED]: 'Archived',
   [DEVICE_FILTERS.RECENTLY_ACTIVE]: 'Recently Active'
 };

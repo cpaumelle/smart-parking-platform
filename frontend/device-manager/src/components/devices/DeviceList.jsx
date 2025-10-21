@@ -86,16 +86,12 @@ const DeviceList = ({ initialFilters }) => {
           <div className="text-sm text-gray-600">Total Devices</div>
         </div>
         <div className="bg-white p-4 rounded-lg border">
-          <div className="text-2xl font-bold text-red-600">{counts.orphaned}</div>
-          <div className="text-sm text-gray-600">Orphaned</div>
+          <div className="text-2xl font-bold text-yellow-600">{counts.unassigned}</div>
+          <div className="text-sm text-gray-600">Unassigned</div>
         </div>
         <div className="bg-white p-4 rounded-lg border">
-          <div className="text-2xl font-bold text-yellow-600">{counts.partial}</div>
-          <div className="text-sm text-gray-600">Partial Config</div>
-        </div>
-        <div className="bg-white p-4 rounded-lg border">
-          <div className="text-2xl font-bold text-green-600">{counts.configured}</div>
-          <div className="text-sm text-gray-600">Configured</div>
+          <div className="text-2xl font-bold text-green-600">{counts.assigned}</div>
+          <div className="text-sm text-gray-600">Assigned to Site</div>
         </div>
         <div className="bg-white p-4 rounded-lg border">
           <div className="text-2xl font-bold text-gray-600">{counts.archived}</div>

@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "18.1",
-  "buildNumber": "20251021.18.1",
-  "buildTimestamp": "2025-10-21T17:00:00Z",
-  "buildDate": "2025-10-21T17:00:00Z",
-  "gitCommit": "devices-like-gateways-fix",
-  "commit": "devices-like-gateways-fix",
-  "description": "Fixed API crash - added missing Pydantic BaseModel import for DeviceUpdate model",
+  "build": "19",
+  "buildNumber": "20251021.19",
+  "buildTimestamp": "2025-10-21T18:00:00Z",
+  "buildDate": "2025-10-21T18:00:00Z",
+  "gitCommit": "simplified-device-status",
+  "commit": "simplified-device-status",
+  "description": "Simplified device status - removed ORPHANED, now just UNASSIGNED vs ASSIGNED (to site)",
   "environment": "production"
 }

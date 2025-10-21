@@ -34,14 +34,12 @@ export const useDevices = (initialFilters = {}) => {
   const filteredDevices = devices.filter(device => {
     if (filters.status !== DEVICE_FILTERS.ALL) {
       const deviceStatus = getDeviceStatus(device);
-      
-      if (filters.status === DEVICE_FILTERS.ORPHANED && deviceStatus !== 'orphaned') {
+
+      // Build 18+ simplified status filtering
+      if (filters.status === DEVICE_FILTERS.UNASSIGNED && deviceStatus !== 'unassigned') {
         return false;
       }
-      if (filters.status === DEVICE_FILTERS.PARTIAL && !['partial_type', 'partial_location'].includes(deviceStatus)) {
-        return false;
-      }
-      if (filters.status === DEVICE_FILTERS.CONFIGURED && deviceStatus !== 'configured') {
+      if (filters.status === DEVICE_FILTERS.ASSIGNED && deviceStatus !== 'assigned') {
         return false;
       }
       if (filters.status === DEVICE_FILTERS.ARCHIVED && deviceStatus !== 'archived') {
@@ -68,24 +66,19 @@ export const useDevices = (initialFilters = {}) => {
   const getDeviceCounts = () => {
     const counts = {
       total: devices.length,
-      orphaned: 0,
-      partial: 0,
-      configured: 0,
+      unassigned: 0,    // Build 18+: no site assigned
+      assigned: 0,       // Build 18+: site assigned
       archived: 0
     };
 
     devices.forEach(device => {
       const status = getDeviceStatus(device);
       switch (status) {
-        case 'orphaned':
-          counts.orphaned++;
+        case 'unassigned':
+          counts.unassigned++;
           break;
-        case 'partial_type':
-        case 'partial_location':
-          counts.partial++;
-          break;
-        case 'configured':
-          counts.configured++;
+        case 'assigned':
+          counts.assigned++;
           break;
         case 'archived':
           counts.archived++;
