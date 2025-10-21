@@ -245,17 +245,26 @@ async def list_devices(
             for row in sensor_results:
                 dev_eui_upper = row["deveui"].upper()
 
-                # Fetch device name and description from ChirpStack
-                cs_device = await chirpstack_pool.fetchrow(
-                    "SELECT name, description FROM device WHERE UPPER(encode(dev_eui, 'hex')) = $1",
-                    dev_eui_upper
-                )
+                # Fetch device name, description, and device profile from ChirpStack
+                cs_device = await chirpstack_pool.fetchrow("""
+                    SELECT
+                        d.name,
+                        d.description,
+                        dp.name as device_profile_name
+                    FROM device d
+                    LEFT JOIN device_profile dp ON d.device_profile_id = dp.id
+                    WHERE UPPER(encode(d.dev_eui, 'hex')) = $1
+                """, dev_eui_upper)
+
+                # Use ChirpStack device profile name as device_type (authoritative)
+                # Fall back to parking_v5 device_type if not in ChirpStack
+                device_type = cs_device["device_profile_name"] if (cs_device and cs_device["device_profile_name"]) else row["device_type"]
 
                 devices.append({
                     "id": str(row["id"]),
                     "deveui": row["deveui"],
                     "category": "sensor",
-                    "device_type": row["device_type"],
+                    "device_type": device_type,  # From ChirpStack device profile (authoritative)
                     "device_model": row["device_model"],
                     "manufacturer": row["manufacturer"],
                     "payload_decoder": row["payload_decoder"],
@@ -340,17 +349,26 @@ async def list_devices(
             for row in display_results:
                 dev_eui_upper = row["deveui"].upper()
 
-                # Fetch device name and description from ChirpStack
-                cs_device = await chirpstack_pool.fetchrow(
-                    "SELECT name, description FROM device WHERE UPPER(encode(dev_eui, 'hex')) = $1",
-                    dev_eui_upper
-                )
+                # Fetch device name, description, and device profile from ChirpStack
+                cs_device = await chirpstack_pool.fetchrow("""
+                    SELECT
+                        d.name,
+                        d.description,
+                        dp.name as device_profile_name
+                    FROM device d
+                    LEFT JOIN device_profile dp ON d.device_profile_id = dp.id
+                    WHERE UPPER(encode(d.dev_eui, 'hex')) = $1
+                """, dev_eui_upper)
+
+                # Use ChirpStack device profile name as device_type (authoritative)
+                # Fall back to parking_v5 device_type if not in ChirpStack
+                device_type = cs_device["device_profile_name"] if (cs_device and cs_device["device_profile_name"]) else row["device_type"]
 
                 devices.append({
                     "id": str(row["id"]),
                     "deveui": row["deveui"],
                     "category": "display",
-                    "device_type": row["device_type"],
+                    "device_type": device_type,  # From ChirpStack device profile (authoritative)
                     "device_model": row["device_model"],
                     "manufacturer": row["manufacturer"],
                     "display_codes": row["display_codes"],
