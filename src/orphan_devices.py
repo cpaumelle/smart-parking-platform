@@ -152,7 +152,7 @@ async def get_orphan_devices(
                 last_snr,
                 assigned_to_space_id,
                 assigned_at
-            FROM orphan_devices
+            FROM v_orphan_devices
             {where_clause}
             ORDER BY last_seen DESC
         """
@@ -181,7 +181,7 @@ async def get_orphan_devices(
 
 async def delete_orphan_device(db, device_eui: str) -> bool:
     """
-    Delete an orphan device record
+    Delete an orphan device record from sensor_devices or display_devices
 
     Args:
         db: Database connection pool
@@ -191,12 +191,22 @@ async def delete_orphan_device(db, device_eui: str) -> bool:
         True if deletion succeeded
     """
     try:
+        # Try deleting from sensor_devices first
         result = await db.execute("""
-            DELETE FROM orphan_devices WHERE dev_eui = $1
+            DELETE FROM sensor_devices WHERE dev_eui = $1 AND status = 'orphan'
         """, device_eui)
 
         if result == "DELETE 1":
-            logger.info(f"Deleted orphan device {device_eui}")
+            logger.info(f"Deleted orphan sensor device {device_eui}")
+            return True
+
+        # If not found in sensors, try displays
+        result = await db.execute("""
+            DELETE FROM display_devices WHERE dev_eui = $1 AND status = 'orphan'
+        """, device_eui)
+
+        if result == "DELETE 1":
+            logger.info(f"Deleted orphan display device {device_eui}")
             return True
 
         return False
