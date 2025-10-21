@@ -1,14 +1,12 @@
 // src/components/gateways/GatewayConfigModal.jsx
-// Version: 3.0.0 - v5.3 Multi-Tenant API
+// Version: 4.0.0 - v5.3 Multi-Tenant API
 // Changelog:
-// - DISABLED update functionality (gateways are read-only in v5.3)
+// - Version 4.0.0: Made modal fully informational (read-only) - gateways managed in ChirpStack
+// - Version 3.0.0: DISABLED update functionality (gateways are read-only in v5.3)
 // - Gateways are auto-discovered and managed via ChirpStack
 
-import { useState, useEffect } from 'react';
-import { MapPin, Settings, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Settings, AlertCircle } from 'lucide-react';
 import Modal from '../common/Modal.jsx';
-// import { updateGateway } from '../../services/gateways.js'; // REMOVED - read-only
-import { siteService } from '../../services/siteService.js';
 import { formatLastSeen, formatDateTime } from '../../utils/formatters.js';
 import {
   getGatewayConfigStatus,
@@ -17,67 +15,7 @@ import {
 } from '../../utils/gatewayConfigStatus.js';
 
 const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
-  const [formData, setFormData] = useState({
-    gateway_name: gateway.gateway_name === 'Orphan Gateway' ? '' : (gateway.gateway_name || ''),
-    location_id: gateway.location_id || '',
-    site_id: gateway.site_id || '',
-    assigned_at: new Date().toISOString()
-  });
-
-  const [sites, setSites] = useState([]);
-  const [selectedSite, setSelectedSite] = useState(gateway.site_id || '');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  // Load sites from Sites API
-  useEffect(() => {
-    loadSites();
-  }, []);
-
-  const loadSites = async () => {
-    try {
-      const response = await siteService.getSites({ include_inactive: false });
-      setSites(response.sites || []);
-    } catch (err) {
-      console.error('Failed to load sites:', err);
-      setError('Failed to load sites');
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    // Validation
-    if (!formData.gateway_name.trim()) {
-      setError('Gateway name is required');
-      return;
-    }
-
-    if (!formData.location_id) {
-      setError('Location assignment is required');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError('');
-
-      const updatePayload = {
-        gateway_name: formData.gateway_name.trim(),
-        location_id: formData.location_id,
-        ...(selectedSite && { site_id: selectedSite })
-      };
-
-      // await updateGateway(gateway.gw_eui, updatePayload); // REMOVED - gateways are read-only
-      setError('Gateways are managed via ChirpStack and cannot be manually updated. Configuration updates are not supported in v5.3.');
-      return;
-    } catch (err) {
-      console.error('Failed to update gateway configuration:', err);
-      setError(err?.userMessage || err?.message || 'Failed to save configuration');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // No form state needed - this is a read-only informational modal
 
   // Configuration status analysis
   const configStatus = getGatewayConfigStatus(gateway);
@@ -99,7 +37,7 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
     <Modal
       isOpen={true}
       onClose={onClose}
-      title={`Configure Gateway: ${gateway.gateway_name || gateway.gw_eui}`}
+      title={`Gateway Information: ${gateway.gateway_name || gateway.gw_eui}`}
       size="large"
     >
       <div className="space-y-6">
@@ -156,150 +94,116 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
           )}
         </div>
 
-        {/* Configuration Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
-
-          {/* Gateway Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Settings className="inline w-4 h-4 mr-1" />
-              Gateway Name *
-            </label>
-            <input
-              type="text"
-              value={formData.gateway_name}
-              onChange={(e) => setFormData(prev => ({ ...prev, gateway_name: e.target.value }))}
-              placeholder={isOrphaned ? 'Replace "Orphan Gateway" with custom name' : 'Enter gateway name'}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            />
-            {isOrphaned && (
-              <p className="text-xs text-gray-500 mt-1">
-                Tip: "Orphan Gateway" is auto-generated. Give it a meaningful name like "Building-A-Floor-2" or "Main-Entrance-GW"
+        {/* Informational Notice */}
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" />
+            <div>
+              <h4 className="text-sm font-medium text-yellow-900">Gateway Management</h4>
+              <p className="text-sm text-yellow-700 mt-1">
+                Gateways are managed directly in ChirpStack and are read-only in this interface.
+                To modify gateway settings (name, location, description), please use the ChirpStack admin interface.
               </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Gateway Details (Read-Only) */}
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="font-medium text-gray-900 mb-3">Gateway Details</h4>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                Gateway Name
+              </label>
+              <div className="text-sm text-gray-900 font-medium">
+                {gateway.gateway_name || 'Unnamed Gateway'}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                Gateway EUI (Hardware ID)
+              </label>
+              <div className="text-sm text-gray-900 font-mono bg-gray-100 px-2 py-1 rounded">
+                {gateway.gw_eui}
+              </div>
+            </div>
+
+            {gateway.description && (
+              <div>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                  Description
+                </label>
+                <div className="text-sm text-gray-900">
+                  {gateway.description}
+                </div>
+              </div>
             )}
-          </div>
 
-          {/* Site Assignment */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <MapPin className="inline w-4 h-4 mr-1" />
-              Site Assignment *
-            </label>
-
-            <select
-              value={selectedSite}
-              onChange={(e) => {
-                setSelectedSite(e.target.value);
-                setFormData(prev => ({ ...prev, site_id: e.target.value, location_id: e.target.value }));
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            >
-              <option value="">Select site...</option>
-              {sites.map(site => (
-                <option key={site.id} value={site.id}>
-                  {site.name} ({site.spaces_count} spaces)
-                </option>
-              ))}
-            </select>
-
-            <p className="text-xs text-gray-500 mt-1">
-              Assign this gateway to a site/building. This helps organize gateways by physical location.
-            </p>
-          </div>
-
-          {/* Assignment Date/Time */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Clock className="inline w-4 h-4 mr-1" />
-              Assignment Date & Time
-            </label>
-            <input
-              type="datetime-local"
-              value={formData.assigned_at ? new Date(formData.assigned_at).toISOString().slice(0, 16) : ''}
-              onChange={(e) => setFormData(prev => ({
-                ...prev,
-                assigned_at: new Date(e.target.value).toISOString()
-              }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              This tracks when the gateway was assigned to this location for historical purposes.
-            </p>
-          </div>
-
-          {/* Impact Explanation */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-start">
-              <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
+            {(gateway.latitude || gateway.longitude) && (
               <div>
-                <h4 className="text-sm font-medium text-blue-900">Configuration Benefits</h4>
-                <p className="text-sm text-blue-700 mt-1">Completing this configuration will enable:</p>
-                <ul className="text-sm text-blue-700 mt-2 space-y-1">
-                  <li>&bull; <strong>Device Management:</strong> Devices can be automatically assigned to this gateway's location</li>
-                  <li>&bull; <strong>Spatial Analytics:</strong> Location-based reporting and insights</li>
-                  <li>&bull; <strong>Network Planning:</strong> Coverage analysis and optimization</li>
-                  <li>&bull; <strong>Maintenance:</strong> Site-specific gateway management and monitoring</li>
-                </ul>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                  GPS Coordinates
+                </label>
+                <div className="text-sm text-gray-900">
+                  Lat: {gateway.latitude?.toFixed(6) || 'N/A'},
+                  Lon: {gateway.longitude?.toFixed(6) || 'N/A'}
+                  {gateway.altitude && `, Alt: ${gateway.altitude}m`}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 pt-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                  Last Seen
+                </label>
+                <div className="text-sm text-gray-900">
+                  {formatLastSeen(gateway.last_seen_at) || 'Never'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                  Created
+                </label>
+                <div className="text-sm text-gray-900">
+                  {formatDateTime(gateway.created_at)}
+                </div>
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Current Gateway Info */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h4 className="font-medium text-gray-900 mb-2">Gateway Information</h4>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-gray-600">Last Seen:</span>
-                <span className="ml-2 text-gray-900">{formatLastSeen(gateway.last_seen_at) || 'Never'}</span>
-              </div>
-              <div>
-                <span className="text-gray-600">Created:</span>
-                <span className="ml-2 text-gray-900">{formatDateTime(gateway.created_at)}</span>
-              </div>
+        {/* How to Update */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <Settings className="w-5 h-5 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
+            <div>
+              <h4 className="text-sm font-medium text-blue-900">How to Update Gateway Settings</h4>
+              <p className="text-sm text-blue-700 mt-1">
+                To modify this gateway's configuration:
+              </p>
+              <ol className="text-sm text-blue-700 mt-2 ml-4 list-decimal space-y-1">
+                <li>Open the ChirpStack admin interface</li>
+                <li>Navigate to Gateways → Select this gateway</li>
+                <li>Update name, description, location, or other settings</li>
+                <li>Changes will be automatically reflected here</li>
+              </ol>
             </div>
           </div>
+        </div>
 
-          {/* Error Display */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-3">
-              <div className="flex items-center">
-                <AlertCircle className="w-4 h-4 text-red-400 mr-2" />
-                <span className="text-sm text-red-600">{error}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !formData.gateway_name.trim() || !formData.location_id}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-            >
-              {loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Save Configuration
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+        {/* Close Button */}
+        <div className="flex items-center justify-end pt-4 border-t border-gray-200">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-white bg-blue-600 border border-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </Modal>
   );

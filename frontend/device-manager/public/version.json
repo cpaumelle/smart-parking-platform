@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "14",
-  "buildNumber": "20251021.14",
-  "buildTimestamp": "2025-10-21T12:20:00Z",
-  "buildDate": "2025-10-21T12:20:00Z",
-  "gitCommit": "fix-gateway-and-device-modals",
-  "commit": "fix-gateway-and-device-modals",
-  "description": "Fixed Gateway modal selectedFloor error, DeviceConfigModal now uses Sites API instead of parking spaces, changed 'Location' to 'Site' throughout UI.",
+  "build": "15",
+  "buildNumber": "20251021.15",
+  "buildTimestamp": "2025-10-21T12:40:00Z",
+  "buildDate": "2025-10-21T12:40:00Z",
+  "gitCommit": "gateway-read-only-modal",
+  "commit": "gateway-read-only-modal",
+  "description": "Gateway modal now informational/read-only with clear instructions to use ChirpStack for updates. Removed confusing Save button.",
   "environment": "production"
 }
