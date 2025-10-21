@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 class DeviceHandler(Protocol):
     """Protocol for device handlers"""
 
-    def can_handle(self, device_eui: str) -> bool:
-        """Check if this handler can process the device"""
+    def can_handle(self, device_profile: str) -> bool:
+        """Check if this handler can process the device profile"""
         ...
 
     def parse_uplink(self, data: Dict[str, Any]) -> SensorUplink:
@@ -40,17 +40,15 @@ class BaseDeviceHandler(ABC):
     """Base class for device handlers"""
 
     def __init__(self):
-        self.device_patterns = []  # DevEUI patterns this handler supports
+        self.device_profiles = []  # Exact ChirpStack device profile names this handler supports
 
-    def can_handle(self, device_eui: str) -> bool:
-        """Check if this handler supports the device"""
-        device_eui = device_eui.lower()
+    def can_handle(self, device_profile: str) -> bool:
+        """Check if this handler supports the device profile (exact match)"""
+        if not device_profile:
+            return False
 
-        for pattern in self.device_patterns:
-            if device_eui.startswith(pattern):
-                return True
-
-        return False
+        # Exact match against registered device profiles
+        return device_profile in self.device_profiles
 
     @abstractmethod
     def parse_uplink(self, data: Dict[str, Any]) -> SensorUplink:
@@ -82,15 +80,14 @@ class BaseDeviceHandler(ABC):
 class BrowanTabsHandler(BaseDeviceHandler):
     """
     Handler for Browan TABS Motion sensors
-    COPY YOUR EXACT DECODING LOGIC HERE
+    Exact ChirpStack device profile: browan_tbms100_motion
     """
 
     def __init__(self):
         super().__init__()
-        # Add your actual Browan device EUI prefixes
-        self.device_patterns = [
-            "58a0cb",  # Browan prefix
-            "0011223344"  # Test devices
+        # Exact ChirpStack device profile names this handler supports
+        self.device_profiles = [
+            "browan_tbms100_motion",  # Browan TBMS100 motion sensor
         ]
 
     def parse_uplink(self, data: Dict[str, Any]) -> SensorUplink:
@@ -149,12 +146,15 @@ class BrowanTabsHandler(BaseDeviceHandler):
 # ============================================================
 
 class HeltecDisplayHandler(BaseDeviceHandler):
-    """Handler for Heltec WiFi LoRa displays"""
+    """Handler for Heltec WiFi LoRa displays
+    Add exact ChirpStack device profile names for Heltec displays
+    """
 
     def __init__(self):
         super().__init__()
-        self.device_patterns = [
-            "70b3d57ed006",  # Heltec prefix
+        # Exact ChirpStack device profile names this handler supports
+        self.device_profiles = [
+            "heltec_display",  # Heltec WiFi LoRa display (add exact profile name from ChirpStack)
         ]
 
     def parse_uplink(self, data: Dict[str, Any]) -> SensorUplink:
@@ -197,13 +197,14 @@ class HeltecDisplayHandler(BaseDeviceHandler):
 class KuandoBusylightHandler(BaseDeviceHandler):
     """
     Handler for Kuando Busylight devices
-    COPY FROM YOUR BUSYLIGHT INTEGRATION
+    Exact ChirpStack device profile: plenom_kuando_busylight
     """
 
     def __init__(self):
         super().__init__()
-        self.device_patterns = [
-            "202020",  # Kuando prefix
+        # Exact ChirpStack device profile names this handler supports
+        self.device_profiles = [
+            "plenom_kuando_busylight",  # Plenom Kuando Busylight display
         ]
 
     def parse_uplink(self, data: Dict[str, Any]) -> SensorUplink:
@@ -260,27 +261,32 @@ class DeviceHandlerRegistry:
 
     def __init__(self):
         self.handlers: List[BaseDeviceHandler] = []
-        self._device_cache: Dict[str, BaseDeviceHandler] = {}
+        self._profile_cache: Dict[str, BaseDeviceHandler] = {}
 
     def register(self, handler: BaseDeviceHandler):
         """Register a device handler"""
         self.handlers.append(handler)
-        logger.info(f"Registered handler: {handler.__class__.__name__}")
+        logger.info(f"Registered handler: {handler.__class__.__name__} (profiles: {handler.device_profiles})")
 
-    def get_handler(self, device_eui: str) -> Optional[BaseDeviceHandler]:
-        """Get handler for device"""
+    def get_handler(self, device_profile: str) -> Optional[BaseDeviceHandler]:
+        """Get handler for device profile from ChirpStack"""
+
+        if not device_profile:
+            logger.warning("No device profile provided, cannot determine handler")
+            return None
 
         # Check cache
-        if device_eui in self._device_cache:
-            return self._device_cache[device_eui]
+        if device_profile in self._profile_cache:
+            return self._profile_cache[device_profile]
 
         # Find handler
         for handler in self.handlers:
-            if handler.can_handle(device_eui):
-                self._device_cache[device_eui] = handler
+            if handler.can_handle(device_profile):
+                self._profile_cache[device_profile] = handler
+                logger.debug(f"Matched handler {handler.__class__.__name__} for profile '{device_profile}'")
                 return handler
 
-        logger.warning(f"No handler found for device {device_eui}")
+        logger.warning(f"No handler found for device profile '{device_profile}'")
         return None
 
     def get_handler_by_class(self, handler_class: str) -> Optional[BaseDeviceHandler]:

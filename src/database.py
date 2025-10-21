@@ -207,11 +207,11 @@ class DatabasePool:
         return Space(**row_dict)
 
     async def get_space_by_sensor(self, sensor_eui: str) -> Optional[Space]:
-        """Get space by sensor DevEUI (case-insensitive)"""
+        """Get space by sensor DevEUI (EUI normalized at ingestion)"""
 
         query = """
             SELECT * FROM spaces
-            WHERE LOWER(sensor_eui) = LOWER($1) AND deleted_at IS NULL
+            WHERE sensor_eui = $1 AND deleted_at IS NULL
         """
 
         async with self.acquire() as conn:
@@ -610,7 +610,7 @@ class DatabasePool:
         Get sensor device by DevEUI, or create ORPHAN device if not found.
         Returns: sensor_device row with id, dev_eui, status, device_type_id, etc.
         """
-        # Check if device exists
+        # Check if device exists (EUI normalized to UPPERCASE at ingestion point)
         query_check = """
             SELECT id, dev_eui, device_type_id, status, device_model, enabled, last_seen_at
             FROM sensor_devices
@@ -639,6 +639,8 @@ class DatabasePool:
                     enabled,
                     last_seen_at
                 ) VALUES ($1, 'orphan', $2, $3, 'orphan', true, NOW())
+                ON CONFLICT (dev_eui) DO UPDATE
+                SET last_seen_at = NOW()
                 RETURNING id, dev_eui, device_type_id, status, device_model, enabled, last_seen_at
             """
 

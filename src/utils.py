@@ -32,11 +32,18 @@ def get_request_id() -> str:
 
 def normalize_deveui(deveui: str) -> str:
     """
-    Normalize DevEUI to lowercase hex without separators
+    Normalize DevEUI to UPPERCASE hex without separators (database standard)
+
+    Why UPPERCASE:
+    - PostgreSQL stores EUIs in uppercase for consistency
+    - ChirpStack device tables use uppercase
+    - Makes case-insensitive queries unnecessary
+
     Examples:
         "00:11:22:33:44:55:66:77" -> "0011223344556677"
         "00-11-22-33-44-55-66-77" -> "0011223344556677"
         "0011223344556677" -> "0011223344556677"
+        "e8e1e1000103c3f8" -> "E8E1E1000103C3F8"
     """
     if not deveui:
         return ""
@@ -44,11 +51,32 @@ def normalize_deveui(deveui: str) -> str:
     # Remove common separators
     cleaned = deveui.replace(":", "").replace("-", "").replace(" ", "")
 
-    # Validate hex and length
+    # Validate hex and length (16 hex chars = 8 bytes for LoRaWAN DevEUI)
     if not re.match(r"^[0-9a-fA-F]{16}$", cleaned):
-        raise ValueError(f"Invalid DevEUI format: {deveui}")
+        raise ValueError(f"Invalid DevEUI format: {deveui} (must be 16 hex characters)")
 
-    return cleaned.lower()
+    return cleaned.upper()  # Database standard: UPPERCASE
+
+
+def normalize_gateway_eui(gw_eui: str) -> str:
+    """
+    Normalize Gateway EUI to UPPERCASE hex without separators (database standard)
+
+    Examples:
+        "7076ff0064030456" -> "7076FF0064030456"
+        "70:76:ff:00:64:03:04:56" -> "7076FF0064030456"
+    """
+    if not gw_eui:
+        return ""
+
+    # Remove common separators
+    cleaned = gw_eui.replace(":", "").replace("-", "").replace(" ", "")
+
+    # Validate hex and length (16 hex chars = 8 bytes for LoRaWAN Gateway EUI)
+    if not re.match(r"^[0-9a-fA-F]{16}$", cleaned):
+        raise ValueError(f"Invalid Gateway EUI format: {gw_eui} (must be 16 hex characters)")
+
+    return cleaned.upper()  # Database standard: UPPERCASE
 
 def generate_space_code(building: str, floor: str, number: int) -> str:
     """

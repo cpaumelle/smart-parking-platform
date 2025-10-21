@@ -26,8 +26,17 @@ from .device_handlers import DeviceHandlerRegistry
 from .background_tasks import BackgroundTaskManager
 from .downlink_queue import DownlinkQueue, DownlinkRateLimiter, DownlinkWorker
 from .webhook_spool import WebhookSpool, set_spool
-from .models import HealthStatus
+from .models import HealthStatus, ProcessingResult
 from .exceptions import ParkingException
+
+# Webhook processing imports
+from .device_handlers import parse_chirpstack_webhook
+from .webhook_validation import verify_webhook_signature
+from .orphan_devices import handle_orphan_device
+from .utils import generate_request_id
+import json
+import base64
+from typing import Dict, Any
 
 # Multi-tenancy imports
 from .tenant_auth import set_db_pool as set_tenant_auth_db_pool, set_jwt_secret
@@ -281,6 +290,281 @@ app.include_router(gateways_router)
 
 # Observability endpoints
 app.include_router(metrics_router)
+
+# ============================================================
+# ChirpStack Webhook Endpoint
+# ============================================================
+
+@app.post("/api/v1/uplink", response_model=ProcessingResult, tags=["ChirpStack"])
+async def process_uplink(request: Request, webhook_data: Dict[str, Any]):
+    """
+    Process ChirpStack uplink webhook with signature validation and idempotency
+
+    Security:
+    - Validates webhook HMAC signature (per-tenant secrets)
+    - Deduplicates uplinks via (tenant_id, device_eui, fcnt) unique constraint
+
+    Handles sensor data, device discovery, and Kuando verification
+    """
+    start_time = datetime.utcnow()
+    request_id = generate_request_id()
+
+    try:
+        # Extract device info
+        device_info = webhook_data.get("deviceInfo", {})
+        device_eui_raw = device_info.get("devEui", "")
+        device_name = device_info.get("deviceName", "unknown")
+        profile_name = device_info.get("deviceProfileName", "unknown")
+
+        if not device_eui_raw:
+            raise ValueError("Missing device EUI in uplink")
+
+        # Normalize device_eui to UPPERCASE (database standard) - systematic fix for case sensitivity
+        from .utils import normalize_deveui
+        device_eui = normalize_deveui(device_eui_raw)
+
+        logger.info(f"[{request_id}] Processing uplink from {device_eui} (profile: {profile_name})")
+
+        db_pool = request.app.state.db_pool
+        state_manager = request.app.state.state_manager
+        device_registry = request.app.state.device_registry
+
+        # Query device from database to get handler_class
+        device_record = await db_pool.get_sensor_device_by_deveui(device_eui)
+
+        # Check if device is assigned to a space (for tenant_id lookup)
+        space = await db_pool.get_space_by_sensor(device_eui)
+        tenant_id = space.tenant_id if space else None
+
+        # Validate webhook signature (if tenant has a secret configured)
+        # Note: We read raw body for HMAC validation
+        body = await request.body()
+        await verify_webhook_signature(request, tenant_id, db_pool.pool, body)
+
+        if tenant_id:
+            logger.debug(f"[{request_id}] Webhook signature validated for tenant {tenant_id}")
+
+        # Get handler for device based on ChirpStack device profile
+        handler = None
+        if device_record and device_record.get('handler_class'):
+            # Try database-stored handler class first
+            handler = device_registry.get_handler_by_class(device_record['handler_class'])
+            if handler:
+                logger.debug(f"[{request_id}] Using handler from database: {device_record['handler_class']}")
+
+        if not handler:
+            # Fallback: Match handler by device profile from ChirpStack
+            handler = device_registry.get_handler(profile_name)
+            if handler:
+                logger.debug(f"[{request_id}] Matched handler for device profile: {profile_name}")
+
+        # Parse ChirpStack webhook data
+        parsed_data = parse_chirpstack_webhook(webhook_data)
+
+        # Decode payload using handler (if available)
+        uplink = None
+        if handler:
+            try:
+                uplink = handler.parse_uplink(webhook_data)
+                logger.debug(f"[{request_id}] Parsed uplink: occupancy={uplink.occupancy_state}, battery={uplink.battery}")
+            except Exception as e:
+                logger.error(f"[{request_id}] Handler parsing failed: {e}")
+
+        # ============================================================
+        # Kuando Verification Logic
+        # ============================================================
+        is_kuando = device_eui.startswith("202020")
+
+        if is_kuando and parsed_data.get("payload"):
+            try:
+                # Decode base64 payload
+                payload_b64 = parsed_data["payload"]
+                payload_bytes = base64.b64decode(payload_b64)
+
+                logger.info(f"[{request_id}] Kuando uplink received, payload length: {len(payload_bytes)}")
+
+                # Parse Kuando uplink format (based on firmware response)
+                payload_object = {}
+                if len(payload_bytes) >= 8:
+                    # Kuando uplink includes status fields
+                    payload_object = {
+                        "downlinks_received": payload_bytes[0],
+                        "red": payload_bytes[1],
+                        "blue": payload_bytes[2],  # Note: Kuando swaps blue/green
+                        "green": payload_bytes[3],
+                        "options": payload_bytes[4],
+                        "auto_uplink": payload_bytes[5] if len(payload_bytes) > 5 else 0,
+                        "reserved": payload_bytes[6] if len(payload_bytes) > 6 else 0,
+                        "raw_payload": payload_b64
+                    }
+
+                    logger.info(f"[{request_id}] Kuando decoded payload: {payload_object}")
+
+                    # Store in Redis for verification
+                    await state_manager.redis_client.setex(
+                        f"device:{device_eui}:last_kuando_uplink",
+                        3600,  # 1 hour TTL
+                        json.dumps({
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "downlinks_received": payload_object["downlinks_received"],
+                            "rgb": [payload_object["red"], payload_object["blue"], payload_object["green"]],
+                            "options": payload_object["options"],
+                            "request_id": request_id
+                        })
+                    )
+
+                    # Check for pending downlink verification
+                    pending_key = f"device:{device_eui}:pending_downlink"
+                    pending_data = await state_manager.redis_client.get(pending_key)
+
+                    if pending_data:
+                        expected = json.loads(pending_data)
+                        expected_r, expected_b, expected_g = expected["rgb"]
+                        expected_counter = expected["counter"]
+
+                        actual_r = payload_object["red"]
+                        actual_b = payload_object["blue"]
+                        actual_g = payload_object["green"]
+                        actual_counter = payload_object["downlinks_received"]
+
+                        # Verify RGB values match and counter incremented
+                        rgb_match = (actual_r == expected_r and
+                                   actual_b == expected_b and
+                                   actual_g == expected_g)
+                        counter_incremented = actual_counter > expected_counter
+
+                        logger.info(
+                            f"[{request_id}] Downlink verification: "
+                            f"RGB match={rgb_match} ({actual_r},{actual_b},{actual_g} vs {expected_r},{expected_b},{expected_g}), "
+                            f"counter incremented={counter_incremented} ({actual_counter} > {expected_counter})"
+                        )
+
+                        if rgb_match and counter_incremented:
+                            logger.info(f"[{request_id}] [OK] Kuando downlink verified successfully")
+                            await state_manager.redis_client.delete(pending_key)
+                        else:
+                            logger.warning(f"[{request_id}] [FAIL] Kuando downlink verification failed")
+
+            except Exception as e:
+                logger.error(f"[{request_id}] Kuando verification error: {e}", exc_info=True)
+
+        # ============================================================
+        # Device Discovery (ORPHAN Pattern)
+        # ============================================================
+
+        # Get or create device type based on ChirpStack profile
+        device_type = await db_pool.get_or_create_device_type_by_profile(
+            chirpstack_profile_name=profile_name,
+            sample_payload=parsed_data,
+            category="sensor"
+        )
+
+        # Get or create sensor device
+        sensor_device = await db_pool.get_or_create_sensor_device(
+            dev_eui=device_eui,
+            device_type_id=device_type["id"],
+            device_name=device_name,
+            device_model=device_type["type_code"]
+        )
+
+        # Check if device is assigned to a space (already queried earlier for tenant_id)
+        if not space:
+            # ORPHAN device - track in orphan_devices table
+            logger.info(f"[{request_id}] ORPHAN device {device_eui} - tracking uplink")
+
+            # Track orphan device
+            orphan_info = await handle_orphan_device(
+                db=db_pool.pool,
+                device_eui=device_eui,
+                payload=parsed_data.get("payload", "").encode() if parsed_data.get("payload") else None,
+                rssi=parsed_data.get("rssi"),
+                snr=parsed_data.get("snr")
+            )
+
+            # Store telemetry for orphan device
+            if uplink:
+                await db_pool.insert_telemetry(device_eui, uplink)
+
+            processing_time_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+
+            return ProcessingResult(
+                status="orphan_device",
+                device_eui=device_eui,
+                space_code=None,
+                state=None,
+                request_id=request_id,
+                processing_time_ms=processing_time_ms
+            )
+
+        # ============================================================
+        # Process Sensor Data and Update State
+        # ============================================================
+
+        if uplink and uplink.occupancy_state:
+            # Update space state based on sensor reading
+            result = await state_manager.update_space_state(
+                space_id=str(space.id),
+                new_state=uplink.occupancy_state,
+                source="sensor_uplink",
+                request_id=request_id
+            )
+
+            # Store sensor reading (with fcnt for idempotency)
+            await db_pool.insert_sensor_reading(
+                device_eui=device_eui,
+                space_id=str(space.id),
+                occupancy_state=uplink.occupancy_state.value,
+                battery=uplink.battery,
+                rssi=uplink.rssi,
+                snr=uplink.snr,
+                timestamp=uplink.timestamp,
+                fcnt=parsed_data.get("fcnt"),
+                tenant_id=str(space.tenant_id) if space.tenant_id else None
+            )
+
+            logger.info(
+                f"[{request_id}] Space {space.code} updated: "
+                f"{result.previous_state} -> {result.new_state}, "
+                f"display_updated={result.display_updated}"
+            )
+
+            processing_time_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+
+            return ProcessingResult(
+                status="success",
+                device_eui=device_eui,
+                space_code=space.code,
+                state=result.new_state.value,
+                request_id=request_id,
+                processing_time_ms=processing_time_ms
+            )
+        else:
+            # No occupancy data (display device or unknown)
+            logger.debug(f"[{request_id}] No occupancy data in uplink from {device_eui}")
+
+            processing_time_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+
+            return ProcessingResult(
+                status="no_occupancy_data",
+                device_eui=device_eui,
+                space_code=space.code if space else None,
+                state=None,
+                request_id=request_id,
+                processing_time_ms=processing_time_ms
+            )
+
+    except Exception as e:
+        logger.error(f"[{request_id}] Webhook processing error: {e}", exc_info=True)
+        processing_time_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+
+        return ProcessingResult(
+            status="error",
+            device_eui=device_eui if 'device_eui' in locals() else "unknown",
+            space_code=None,
+            state=None,
+            request_id=request_id,
+            processing_time_ms=processing_time_ms
+        )
 
 # ============================================================
 # Exception Handlers

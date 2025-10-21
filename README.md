@@ -2245,6 +2245,18 @@ When reporting issues, include:
   - Added `get_db()` FastAPI dependency
   - Integrated downlink queue, metrics, audit logging into main app
 
+- **v5.7.0** (2025-10-21) - EUI Case Sensitivity Hotfix + Trigger Bug Fix
+  - **Critical trigger bug fix:** Rewrote `enforce_eui_uppercase()` to use CASE statement instead of IF/AND conditions
+  - **Root cause:** PostgreSQL evaluates field access before AND conditions can short-circuit, causing "field does not exist" errors when trigger is called on different tables
+  - **Solution:** Use `CASE TG_TABLE_NAME` to check table name FIRST, then access only fields that exist in that table
+  - **EUI data normalization:** Normalized ALL existing EUI data to UPPERCASE across entire database
+  - **Tables updated:** spaces (sensor_eui, display_eui), sensor_devices (dev_eui), display_devices (dev_eui), sensor_readings (device_eui), actuations (display_eui), gateways (gw_eui)
+  - **Trigger updates:** Recreated all EUI normalization triggers using fixed function
+  - **Verification:** Added migration verification to count affected rows and confirm triggers created
+  - **Migration:** `011_normalize_euis_to_uppercase.sql`
+  - **Status:** PRINTER and WINDOW spaces now working correctly with proper EUI matching
+  - **Impact:** Fixes issue where lowercase EUIs from ChirpStack webhook didn't match uppercase EUIs in database
+
 - **v5.2.0** (2025-10-17) - ORPHAN device auto-discovery + Admin API endpoints
   - Auto-discovery of LoRaWAN devices from ChirpStack
   - Device lifecycle management (orphan → active → inactive → decommissioned)
@@ -2257,5 +2269,5 @@ When reporting issues, include:
 
 ---
 
-**Last Updated:** 2025-10-20
+**Last Updated:** 2025-10-21
 **Maintained By:** Verdegris Engineering Team

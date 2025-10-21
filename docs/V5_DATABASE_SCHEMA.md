@@ -1370,6 +1370,77 @@ $$ LANGUAGE plpgsql;
 
 ---
 
+### enforce_eui_uppercase()
+
+**Type:** Trigger Function
+**Language:** PL/pgSQL
+
+```sql
+CREATE OR REPLACE FUNCTION enforce_eui_uppercase()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- CRITICAL: Use CASE to check table name FIRST before accessing fields
+    -- PostgreSQL evaluates field access before AND conditions can short-circuit,
+    -- so checking "IF TG_TABLE_NAME = 'X' AND NEW.field IS NOT NULL" fails when
+    -- the NEW record is from a different table that doesn't have that field.
+    CASE TG_TABLE_NAME
+        WHEN 'sensor_devices' THEN
+            IF NEW.dev_eui IS NOT NULL THEN
+                NEW.dev_eui := UPPER(NEW.dev_eui);
+            END IF;
+
+        WHEN 'display_devices' THEN
+            IF NEW.dev_eui IS NOT NULL THEN
+                NEW.dev_eui := UPPER(NEW.dev_eui);
+            END IF;
+
+        WHEN 'spaces' THEN
+            IF NEW.sensor_eui IS NOT NULL THEN
+                NEW.sensor_eui := UPPER(NEW.sensor_eui);
+            END IF;
+            IF NEW.display_eui IS NOT NULL THEN
+                NEW.display_eui := UPPER(NEW.display_eui);
+            END IF;
+
+        WHEN 'sensor_readings' THEN
+            IF NEW.device_eui IS NOT NULL THEN
+                NEW.device_eui := UPPER(NEW.device_eui);
+            END IF;
+
+        WHEN 'actuations' THEN
+            IF NEW.display_eui IS NOT NULL THEN
+                NEW.display_eui := UPPER(NEW.display_eui);
+            END IF;
+
+        WHEN 'gateways' THEN
+            IF NEW.gw_eui IS NOT NULL THEN
+                NEW.gw_eui := UPPER(NEW.gw_eui);
+            END IF;
+    END CASE;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**Usage:** Automatically normalizes all EUI fields to UPPERCASE before INSERT or UPDATE.
+
+**Applied to:**
+- `sensor_devices` (BEFORE INSERT OR UPDATE) - Normalizes `dev_eui`
+- `display_devices` (BEFORE INSERT OR UPDATE) - Normalizes `dev_eui`
+- `spaces` (BEFORE INSERT OR UPDATE) - Normalizes `sensor_eui` and `display_eui`
+- `sensor_readings` (BEFORE INSERT OR UPDATE) - Normalizes `device_eui`
+- `actuations` (BEFORE INSERT OR UPDATE) - Normalizes `display_eui`
+- `gateways` (BEFORE INSERT OR UPDATE) - Normalizes `gw_eui`
+
+**Why This Pattern:**
+- **ChirpStack compatibility:** ChirpStack webhook sends EUIs in lowercase, but our database standard is UPPERCASE
+- **Case-insensitive matching:** UPPERCASE normalization prevents case-sensitivity bugs in lookups
+- **Automatic enforcement:** Developers don't need to remember to uppercase EUIs in application code
+- **CASE statement required:** PostgreSQL evaluates field access before AND conditions, so `IF TG_TABLE_NAME = 'spaces' AND NEW.sensor_eui IS NOT NULL` would fail when trigger fires on `sensor_devices` table (trying to access `sensor_eui` field that doesn't exist)
+
+---
+
 ## Enums & Valid Values
 
 ### Space State
@@ -1589,7 +1660,37 @@ Migrations are managed manually. See `README.md` for migration procedures.
   - **Overlap constraint fix:** Updated to use status filter (pending/confirmed) and correct column names
   - **Migration:** 008_critical_fixes.sql
 
-**Current Schema Version:** v5.6.0
+- **v5.7.0** (2025-10-21): **EUI Case Sensitivity Hotfix**
+  - **Critical trigger bug fix:** Rewrote `enforce_eui_uppercase()` trigger function to use CASE statement
+  - **Problem:** PostgreSQL evaluates field access before AND short-circuit, causing "record X has no field Y" errors when trigger runs on different tables
+  - **Original buggy code:**
+    ```sql
+    IF TG_TABLE_NAME = 'spaces' AND NEW.sensor_eui IS NOT NULL THEN
+        NEW.sensor_eui := UPPER(NEW.sensor_eui);
+    END IF;
+    ```
+    When trigger fires on `sensor_devices` table, PostgreSQL tries to access `NEW.sensor_eui` (doesn't exist) before checking `TG_TABLE_NAME = 'spaces'`
+  - **Fixed code:**
+    ```sql
+    CASE TG_TABLE_NAME
+        WHEN 'spaces' THEN
+            IF NEW.sensor_eui IS NOT NULL THEN
+                NEW.sensor_eui := UPPER(NEW.sensor_eui);
+            END IF;
+        WHEN 'sensor_devices' THEN
+            IF NEW.dev_eui IS NOT NULL THEN
+                NEW.dev_eui := UPPER(NEW.dev_eui);
+            END IF;
+    END CASE;
+    ```
+  - **EUI data normalization:** Normalized ALL existing EUI data to UPPERCASE
+  - **Tables normalized:** spaces (sensor_eui, display_eui), sensor_devices (dev_eui), display_devices (dev_eui), sensor_readings (device_eui), actuations (display_eui), gateways (gw_eui)
+  - **Trigger recreation:** Dropped and recreated all EUI normalization triggers with fixed function
+  - **Verification:** Migration includes row count verification and trigger confirmation
+  - **Migration:** 011_normalize_euis_to_uppercase.sql
+  - **Impact:** Fixes webhook processing where ChirpStack sends lowercase EUIs but database expects uppercase
+
+**Current Schema Version:** v5.7.0
 **Last Updated:** 2025-10-21
 
 ---

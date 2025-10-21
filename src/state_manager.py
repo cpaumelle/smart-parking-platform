@@ -236,7 +236,7 @@ class StateManager:
         fport = None
 
         try:
-            # Fetch display device configuration from database
+            # Fetch display device configuration from database (EUI normalized at ingestion)
             display = await self.db_pool.fetchrow("""
                 SELECT id, dev_eui, device_type, device_model, display_codes, fport, confirmed_downlinks
                 FROM display_devices
@@ -327,7 +327,7 @@ class StateManager:
                 INSERT INTO actuations (
                     space_id, trigger_type, trigger_source,
                     previous_state, new_state,
-                    display_deveui, display_device_id, display_code,
+                    display_eui, display_device_id, display_code,
                     fport, confirmed,
                     downlink_sent, downlink_queue_id,
                     response_time_ms,
@@ -355,7 +355,7 @@ class StateManager:
                     INSERT INTO actuations (
                         space_id, trigger_type, trigger_source,
                         previous_state, new_state,
-                        display_deveui, display_device_id, display_code,
+                        display_eui, display_device_id, display_code,
                         fport, confirmed,
                         downlink_sent, downlink_error,
                         created_at
