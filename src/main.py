@@ -35,6 +35,7 @@ from .rate_limit import RateLimiter, set_rate_limiter, RateLimitConfig
 
 # Routers
 from .api_tenants import router as tenants_router
+from .routers.sites import router as sites_router
 from .routers.spaces_tenanted import router as spaces_router  # Tenanted version
 from .routers.downlink_monitor import router as downlink_monitor_router
 from .routers.metrics import router as metrics_router
@@ -262,7 +263,8 @@ app.add_middleware(
 app.include_router(tenants_router)
 
 # Tenant-scoped resource endpoints
-app.include_router(spaces_router)
+app.include_router(sites_router)  # Sites (buildings/locations)
+app.include_router(spaces_router)  # Parking spaces
 app.include_router(reservations_router)
 app.include_router(devices_router)
 

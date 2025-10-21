@@ -93,8 +93,10 @@ async def list_spaces(
                 s.metadata,
                 s.created_at,
                 s.updated_at,
-                s.deleted_at
+                s.deleted_at,
+                sites.name AS site_name
             FROM spaces s
+            LEFT JOIN sites ON s.site_id = sites.id
             {where_clause}
             ORDER BY s.code, s.name
         """
@@ -112,6 +114,7 @@ async def list_spaces(
                 "zone": row["zone"],
                 "state": row["state"],
                 "site_id": str(row["site_id"]) if row["site_id"] else None,
+                "site_name": row["site_name"],
                 "tenant_id": str(row["tenant_id"]) if row["tenant_id"] else None,
                 "sensor_eui": row["sensor_eui"],
                 "display_eui": row["display_eui"],
@@ -163,8 +166,10 @@ async def get_space(
                 s.gps_longitude,
                 s.metadata,
                 s.created_at,
-                s.updated_at
+                s.updated_at,
+                sites.name AS site_name
             FROM spaces s
+            LEFT JOIN sites ON s.site_id = sites.id
             WHERE s.id = $1 AND s.tenant_id = $2 AND s.deleted_at IS NULL
         """
 
@@ -182,6 +187,7 @@ async def get_space(
             "zone": row["zone"],
             "state": row["state"],
             "site_id": str(row["site_id"]) if row["site_id"] else None,
+            "site_name": row["site_name"],
             "tenant_id": str(row["tenant_id"]),
             "sensor_eui": row["sensor_eui"],
             "display_eui": row["display_eui"],
