@@ -2,11 +2,18 @@
 openapi: 3.1.0
 info:
   title: Smart Parking Platform API
-  version: 5.3.0-impl-sync
+  version: 5.3.1-impl-sync
   summary: Implementation-synced OpenAPI (implicit tenant scoping)
   description: |
-    This specification reflects the **current implementation** of v5.3 using **implicit tenant scoping**.
+    This specification reflects the **current implementation** of v5.3.1 using **implicit tenant scoping**.
     Tenant is derived from the authenticated user (JWT) or API key; paths do **not** include `/tenants/{tenant_id}`.
+
+    **Version 5.3.1 Updates:**
+    - ✅ Refresh token authentication with rotation and reuse detection
+    - ✅ User profile endpoints (/api/v1/me, /api/v1/me/limits)
+    - ✅ Device assignment convenience endpoints (assign/unassign sensor/display)
+    - ✅ Short-lived access tokens (15 min) with long-lived refresh tokens (30 days)
+    - ✅ Enhanced security with device fingerprinting and token rotation
 servers:
   - url: https://api.verdegris.eu
     description: Production
@@ -194,6 +201,16 @@ paths:
     post:
       summary: Login with email + password
       security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
       responses:
         '200':
           description: OK
@@ -201,13 +218,75 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [access_token, refresh_token, token_type, expires_in, refresh_expires_in, user, tenants]
                 properties:
-                  access_token: { type: string }
-                  token_type: { type: string }
-                  expires_in: { type: integer }
-                  refresh_token: { type: string, nullable: true }
+                  access_token: { type: string, description: "Short-lived JWT token (15 minutes)" }
+                  refresh_token: { type: string, description: "Long-lived refresh token (30 days)" }
+                  token_type: { type: string, example: "bearer" }
+                  expires_in: { type: integer, description: "Access token expiry in seconds", example: 900 }
+                  refresh_expires_in: { type: integer, description: "Refresh token expiry in seconds", example: 2592000 }
                   user: { $ref: '#/components/schemas/User' }
+                  tenants:
+                    type: array
+                    description: "List of accessible tenants with roles"
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        slug: { type: string }
+                        role: { type: string, enum: [owner, admin, operator, viewer] }
         '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/auth/refresh:
+    post:
+      summary: Refresh access token using refresh token
+      security: []
+      description: |
+        Exchange a refresh token for a new access token and refresh token.
+
+        Security features:
+        - Token rotation: Old refresh token is revoked, new one issued
+        - Reuse detection: If revoked token is reused, all tokens for that device are revoked
+        - Device fingerprinting: Optional X-Device-Fingerprint header for security monitoring
+      parameters:
+        - name: X-Device-Fingerprint
+          in: header
+          required: false
+          schema:
+            type: string
+          description: "Optional device identifier for reuse detection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, refresh_token, token_type, expires_in, refresh_expires_in]
+                properties:
+                  access_token: { type: string, description: "New access token (15 minutes)" }
+                  refresh_token: { type: string, description: "New refresh token (30 days)" }
+                  token_type: { type: string, example: "bearer" }
+                  expires_in: { type: integer, description: "Access token expiry in seconds", example: 900 }
+                  refresh_expires_in: { type: integer, description: "Refresh token expiry in seconds", example: 2592000 }
+        '401':
+          description: "Invalid or expired refresh token"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+
   /api/v1/auth/register:
     post:
       summary: Register tenant + owner; returns JWT
@@ -225,6 +304,107 @@ paths:
                   access_token: { type: string }
                   token_type: { type: string }
                   expires_in: { type: integer }
+
+  /api/v1/me:
+    get:
+      summary: Get current authenticated user profile
+      description: |
+        Returns the current user's profile including:
+        - User details (id, email, name, etc.)
+        - Current tenant context (from JWT)
+        - All accessible tenants with roles
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, current_tenant, all_tenants]
+                properties:
+                  user:
+                    allOf:
+                      - $ref: '#/components/schemas/User'
+                      - type: object
+                        properties:
+                          is_active: { type: boolean }
+                          email_verified: { type: boolean }
+                          created_at: { type: string, format: date-time }
+                          updated_at: { type: string, format: date-time }
+                          last_login_at: { type: string, format: date-time, nullable: true }
+                  current_tenant:
+                    type: object
+                    description: "Current tenant from JWT"
+                    properties:
+                      id: { type: string, format: uuid }
+                      name: { type: string }
+                      slug: { type: string }
+                      role: { type: string, enum: [owner, admin, operator, viewer] }
+                  all_tenants:
+                    type: array
+                    description: "All tenants accessible to this user"
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        slug: { type: string }
+                        role: { type: string, enum: [owner, admin, operator, viewer] }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404':
+          description: "User not found"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/v1/me/limits:
+    get:
+      summary: Get current user rate limits and resource quotas
+      description: |
+        Returns rate limits and resource quotas for the current tenant:
+        - Per-tenant rate limits (requests/minute, reservations/minute)
+        - Resource quotas (max spaces, devices, sites)
+        - Current usage counts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tenant_id, tenant_name, rate_limits, quotas, usage]
+                properties:
+                  tenant_id: { type: string, format: uuid }
+                  tenant_name: { type: string }
+                  rate_limits:
+                    type: object
+                    description: "Per-tenant rate limits"
+                    properties:
+                      requests_per_minute: { type: integer, example: 100 }
+                      reservations_per_minute: { type: integer, example: 10 }
+                      webhook_requests_per_minute: { type: integer, example: 1000 }
+                    additionalProperties: true
+                  quotas:
+                    type: object
+                    description: "Resource quotas"
+                    properties:
+                      max_spaces: { type: integer, example: 500 }
+                      max_devices: { type: integer, example: 1000 }
+                      max_concurrent_reservations: { type: integer, example: 100 }
+                      max_sites: { type: integer, example: 10 }
+                    additionalProperties: true
+                  usage:
+                    type: object
+                    description: "Current resource usage"
+                    properties:
+                      spaces: { type: integer }
+                      sensor_devices: { type: integer }
+                      display_devices: { type: integer }
+                      total_devices: { type: integer }
+                      active_reservations: { type: integer }
+                      sites: { type: integer }
+                    additionalProperties: true
+        '401': { $ref: '#/components/responses/Problem' }
 
   /api/v1/tenants/current:
     get:
@@ -319,6 +499,102 @@ paths:
       summary: Soft delete space
       parameters: [ { $ref: '#/components/parameters/SpaceId' } ]
       responses: { '204': { description: Deleted }, '409': { $ref: '#/components/responses/Problem' } }
+
+  /api/v1/spaces/{space_id}/assign-sensor:
+    post:
+      summary: Assign sensor device to space (convenience endpoint)
+      description: |
+        Shortcut for PATCH /spaces/{space_id} with sensor_eui in body.
+
+        - Auto-creates sensor device if it doesn't exist
+        - Validates EUI format (16 hexadecimal characters)
+        - Requires ADMIN role or higher
+      parameters:
+        - $ref: '#/components/parameters/SpaceId'
+        - name: sensor_eui
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9A-Fa-f]{16}$'
+          description: "Sensor device EUI (16 hex chars)"
+      responses:
+        '200':
+          description: "Sensor assigned successfully"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Space' }
+        '400':
+          description: "Invalid EUI format"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/spaces/{space_id}/assign-display:
+    post:
+      summary: Assign display device to space (convenience endpoint)
+      description: |
+        Shortcut for PATCH /spaces/{space_id} with display_eui in body.
+
+        - Auto-creates display device if it doesn't exist
+        - Validates EUI format (16 hexadecimal characters)
+        - Requires ADMIN role or higher
+      parameters:
+        - $ref: '#/components/parameters/SpaceId'
+        - name: display_eui
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9A-Fa-f]{16}$'
+          description: "Display device EUI (16 hex chars)"
+      responses:
+        '200':
+          description: "Display assigned successfully"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Space' }
+        '400':
+          description: "Invalid EUI format"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/spaces/{space_id}/unassign-sensor:
+    delete:
+      summary: Unassign sensor device from space (convenience endpoint)
+      description: |
+        Removes sensor assignment by setting sensor_eui to NULL.
+
+        - Requires ADMIN role or higher
+      parameters:
+        - $ref: '#/components/parameters/SpaceId'
+      responses:
+        '200':
+          description: "Sensor unassigned successfully"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Space' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/spaces/{space_id}/unassign-display:
+    delete:
+      summary: Unassign display device from space (convenience endpoint)
+      description: |
+        Removes display assignment by setting display_eui to NULL.
+
+        - Requires ADMIN role or higher
+      parameters:
+        - $ref: '#/components/parameters/SpaceId'
+      responses:
+        '200':
+          description: "Display unassigned successfully"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Space' }
+        '404': { $ref: '#/components/responses/Problem' }
 
   /api/v1/spaces/stats/summary:
     get:
