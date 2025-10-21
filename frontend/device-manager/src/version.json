@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "12",
-  "buildNumber": "20251021.12",
-  "buildTimestamp": "2025-10-21T17:00:00Z",
-  "buildDate": "2025-10-21T17:00:00Z",
-  "gitCommit": "fix-gateway-site-assignment",
-  "commit": "fix-gateway-site-assignment",
-  "description": "Fixed Gateway modal Site Assignment dropdown to use Sites API. Label updated from 'Location' to 'Site'.",
+  "build": "13",
+  "buildNumber": "20251021.13",
+  "buildTimestamp": "2025-10-21T18:00:00Z",
+  "buildDate": "2025-10-21T18:00:00Z",
+  "gitCommit": "fix-device-modal-sites-api",
+  "commit": "fix-device-modal-sites-api",
+  "description": "Fixed Device Configuration Modal: Device Type dropdown populated, Site selection uses Sites API, added Parking Space Registration section.",
   "environment": "production"
 }

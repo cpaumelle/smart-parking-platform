@@ -128,14 +128,13 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
 
   const loadDeviceTypes = async () => {
     try {
-      // Use the existing devices API to get device types
-      const response = await fetch('https://api3.sensemy.cloud/v1/devices/full-metadata');
-      if (!response.ok) throw new Error('Failed to load device metadata');
-      const data = await response.json();
-      
+      // Use deviceService which calls /api/v1/devices/full-metadata with proper auth
+      const { deviceService } = await import('../services/deviceService.js');
+      const allDevices = await deviceService.getDeviceMetadata();
+
       // Extract unique device types from metadata
       const uniqueTypes = new Map();
-      data.forEach(device => {
+      allDevices.forEach(device => {
         if (device.device_type_lns) {
           uniqueTypes.set(device.device_type_lns, {
             device_type_id: uniqueTypes.size + 1,
@@ -144,16 +143,16 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
           });
         }
       });
-      
-      // Add some common device types
+
+      // Add some common device types for parking sensors
       const commonTypes = [
-        { device_type_id: 100, device_type: 'milesight_am103', description: 'Milesight AM103 - Environment Sensor' },
-        { device_type_id: 101, device_type: 'browan_tbhh100', description: 'Browan TBHH100 - Temperature/Humidity' },
-        { device_type_id: 102, device_type: 'imbuildings_pc1', description: 'IMBuildings PC1 - People Counter' },
-        { device_type_id: 103, device_type: 'merryiot_ms10', description: 'MerryIoT MS10 - Motion Sensor' },
-        { device_type_id: 104, device_type: 'winext_an102c', description: 'Winext AN102C - Air Quality' }
+        { device_type_id: 100, device_type: 'browan_tabs', description: 'Browan TABS - Parking Sensor' },
+        { device_type_id: 101, device_type: 'heltec_display', description: 'Heltec Display - E-ink Display' },
+        { device_type_id: 102, device_type: 'kuando_busylight', description: 'Kuando Busylight - Status Light' },
+        { device_type_id: 103, device_type: 'milesight_am103', description: 'Milesight AM103 - Environment Sensor' },
+        { device_type_id: 104, device_type: 'generic_sensor', description: 'Generic LoRaWAN Sensor' }
       ];
-      
+
       setDeviceTypes([...Array.from(uniqueTypes.values()), ...commonTypes]);
     } catch (err) {
       console.error('Error loading device types:', err);
@@ -163,17 +162,16 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
 
   const loadLocations = async () => {
     try {
-      // In v5.3, parking spaces ARE the locations - no separate location hierarchy
-      // We group parking spaces by site_name to show a simple site picker
-      const { parkingSpacesService } = await import('../services/parkingSpacesService.js');
-      const { spaces } = await parkingSpacesService.getSpaces();
+      // Use Sites API to load sites
+      const { siteService } = await import('../services/siteService.js');
+      const response = await siteService.getSites({ include_inactive: false });
 
-      // Extract unique site names from parking spaces for site selection
-      const uniqueSites = [...new Set(spaces.map(s => s.site_name).filter(Boolean))];
-      const siteLocations = uniqueSites.map(siteName => ({
-        location_id: siteName,
-        name: siteName,
-        type: 'site'
+      // Convert sites to location format for backwards compatibility
+      const siteLocations = (response.sites || []).map(site => ({
+        location_id: site.id,
+        name: site.name,
+        type: 'site' as const,
+        spaces_count: site.spaces_count
       }));
 
       // Simple hierarchy with just sites (no floors/rooms/zones in v5.3)
@@ -186,8 +184,8 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
 
       setLocations(hierarchy);
     } catch (err) {
-      console.error('Error loading parking spaces:', err);
-      setError('Failed to load parking spaces');
+      console.error('Error loading sites:', err);
+      setError('Failed to load sites');
     }
   };
 
@@ -369,11 +367,11 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
             </select>
           </div>
 
-          {/* Location Hierarchy */}
+          {/* Site Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <MapPin className="inline w-4 h-4 mr-1" />
-              Location *
+              Site *
             </label>
             
             <div className="space-y-3">
@@ -382,76 +380,37 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
                 value={selectedSite}
                 onChange={(e) => {
                   setSelectedSite(e.target.value);
-                  setSelectedFloor('');
-                  setSelectedRoom('');
-                  setConfig(prev => ({ ...prev, location_id: '' }));
+                  setConfig(prev => ({ ...prev, location_id: e.target.value }));
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">Select site...</option>
-                {locations.sites.map((site) => (
+                {locations.sites.map((site: any) => (
                   <option key={site.location_id} value={site.location_id}>
-                    🏢 {site.name}
+                    🏢 {site.name} {site.spaces_count ? `(${site.spaces_count} spaces)` : ''}
                   </option>
                 ))}
               </select>
 
-              {/* Floor Selection */}
-              {selectedSite && locations.floors.length > 0 && (
-                <select
-                  value={selectedFloor}
-                  onChange={(e) => {
-                    setSelectedFloor(e.target.value);
-                    setSelectedRoom('');
-                    setConfig(prev => ({ ...prev, location_id: e.target.value }));
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ml-4"
-                >
-                  <option value="">Select floor...</option>
-                  {locations.floors.map((floor) => (
-                    <option key={floor.location_id} value={floor.location_id}>
-                      🏢 {floor.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {/* Room Selection */}
-              {selectedFloor && locations.rooms.length > 0 && (
-                <select
-                  value={selectedRoom}
-                  onChange={(e) => {
-                    setSelectedRoom(e.target.value);
-                    setConfig(prev => ({ ...prev, location_id: e.target.value }));
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ml-8"
-                >
-                  <option value="">Select room...</option>
-                  {locations.rooms.map((room) => (
-                    <option key={room.location_id} value={room.location_id}>
-                      🚪 {room.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {/* Zone Selection (Optional) */}
-              {selectedRoom && locations.zones.length > 0 && (
-                <select
-                  value={config.location_id || ''}
-                  onChange={(e) => setConfig(prev => ({ ...prev, location_id: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ml-12"
-                >
-                  <option value={selectedRoom}>No specific zone</option>
-                  {locations.zones.map((zone) => (
-                    <option key={zone.location_id} value={zone.location_id}>
-                      📍 {zone.name}
-                    </option>
-                  ))}
-                </select>
-              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Select the building/site where this device is installed.
+              </p>
             </div>
           </div>
+
+          {/* Parking Space Assignment (if assigned) */}
+          {device.deveui && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+              <h4 className="text-sm font-medium text-blue-900 mb-2">Parking Space Registration</h4>
+              <div className="text-sm text-blue-700">
+                {/* This will show the assigned parking space */}
+                <p className="text-gray-600 italic">
+                  Check parking spaces page to assign this device to a specific parking spot.
+                </p>
+              </div>
+            </div>
+          )}
+
 
           {/* Assignment Timestamp */}
           <div>
