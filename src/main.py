@@ -10,8 +10,11 @@ from datetime import datetime
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import Headers
 
 # Local imports
 from .config import settings
@@ -46,6 +49,36 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# ============================================================
+# Proxy Headers Middleware
+# ============================================================
+
+class ProxyHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware to handle X-Forwarded-* headers from reverse proxy
+
+    This fixes HTTPS redirect issues when behind a reverse proxy/load balancer.
+    When the proxy terminates HTTPS, FastAPI receives HTTP requests but needs
+    to know the original protocol was HTTPS to generate correct redirect URLs.
+    """
+    async def dispatch(self, request: Request, call_next):
+        # Get forwarded protocol (https or http)
+        forwarded_proto = request.headers.get("x-forwarded-proto")
+        forwarded_host = request.headers.get("x-forwarded-host")
+
+        if forwarded_proto:
+            # Override the URL scheme in the request scope
+            request.scope["scheme"] = forwarded_proto
+
+        if forwarded_host:
+            # Override the host
+            request.scope["server"] = (forwarded_host, None)
+
+        # Continue processing the request
+        response = await call_next(request)
+
+        return response
 
 # ============================================================
 # Application Lifecycle Management
@@ -204,8 +237,13 @@ app = FastAPI(
     title=f"{settings.app_name} (Multi-Tenant)",
     version=settings.app_version,
     description="Smart Parking Platform with ChirpStack integration and multi-tenancy",
-    lifespan=lifespan
+    lifespan=lifespan,
+    root_path="",  # Required for proper URL generation behind proxy
+    root_path_in_servers=False
 )
+
+# Proxy headers middleware (MUST be first to handle X-Forwarded-* headers)
+app.add_middleware(ProxyHeadersMiddleware)
 
 # CORS middleware
 app.add_middleware(
