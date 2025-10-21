@@ -81,22 +81,42 @@ const DeviceList = ({ initialFilters }) => {
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
-        <div className="bg-white p-4 rounded-lg border">
+        <button
+          onClick={() => updateFilters({ status: DEVICE_FILTERS.ALL })}
+          className={`bg-white p-4 rounded-lg border text-left hover:shadow-md transition-shadow ${
+            filters.status === DEVICE_FILTERS.ALL ? 'ring-2 ring-blue-500' : ''
+          }`}
+        >
           <div className="text-2xl font-bold text-gray-900">{counts.total}</div>
           <div className="text-sm text-gray-600">Total Devices</div>
-        </div>
-        <div className="bg-white p-4 rounded-lg border">
+        </button>
+        <button
+          onClick={() => updateFilters({ status: DEVICE_FILTERS.UNASSIGNED })}
+          className={`bg-white p-4 rounded-lg border text-left hover:shadow-md transition-shadow ${
+            filters.status === DEVICE_FILTERS.UNASSIGNED ? 'ring-2 ring-yellow-500' : ''
+          }`}
+        >
           <div className="text-2xl font-bold text-yellow-600">{counts.unassigned}</div>
           <div className="text-sm text-gray-600">Unassigned</div>
-        </div>
-        <div className="bg-white p-4 rounded-lg border">
+        </button>
+        <button
+          onClick={() => updateFilters({ status: DEVICE_FILTERS.ASSIGNED })}
+          className={`bg-white p-4 rounded-lg border text-left hover:shadow-md transition-shadow ${
+            filters.status === DEVICE_FILTERS.ASSIGNED ? 'ring-2 ring-green-500' : ''
+          }`}
+        >
           <div className="text-2xl font-bold text-green-600">{counts.assigned}</div>
           <div className="text-sm text-gray-600">Assigned to Site</div>
-        </div>
-        <div className="bg-white p-4 rounded-lg border">
+        </button>
+        <button
+          onClick={() => updateFilters({ status: DEVICE_FILTERS.ARCHIVED })}
+          className={`bg-white p-4 rounded-lg border text-left hover:shadow-md transition-shadow ${
+            filters.status === DEVICE_FILTERS.ARCHIVED ? 'ring-2 ring-gray-500' : ''
+          }`}
+        >
           <div className="text-2xl font-bold text-gray-600">{counts.archived}</div>
           <div className="text-sm text-gray-600">Archived</div>
-        </div>
+        </button>
       </div>
 
       <div className="bg-white p-4 rounded-lg border space-y-4">

@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "20.1",
-  "buildNumber": "20251021.20.1",
-  "buildTimestamp": "2025-10-21T19:30:00Z",
-  "buildDate": "2025-10-21T19:30:00Z",
-  "gitCommit": "fix-site-column-display",
-  "commit": "fix-site-column-display",
-  "description": "Fixed Site column to display description field from ChirpStack",
+  "build": "20.2",
+  "buildNumber": "20251021.20.2",
+  "buildTimestamp": "2025-10-21T20:00:00Z",
+  "buildDate": "2025-10-21T20:00:00Z",
+  "gitCommit": "clickable-status-cards",
+  "commit": "clickable-status-cards",
+  "description": "Made status cards clickable to filter devices + ChirpStack device types fixed",
   "environment": "production"
 }
