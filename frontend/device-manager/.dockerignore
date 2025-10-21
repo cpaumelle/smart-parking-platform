@@ -1,0 +1,8 @@
+# Minimal .dockerignore - only exclude what we don't need
+# This ensures dist/ is included (unlike .gitignore)
+
+node_modules
+.git
+src
+public
+*.md
