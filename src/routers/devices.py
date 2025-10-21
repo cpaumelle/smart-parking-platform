@@ -163,6 +163,7 @@ async def list_devices(
     """
     try:
         db_pool = request.app.state.db_pool
+        chirpstack_pool = request.app.state.chirpstack_client.pool
         devices = []
 
         # Determine which device categories to fetch
@@ -242,6 +243,14 @@ async def list_devices(
             logger.info(f"[Tenant:{tenant.tenant_id}] Found {len(sensor_results)} sensor devices")
 
             for row in sensor_results:
+                dev_eui_upper = row["deveui"].upper()
+
+                # Fetch device name and description from ChirpStack
+                cs_device = await chirpstack_pool.fetchrow(
+                    "SELECT name, description FROM device WHERE UPPER(encode(dev_eui, 'hex')) = $1",
+                    dev_eui_upper
+                )
+
                 devices.append({
                     "id": str(row["id"]),
                     "deveui": row["deveui"],
@@ -253,6 +262,8 @@ async def list_devices(
                     "capabilities": row["capabilities"],
                     "enabled": row["enabled"],
                     "status": row["status"],
+                    "name": cs_device["name"] if cs_device else row["deveui"],  # From ChirpStack
+                    "description": cs_device["description"] if (cs_device and cs_device["description"]) else "",  # From ChirpStack (for site assignment)
                     "last_seen_at": row["last_seen_at"].isoformat() if row["last_seen_at"] else None,
                     "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                     "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
@@ -327,6 +338,14 @@ async def list_devices(
             logger.info(f"[Tenant:{tenant.tenant_id}] Found {len(display_results)} display devices")
 
             for row in display_results:
+                dev_eui_upper = row["deveui"].upper()
+
+                # Fetch device name and description from ChirpStack
+                cs_device = await chirpstack_pool.fetchrow(
+                    "SELECT name, description FROM device WHERE UPPER(encode(dev_eui, 'hex')) = $1",
+                    dev_eui_upper
+                )
+
                 devices.append({
                     "id": str(row["id"]),
                     "deveui": row["deveui"],
@@ -339,6 +358,8 @@ async def list_devices(
                     "confirmed_downlinks": row["confirmed_downlinks"],
                     "enabled": row["enabled"],
                     "status": row["status"],
+                    "name": cs_device["name"] if cs_device else row["deveui"],  # From ChirpStack
+                    "description": cs_device["description"] if (cs_device and cs_device["description"]) else "",  # From ChirpStack (for site assignment)
                     "last_seen_at": row["last_seen_at"].isoformat() if row["last_seen_at"] else None,
                     "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                     "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
