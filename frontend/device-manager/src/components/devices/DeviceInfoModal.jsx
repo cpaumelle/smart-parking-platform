@@ -178,7 +178,7 @@ const DeviceInfoModal = ({ device, onClose, onSaved }) => {
               <option value="">-- Select a Site --</option>
               {sites.map((site) => (
                 <option key={site.id} value={site.id}>
-                  🏢 {site.name} ({site.spaces_count || 0} spaces)
+                  🏢 {site.name}
                 </option>
               ))}
             </select>
