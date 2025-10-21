@@ -90,10 +90,6 @@ const Dashboard = ({ onNavigate }) => {
     onNavigate('gateways', filter);
   };
 
-  const navigateToLocations = (filter = {}) => {
-    onNavigate('locations', filter);
-  };
-
   return (
     <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
@@ -230,40 +226,40 @@ const Dashboard = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* Location Management Overview */}
+      {/* Parking Spaces Overview */}
       <div className="bg-white rounded-lg border p-4 sm:p-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Location Management</h2>
+        <h2 className="text-lg font-medium text-gray-900 mb-4">Parking Spaces</h2>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <InteractiveStatusCard
-            title="Total Locations"
-            count={locations.length}
+            title="Total Spaces"
+            count={0}
             icon={MapPin}
             color="blue"
-            onClick={() => navigateToLocations()}
+            onClick={() => onNavigate('parking')}
             loading={loading}
           />
           <InteractiveStatusCard
-            title="Sites"
-            count={locations.filter(l => l.type === 'site').length}
-            icon={MapPin}
+            title="Available"
+            count={0}
+            icon={CheckCircle}
             color="green"
-            onClick={() => navigateToLocations({ type: 'sites' })}
+            onClick={() => onNavigate('parking', { state: 'FREE' })}
             loading={loading}
           />
           <InteractiveStatusCard
-            title="Floors"
-            count={locations.filter(l => l.type === 'floor').length}
-            icon={MapPin}
-            color="green"
-            onClick={() => navigateToLocations({ type: 'floors' })}
+            title="Occupied"
+            count={0}
+            icon={AlertCircle}
+            color="red"
+            onClick={() => onNavigate('parking', { state: 'OCCUPIED' })}
             loading={loading}
           />
           <InteractiveStatusCard
-            title="Rooms"
-            count={locations.filter(l => l.type === 'room').length}
-            icon={MapPin}
-            color="green"
-            onClick={() => navigateToLocations({ type: 'rooms' })}
+            title="Reserved"
+            count={0}
+            icon={Clock}
+            color="yellow"
+            onClick={() => onNavigate('parking', { state: 'RESERVED' })}
             loading={loading}
           />
         </div>

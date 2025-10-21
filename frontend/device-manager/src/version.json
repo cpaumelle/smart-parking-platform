@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "22",
-  "buildNumber": "20251021.22",
-  "buildTimestamp": "2025-10-21T22:00:00Z",
-  "buildDate": "2025-10-21T22:00:00Z",
-  "gitCommit": "parking-spaces-hierarchy-refactor",
-  "commit": "parking-spaces-hierarchy-refactor",
-  "description": "Refactored Parking Spaces with service layer, Site/Building/Floor/Zone hierarchy, reservation integration",
+  "build": "23",
+  "buildNumber": "20251021.23",
+  "buildTimestamp": "2025-10-21T23:00:00Z",
+  "buildDate": "2025-10-21T23:00:00Z",
+  "gitCommit": "cascading-dropdowns-optional-devices",
+  "commit": "cascading-dropdowns-optional-devices",
+  "description": "Dashboard updated to Parking Spaces, cascading dropdowns for space creation, optional device assignment",
   "environment": "production"
 }
