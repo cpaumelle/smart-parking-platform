@@ -31,6 +31,7 @@ from .exceptions import ParkingException
 
 # Multi-tenancy imports
 from .tenant_auth import set_db_pool as set_tenant_auth_db_pool, set_jwt_secret
+from .auth import set_db_pool as set_auth_db_pool
 from .rate_limit import RateLimiter, set_rate_limiter, RateLimitConfig
 
 # Routers
@@ -107,6 +108,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize multi-tenancy auth
     set_tenant_auth_db_pool(db_pool.pool)
+    set_auth_db_pool(db_pool.pool)  # CRITICAL: Initialize auth.py db_pool for API key verification
     set_jwt_secret(jwt_secret)
     logger.info("[OK] Multi-tenancy authentication initialized")
 

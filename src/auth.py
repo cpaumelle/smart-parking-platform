@@ -23,6 +23,7 @@ def set_db_pool(pool):
     """Set the database pool for authentication"""
     global _db_pool
     _db_pool = pool
+    logger.info(f"auth.py: Database pool initialized: {pool is not None}")
 
 class APIKeyInfo:
     """Information about an authenticated API key"""
@@ -42,6 +43,7 @@ async def verify_api_key(api_key: str) -> Optional[APIKeyInfo]:
     Returns:
         APIKeyInfo if valid, None otherwise
     """
+    logger.info(f"[DEBUG] verify_api_key called with key: {api_key[:10]}... (db_pool: {_db_pool is not None})")
     if not _db_pool:
         logger.error("Database pool not initialized for authentication")
         return None
@@ -53,6 +55,7 @@ async def verify_api_key(api_key: str) -> Optional[APIKeyInfo]:
             FROM api_keys
             WHERE is_active = true
         """)
+        logger.info(f"[DEBUG] Found {len(rows)} active API keys in database")
 
         # Check each key (bcrypt comparison)
         for row in rows:

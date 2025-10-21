@@ -275,8 +275,11 @@ async def get_current_tenant(
                 logger.info(f"Authenticated user {token_data.user_id} for tenant {tenant_context.tenant_id}")
 
     # Fall back to API key
+    logger.info(f"[DEBUG] API key check: tenant_context={tenant_context is not None}, api_key={api_key[:10] if api_key else None}...")
     if not tenant_context and api_key:
+        logger.info(f"[DEBUG] Calling verify_api_key with key: {api_key[:10]}...")
         api_key_info = await verify_api_key(api_key)
+        logger.info(f"[DEBUG] verify_api_key returned: {api_key_info is not None}")
         if api_key_info:
             tenant_context = await resolve_tenant_from_api_key(api_key_info)
             if tenant_context:

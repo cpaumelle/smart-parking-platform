@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "10",
-  "buildNumber": "20251021.10",
-  "buildTimestamp": "2025-10-21T15:00:00Z",
-  "buildDate": "2025-10-21T15:00:00Z",
-  "gitCommit": "fix-jsonb-validation",
-  "commit": "fix-jsonb-validation",
-  "description": "Fixed JSONB field validation in Sites API. Sites page fully operational.",
+  "build": "11",
+  "buildNumber": "20251021.11",
+  "buildTimestamp": "2025-10-21T16:00:00Z",
+  "buildDate": "2025-10-21T16:00:00Z",
+  "gitCommit": "fix-sites-auth-jsonb",
+  "commit": "fix-sites-auth-jsonb",
+  "description": "Fixed authentication db_pool initialization and JSONB serialization. Sites CRUD fully functional.",
   "environment": "production"
 }

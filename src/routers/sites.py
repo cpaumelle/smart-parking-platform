@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from datetime import datetime
 import logging
+import json
 
 from ..models import TenantContext
 from ..tenant_auth import get_current_tenant, require_viewer, require_admin
@@ -163,8 +164,8 @@ async def create_site(
             tenant.tenant_id,
             site.name,
             site.timezone,
-            site.location,
-            site.metadata,
+            json.dumps(site.location) if site.location else None,
+            json.dumps(site.metadata) if site.metadata else None,
             site.is_active
         )
 
@@ -294,12 +295,12 @@ async def update_site(
 
         if updates.location is not None:
             update_fields.append(f"location = ${param_count}")
-            params.append(updates.location)
+            params.append(json.dumps(updates.location) if updates.location else None)
             param_count += 1
 
         if updates.metadata is not None:
             update_fields.append(f"metadata = ${param_count}")
-            params.append(updates.metadata)
+            params.append(json.dumps(updates.metadata) if updates.metadata else None)
             param_count += 1
 
         if updates.is_active is not None:
