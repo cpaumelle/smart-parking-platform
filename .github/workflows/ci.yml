@@ -1,0 +1,392 @@
+name: CI - Smart Parking Platform
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run integration and load tests nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ============================================================
+  # Unit Tests & Property-Based Tests
+  # ============================================================
+  unit-tests:
+    name: Unit & Property Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ \
+            -v \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term \
+            --junit-xml=test-results/unit-tests.xml \
+            -m "not integration and not load"
+
+      - name: Run property-based tests
+        run: |
+          pytest tests/test_reservation_properties.py \
+            -v \
+            --junit-xml=test-results/property-tests.xml \
+            -m property
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: unit-coverage
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-results
+          path: test-results/
+
+  # ============================================================
+  # Linting & Code Quality
+  # ============================================================
+  lint:
+    name: Linting & Type Checking
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install ruff mypy black isort
+
+      - name: Run black (code formatting check)
+        run: |
+          black --check src/ tests/
+
+      - name: Run isort (import sorting check)
+        run: |
+          isort --check-only src/ tests/
+
+      - name: Run ruff (linting)
+        run: |
+          ruff check src/ tests/
+
+      - name: Run mypy (type checking)
+        run: |
+          mypy src/ --ignore-missing-imports
+        continue-on-error: true  # Don't fail on type errors yet
+
+  # ============================================================
+  # Security Scanning
+  # ============================================================
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Bandit security linter
+        run: |
+          pip install bandit
+          bandit -r src/ -f json -o bandit-report.json
+        continue-on-error: true
+
+      - name: Upload Bandit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+  # ============================================================
+  # Integration Tests
+  # ============================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    # Only run on schedule (nightly) or manual trigger
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Start test environment
+        run: |
+          docker compose -f docker-compose.test.yml up -d
+          # Wait for services to be healthy
+          docker compose -f docker-compose.test.yml ps
+          sleep 30
+
+      - name: Run database migrations
+        run: |
+          docker compose -f docker-compose.test.yml exec -T postgres-test \
+            psql -U parking_test -d parking_test -f /docker-entrypoint-initdb.d/001_initial_schema.sql
+          # Run all migrations
+          for migration in migrations/*.sql; do
+            docker compose -f docker-compose.test.yml exec -T postgres-test \
+              psql -U parking_test -d parking_test -f "/docker-entrypoint-initdb.d/$(basename $migration)"
+          done
+
+      - name: Run integration tests
+        run: |
+          pytest tests/integration/ \
+            -v \
+            --junit-xml=test-results/integration-tests.xml \
+            -m integration
+        env:
+          API_BASE_URL: http://localhost:8001
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.test.yml logs > integration-test-logs.txt
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: integration-test-logs
+          path: integration-test-logs.txt
+
+      - name: Shutdown test environment
+        if: always()
+        run: |
+          docker compose -f docker-compose.test.yml down -v
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: test-results/
+
+  # ============================================================
+  # Load Tests
+  # ============================================================
+  load-tests:
+    name: Load Tests
+    runs-on: ubuntu-latest
+    # Only run on schedule (nightly) or manual trigger
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install locust
+
+      - name: Start test environment
+        run: |
+          docker compose -f docker-compose.test.yml up -d
+          sleep 30
+
+      - name: Run database migrations
+        run: |
+          for migration in migrations/*.sql; do
+            docker compose -f docker-compose.test.yml exec -T postgres-test \
+              psql -U parking_test -d parking_test -f "/docker-entrypoint-initdb.d/$(basename $migration)"
+          done
+
+      - name: Run load tests
+        run: |
+          # Run Locust in headless mode
+          locust \
+            -f tests/load/locustfile.py \
+            --host http://localhost:8001 \
+            --users 50 \
+            --spawn-rate 10 \
+            --run-time 5m \
+            --headless \
+            --html load-test-report.html \
+            --csv load-test-results
+        continue-on-error: true  # Don't fail if SLOs not met (just report)
+
+      - name: Upload load test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-test-report
+          path: |
+            load-test-report.html
+            load-test-results*.csv
+
+      - name: Shutdown test environment
+        if: always()
+        run: |
+          docker compose -f docker-compose.test.yml down -v
+
+  # ============================================================
+  # Build & Push Docker Image
+  # ============================================================
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [unit-tests, lint]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: verdegris/smart-parking
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================
+  # Database Migration Check
+  # ============================================================
+  migration-check:
+    name: Database Migration Check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Apply migrations
+        run: |
+          for migration in migrations/*.sql; do
+            echo "Applying $migration..."
+            PGPASSWORD=test_password psql -h localhost -U test_user -d test_db -f "$migration"
+          done
+
+      - name: Verify schema
+        run: |
+          PGPASSWORD=test_password psql -h localhost -U test_user -d test_db -c "\dt"
+          PGPASSWORD=test_password psql -h localhost -U test_user -d test_db -c "\di"
+
+  # ============================================================
+  # Notification on Failure
+  # ============================================================
+  notify:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, load-tests]
+    if: failure() && (github.event_name == 'schedule' || github.ref == 'refs/heads/main')
+
+    steps:
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "❌ CI Pipeline Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*CI Pipeline Failed*\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Trigger:* ${{ github.event_name }}\n*Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

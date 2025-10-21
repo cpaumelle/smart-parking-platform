@@ -1,0 +1,109 @@
+# Docker Compose configuration for integration tests
+# Provides isolated test environment with real dependencies
+
+version: '3.8'
+
+services:
+  # PostgreSQL for testing
+  postgres-test:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: parking_test
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: parking_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parking_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for testing
+  redis-test:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Mock ChirpStack (minimal MQTT broker for testing)
+  mosquitto-test:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1884:1883"
+    volumes:
+      - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./config/mosquitto/passwd:/mosquitto/config/passwd:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -t test -m test"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # API service for integration tests
+  api-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # Database
+      DATABASE_URL: postgresql://parking_test:test_password@postgres-test:5432/parking_test
+      DB_POOL_MIN_SIZE: 5
+      DB_POOL_MAX_SIZE: 20
+
+      # Redis
+      REDIS_URL: redis://redis-test:6379
+      REDIS_MAX_CONNECTIONS: 50
+
+      # ChirpStack
+      CHIRPSTACK_API_URL: http://chirpstack-test:8080
+      CHIRPSTACK_API_KEY: test-api-key
+      CHIRPSTACK_MQTT_SERVER: mosquitto-test
+      CHIRPSTACK_MQTT_PORT: 1883
+      CHIRPSTACK_MQTT_USERNAME: admin
+      CHIRPSTACK_MQTT_PASSWORD: password
+
+      # JWT
+      JWT_SECRET_KEY: test-jwt-secret-key-for-integration-tests-only
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRATION_HOURS: 24
+
+      # Application
+      LOG_LEVEL: INFO
+      ENABLE_METRICS: "true"
+      ENABLE_AUDIT_LOG: "true"
+
+      # Webhook
+      WEBHOOK_SPOOL_DIR: /var/spool/parking-uplinks-test
+
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      mosquitto-test:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src:ro
+      - ./migrations:/app/migrations:ro
+      - webhook_spool_test:/var/spool/parking-uplinks-test
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  postgres_test_data:
+  webhook_spool_test:
