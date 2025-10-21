@@ -1,55 +1,56 @@
 // src/services/locationService.js
+// Updated to use multi-tenant Parking API v5.3 (sites instead of locations)
 import apiClient from './apiClient.js';
 
 export const locationService = {
-  // GET /v1/locations
+  // GET /api/v1/sites (was /v1/locations)
   async getLocations(params = {}) {
     try {
-      console.log('🔍 Fetching locations with params:', params);
-      const response = await apiClient.get('/v1/locations', { params });
-      console.log(`✅ Retrieved ${response.data?.length || 0} locations`);
+      console.log('🔍 Fetching sites with params:', params);
+      const response = await apiClient.get('/api/v1/sites', { params });
+      console.log(`✅ Retrieved ${response.data?.length || 0} sites`);
       return response.data;
     } catch (error) {
-      console.error('❌ Failed to fetch locations:', error.userMessage);
+      console.error('❌ Failed to fetch sites:', error.userMessage);
       throw error;
     }
   },
 
-  // POST /v1/locations
+  // POST /api/v1/sites (was /v1/locations)
   async createLocation(data) {
     try {
-      console.log('📝 Creating location:', data);
-      const response = await apiClient.post('/v1/locations', data);
-      console.log('✅ Location created successfully');
+      console.log('📝 Creating site:', data);
+      const response = await apiClient.post('/api/v1/sites', data);
+      console.log('✅ Site created successfully');
       return response.data;
     } catch (error) {
-      console.error('❌ Failed to create location:', error.userMessage);
+      console.error('❌ Failed to create site:', error.userMessage);
       throw error;
     }
   },
 
-  // PUT /v1/locations/{id}
+  // PATCH /api/v1/sites/{id} (was PUT /v1/locations/{id})
   async updateLocation(locationId, data) {
     try {
-      console.log(`📝 Updating location ${locationId}:`, data);
-      const response = await apiClient.put(`/v1/locations/${locationId}`, data);
-      console.log('✅ Location updated successfully');
+      console.log(`📝 Updating site ${locationId}:`, data);
+      const response = await apiClient.patch(`/api/v1/sites/${locationId}`, data);
+      console.log('✅ Site updated successfully');
       return response.data;
     } catch (error) {
-      console.error(`❌ Failed to update location ${locationId}:`, error.userMessage);
+      console.error(`❌ Failed to update site ${locationId}:`, error.userMessage);
       throw error;
     }
   },
 
-  // PUT /v1/locations/{id}/archive
+  // PATCH /api/v1/sites/{id} with is_active=false (was PUT /v1/locations/{id}/archive)
   async archiveLocation(locationId, confirm = true) {
     try {
-      console.log(`🗑️ Archiving location: ${locationId}`);
-      const response = await apiClient.put(`/v1/locations/${locationId}/archive?confirm=${confirm}`);
-      console.log('✅ Location archived successfully');
+      console.log(`🗑️ Archiving site: ${locationId}`);
+      const response = await apiClient.patch(`/api/v1/sites/${locationId}`, { is_active: false });
+      console.log('✅ Site archived successfully');
       return response.data;
     } catch (error) {
-      console.error(`❌ Failed to archive location ${locationId}:`, error.userMessage);
+      console.error(`❌ Failed to archive site ${locationId}:`, error.userMessage);
       throw error;
     }
   }
