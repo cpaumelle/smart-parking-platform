@@ -1,6 +1,6 @@
-// Lightweight hook to load the location tree from the Parking API
-// Version: 2.0.0 - Updated for v5.3 Multi-Tenant API
-// Changed from /v1/locations/tree to /api/v1/sites
+// Lightweight hook to load parking spaces (displayed as locations in UI)
+// Version: 3.0.0 - Updated for v5.3 Multi-Tenant API
+// In v5.3, parking spaces ARE the locations - no separate location hierarchy
 import { useEffect, useMemo, useRef, useState } from "react";
 import apiClient from "../services/apiClient.js";
 
@@ -17,15 +17,17 @@ export function useLocations({ archived = "false" } = {}) {
     abortRef.current = new AbortController();
 
     try {
-      // Use /api/v1/sites instead of /v1/locations/tree for v5.3 multi-tenant API
-      const response = await apiClient.get(`/api/v1/sites`, {
+      // GET /api/v1/spaces/ - Parking spaces are displayed as "locations" in the UI
+      const response = await apiClient.get(`/api/v1/spaces/`, {
         signal: abortRef.current.signal,
         params: { includeArchived: archived === "true" }
       });
-      setTree(Array.isArray(response.data) ? response.data : []);
+      // Extract spaces array from response
+      const spaces = response.data?.spaces || response.data || [];
+      setTree(Array.isArray(spaces) ? spaces : []);
     } catch (e) {
       if (e.name !== "AbortError") {
-        console.error('Failed to fetch sites:', e);
+        console.error('Failed to fetch parking spaces:', e);
         setError(e);
       }
     } finally {

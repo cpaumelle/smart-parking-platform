@@ -87,7 +87,7 @@ apiClient.interceptors.response.use(
 
     // Add user-friendly error messages
     if (!error.response) {
-      error.userMessage = 'Cannot connect to API - check if transform service is running';
+      error.userMessage = 'Cannot connect to API - check network connection';
     } else if (error.response.status === 401) {
       error.userMessage = 'Authentication required. Please login.';
     } else if (error.response.status === 404) {

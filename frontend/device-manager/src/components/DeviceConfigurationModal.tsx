@@ -163,22 +163,31 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
 
   const loadLocations = async () => {
     try {
-      // Use locationService which calls /api/v1/sites
-      const { locationService } = await import('../services/locationService.js');
-      const sites = await locationService.getLocations();
+      // In v5.3, parking spaces ARE the locations - no separate location hierarchy
+      // We group parking spaces by site_name to show a simple site picker
+      const { parkingSpacesService } = await import('../services/parkingSpacesService.js');
+      const { spaces } = await parkingSpacesService.getSpaces();
 
-      // Sites from v5.3 API are flat, no tree structure
+      // Extract unique site names from parking spaces for site selection
+      const uniqueSites = [...new Set(spaces.map(s => s.site_name).filter(Boolean))];
+      const siteLocations = uniqueSites.map(siteName => ({
+        location_id: siteName,
+        name: siteName,
+        type: 'site'
+      }));
+
+      // Simple hierarchy with just sites (no floors/rooms/zones in v5.3)
       const hierarchy = {
-        sites: sites.filter(s => s.type === 'site' || !s.type),
-        floors: sites.filter(s => s.type === 'floor'),
-        rooms: sites.filter(s => s.type === 'room'),
-        zones: sites.filter(s => s.type === 'zone')
+        sites: siteLocations,
+        floors: [],
+        rooms: [],
+        zones: []
       };
 
       setLocations(hierarchy);
     } catch (err) {
-      console.error('Error loading sites:', err);
-      setError('Failed to load sites');
+      console.error('Error loading parking spaces:', err);
+      setError('Failed to load parking spaces');
     }
   };
 
