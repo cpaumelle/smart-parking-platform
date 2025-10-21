@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 import { MapPin, Settings, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import Modal from '../common/Modal.jsx';
 // import { updateGateway } from '../../services/gateways.js'; // REMOVED - read-only
-import { locationService } from '../../services/locationService.js';
+import { siteService } from '../../services/siteService.js';
 import { formatLastSeen, formatDateTime } from '../../utils/formatters.js';
 import {
   getGatewayConfigStatus,
@@ -24,70 +24,23 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
     assigned_at: new Date().toISOString()
   });
 
-  const [locations, setLocations] = useState({ sites: [], floors: [], rooms: [], zones: [] });
+  const [sites, setSites] = useState([]);
   const [selectedSite, setSelectedSite] = useState(gateway.site_id || '');
-  const [selectedFloor, setSelectedFloor] = useState('');
-  const [selectedRoom, setSelectedRoom] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Load location hierarchy
+  // Load sites from Sites API
   useEffect(() => {
-    loadLocations();
+    loadSites();
   }, []);
 
-  // Update location filters when selections change
-  useEffect(() => {
-    if (selectedSite) {
-      const floors = locations.floors.filter(f => f.parent_id === selectedSite);
-      setLocations(prev => ({ ...prev, floors }));
-    }
-  }, [selectedSite]);
-
-  useEffect(() => {
-    if (selectedFloor) {
-      const rooms = locations.rooms.filter(r => r.parent_id === selectedFloor);
-      setLocations(prev => ({ ...prev, rooms }));
-    }
-  }, [selectedFloor]);
-
-  useEffect(() => {
-    if (selectedRoom) {
-      const zones = locations.zones.filter(z => z.parent_id === selectedRoom);
-      setLocations(prev => ({ ...prev, zones }));
-      // Auto-select room as location if no zones
-      if (zones.length === 0) {
-        setFormData(prev => ({ ...prev, location_id: selectedRoom }));
-      }
-    }
-  }, [selectedRoom]);
-
-  const loadLocations = async () => {
+  const loadSites = async () => {
     try {
-      const response = await locationService.getLocations();
-      const locationHierarchy = { sites: [], floors: [], rooms: [], zones: [] };
-
-      response.forEach(location => {
-        switch (location.type) {
-          case 'site':
-            locationHierarchy.sites.push(location);
-            break;
-          case 'floor':
-            locationHierarchy.floors.push(location);
-            break;
-          case 'room':
-            locationHierarchy.rooms.push(location);
-            break;
-          case 'zone':
-            locationHierarchy.zones.push(location);
-            break;
-        }
-      });
-
-      setLocations(locationHierarchy);
+      const response = await siteService.getSites({ include_inactive: false });
+      setSites(response.sites || []);
     } catch (err) {
-      console.error('Failed to load locations:', err);
-      setError('Failed to load location hierarchy');
+      console.error('Failed to load sites:', err);
+      setError('Failed to load sites');
     }
   };
 
@@ -229,89 +182,33 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
             )}
           </div>
 
-          {/* Location Assignment */}
+          {/* Site Assignment */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <MapPin className="inline w-4 h-4 mr-1" />
-              Location Assignment *
+              Site Assignment *
             </label>
 
-            <div className="space-y-3">
-              {/* Site Selection */}
-              <select
-                value={selectedSite}
-                onChange={(e) => {
-                  setSelectedSite(e.target.value);
-                  setSelectedFloor('');
-                  setSelectedRoom('');
-                  setFormData(prev => ({ ...prev, location_id: e.target.value }));
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              >
-                <option value="">Select site...</option>
-                {locations.sites.map(site => (
-                  <option key={site.location_id} value={site.location_id}>
-                    Site: {site.name}
-                  </option>
-                ))}
-              </select>
+            <select
+              value={selectedSite}
+              onChange={(e) => {
+                setSelectedSite(e.target.value);
+                setFormData(prev => ({ ...prev, site_id: e.target.value, location_id: e.target.value }));
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            >
+              <option value="">Select site...</option>
+              {sites.map(site => (
+                <option key={site.id} value={site.id}>
+                  {site.name} ({site.spaces_count} spaces)
+                </option>
+              ))}
+            </select>
 
-              {/* Floor Selection */}
-              {selectedSite && locations.floors.length > 0 && (
-                <select
-                  value={selectedFloor}
-                  onChange={(e) => {
-                    setSelectedFloor(e.target.value);
-                    setSelectedRoom('');
-                    setFormData(prev => ({ ...prev, location_id: e.target.value || selectedSite }));
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ml-4"
-                >
-                  <option value="">Select floor (optional)...</option>
-                  {locations.floors.map(floor => (
-                    <option key={floor.location_id} value={floor.location_id}>
-                      Floor: {floor.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {/* Room Selection */}
-              {selectedFloor && locations.rooms.length > 0 && (
-                <select
-                  value={selectedRoom}
-                  onChange={(e) => {
-                    setSelectedRoom(e.target.value);
-                    setFormData(prev => ({ ...prev, location_id: e.target.value || selectedFloor }));
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ml-8"
-                >
-                  <option value="">Select room (optional)...</option>
-                  {locations.rooms.map(room => (
-                    <option key={room.location_id} value={room.location_id}>
-                      Room: {room.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {/* Zone Selection */}
-              {selectedRoom && locations.zones.length > 0 && (
-                <select
-                  value={formData.location_id}
-                  onChange={(e) => setFormData(prev => ({ ...prev, location_id: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ml-12"
-                >
-                  <option value={selectedRoom}>No specific zone</option>
-                  {locations.zones.map(zone => (
-                    <option key={zone.location_id} value={zone.location_id}>
-                      Zone: {zone.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Assign this gateway to a site/building. This helps organize gateways by physical location.
+            </p>
           </div>
 
           {/* Assignment Date/Time */}

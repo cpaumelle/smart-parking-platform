@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "11",
-  "buildNumber": "20251021.11",
-  "buildTimestamp": "2025-10-21T16:00:00Z",
-  "buildDate": "2025-10-21T16:00:00Z",
-  "gitCommit": "fix-sites-auth-jsonb",
-  "commit": "fix-sites-auth-jsonb",
-  "description": "Fixed authentication db_pool initialization and JSONB serialization. Sites CRUD fully functional.",
+  "build": "12",
+  "buildNumber": "20251021.12",
+  "buildTimestamp": "2025-10-21T17:00:00Z",
+  "buildDate": "2025-10-21T17:00:00Z",
+  "gitCommit": "fix-gateway-site-assignment",
+  "commit": "fix-gateway-site-assignment",
+  "description": "Fixed Gateway modal Site Assignment dropdown to use Sites API. Label updated from 'Location' to 'Site'.",
   "environment": "production"
 }
