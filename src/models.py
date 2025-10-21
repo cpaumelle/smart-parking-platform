@@ -424,8 +424,10 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     """User login response"""
     access_token: str
+    refresh_token: str  # Long-lived token for obtaining new access tokens
     token_type: str = "bearer"
-    expires_in: int
+    expires_in: int  # Access token expiry (15 minutes)
+    refresh_expires_in: int = 2592000  # Refresh token expiry (30 days)
     user: User
     tenants: List[Dict[str, Any]]  # Available tenants for this user
 
@@ -435,6 +437,32 @@ class TokenData(BaseModel):
     tenant_id: UUID
     role: UserRole
     exp: datetime
+
+class RefreshRequest(BaseModel):
+    """Refresh token request"""
+    refresh_token: str
+
+class RefreshResponse(BaseModel):
+    """Refresh token response"""
+    access_token: str
+    refresh_token: str  # New rotated refresh token
+    token_type: str = "bearer"
+    expires_in: int  # Access token expiry (15 minutes)
+    refresh_expires_in: int = 2592000  # Refresh token expiry (30 days)
+
+class UserProfileResponse(BaseModel):
+    """User profile response"""
+    user: User
+    current_tenant: Dict[str, Any]  # Current tenant info with role
+    all_tenants: List[Dict[str, Any]]  # All accessible tenants
+
+class UserLimitsResponse(BaseModel):
+    """User rate limits and quotas"""
+    tenant_id: UUID
+    tenant_name: str
+    rate_limits: Dict[str, Any]  # Per-tenant rate limits
+    quotas: Dict[str, Any]  # Resource quotas (spaces, devices, reservations)
+    usage: Dict[str, Any]  # Current usage counts
 
 class UserInvite(BaseModel):
     """User invitation model"""

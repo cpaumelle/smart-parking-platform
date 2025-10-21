@@ -455,3 +455,233 @@ async def get_space_stats(
     except Exception as e:
         logger.error(f"[Tenant:{tenant.tenant_id}] Error getting space stats: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================
+# Device Assignment Convenience Endpoints
+# ============================================================
+
+@router.post("/{space_id}/assign-sensor", response_model=Dict[str, Any], dependencies=[Depends(require_scopes("spaces:write"))])
+async def assign_sensor_to_space(
+    request: Request,
+    space_id: UUID,
+    sensor_eui: str = Query(..., description="Sensor device EUI (16 hex chars)"),
+    tenant: TenantContext = Depends(require_admin)
+):
+    """
+    Assign a sensor device to a parking space (convenience endpoint)
+
+    This is a shortcut for PATCH /spaces/{space_id} with sensor_eui in body.
+
+    Requires: ADMIN role or higher, API key requires spaces:write scope
+
+    Example:
+    ```
+    POST /api/v1/spaces/{space_id}/assign-sensor?sensor_eui=0004A30B001A2B3C
+    ```
+
+    Returns updated space with sensor_eui assigned.
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # Validate sensor_eui format (16 uppercase hex chars)
+        sensor_eui_upper = sensor_eui.upper()
+        if len(sensor_eui_upper) != 16 or not all(c in '0123456789ABCDEF' for c in sensor_eui_upper):
+            raise HTTPException(status_code=400, detail="sensor_eui must be 16 hexadecimal characters")
+
+        # Check if sensor exists in sensor_devices table
+        sensor_exists = await db_pool.fetchval("""
+            SELECT EXISTS(SELECT 1 FROM sensor_devices WHERE dev_eui = $1)
+        """, sensor_eui_upper)
+
+        if not sensor_exists:
+            # Auto-create sensor device if it doesn't exist
+            await db_pool.execute("""
+                INSERT INTO sensor_devices (dev_eui, device_name, status)
+                VALUES ($1, $2, 'active')
+                ON CONFLICT (dev_eui) DO NOTHING
+            """, sensor_eui_upper, f"Sensor {sensor_eui_upper[:8]}")
+
+            logger.info(f"[Tenant:{tenant.tenant_id}] Auto-created sensor device: {sensor_eui_upper}")
+
+        # Update space with sensor assignment
+        result = await db_pool.fetchrow("""
+            UPDATE spaces
+            SET sensor_eui = $1, updated_at = NOW()
+            WHERE id = $2 AND tenant_id = $3 AND deleted_at IS NULL
+            RETURNING id, code, name, building, floor, zone, state,
+                      sensor_eui, display_eui, site_id, tenant_id,
+                      created_at, updated_at
+        """, sensor_eui_upper, space_id, tenant.tenant_id)
+
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Space {space_id} not found in tenant {tenant.tenant_slug}")
+
+        logger.info(f"[Tenant:{tenant.tenant_id}] Assigned sensor {sensor_eui_upper} to space {space_id}")
+
+        return dict(result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Tenant:{tenant.tenant_id}] Error assigning sensor to space: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{space_id}/assign-display", response_model=Dict[str, Any], dependencies=[Depends(require_scopes("spaces:write"))])
+async def assign_display_to_space(
+    request: Request,
+    space_id: UUID,
+    display_eui: str = Query(..., description="Display device EUI (16 hex chars)"),
+    tenant: TenantContext = Depends(require_admin)
+):
+    """
+    Assign a display device to a parking space (convenience endpoint)
+
+    This is a shortcut for PATCH /spaces/{space_id} with display_eui in body.
+
+    Requires: ADMIN role or higher, API key requires spaces:write scope
+
+    Example:
+    ```
+    POST /api/v1/spaces/{space_id}/assign-display?display_eui=0004A30B001A2B3D
+    ```
+
+    Returns updated space with display_eui assigned.
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # Validate display_eui format (16 uppercase hex chars)
+        display_eui_upper = display_eui.upper()
+        if len(display_eui_upper) != 16 or not all(c in '0123456789ABCDEF' for c in display_eui_upper):
+            raise HTTPException(status_code=400, detail="display_eui must be 16 hexadecimal characters")
+
+        # Check if display exists in display_devices table
+        display_exists = await db_pool.fetchval("""
+            SELECT EXISTS(SELECT 1 FROM display_devices WHERE dev_eui = $1)
+        """, display_eui_upper)
+
+        if not display_exists:
+            # Auto-create display device if it doesn't exist
+            await db_pool.execute("""
+                INSERT INTO display_devices (dev_eui, device_name, status)
+                VALUES ($1, $2, 'active')
+                ON CONFLICT (dev_eui) DO NOTHING
+            """, display_eui_upper, f"Display {display_eui_upper[:8]}")
+
+            logger.info(f"[Tenant:{tenant.tenant_id}] Auto-created display device: {display_eui_upper}")
+
+        # Update space with display assignment
+        result = await db_pool.fetchrow("""
+            UPDATE spaces
+            SET display_eui = $1, updated_at = NOW()
+            WHERE id = $2 AND tenant_id = $3 AND deleted_at IS NULL
+            RETURNING id, code, name, building, floor, zone, state,
+                      sensor_eui, display_eui, site_id, tenant_id,
+                      created_at, updated_at
+        """, display_eui_upper, space_id, tenant.tenant_id)
+
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Space {space_id} not found in tenant {tenant.tenant_slug}")
+
+        logger.info(f"[Tenant:{tenant.tenant_id}] Assigned display {display_eui_upper} to space {space_id}")
+
+        return dict(result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Tenant:{tenant.tenant_id}] Error assigning display to space: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{space_id}/unassign-sensor", response_model=Dict[str, Any], dependencies=[Depends(require_scopes("spaces:write"))])
+async def unassign_sensor_from_space(
+    request: Request,
+    space_id: UUID,
+    tenant: TenantContext = Depends(require_admin)
+):
+    """
+    Unassign sensor device from a parking space (convenience endpoint)
+
+    Sets sensor_eui to NULL for the space.
+
+    Requires: ADMIN role or higher, API key requires spaces:write scope
+
+    Example:
+    ```
+    DELETE /api/v1/spaces/{space_id}/unassign-sensor
+    ```
+
+    Returns updated space with sensor_eui set to null.
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # Update space to remove sensor assignment
+        result = await db_pool.fetchrow("""
+            UPDATE spaces
+            SET sensor_eui = NULL, updated_at = NOW()
+            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+            RETURNING id, code, name, building, floor, zone, state,
+                      sensor_eui, display_eui, site_id, tenant_id,
+                      created_at, updated_at
+        """, space_id, tenant.tenant_id)
+
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Space {space_id} not found in tenant {tenant.tenant_slug}")
+
+        logger.info(f"[Tenant:{tenant.tenant_id}] Unassigned sensor from space {space_id}")
+
+        return dict(result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Tenant:{tenant.tenant_id}] Error unassigning sensor from space: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{space_id}/unassign-display", response_model=Dict[str, Any], dependencies=[Depends(require_scopes("spaces:write"))])
+async def unassign_display_from_space(
+    request: Request,
+    space_id: UUID,
+    tenant: TenantContext = Depends(require_admin)
+):
+    """
+    Unassign display device from a parking space (convenience endpoint)
+
+    Sets display_eui to NULL for the space.
+
+    Requires: ADMIN role or higher, API key requires spaces:write scope
+
+    Example:
+    ```
+    DELETE /api/v1/spaces/{space_id}/unassign-display
+    ```
+
+    Returns updated space with display_eui set to null.
+    """
+    try:
+        db_pool = request.app.state.db_pool
+
+        # Update space to remove display assignment
+        result = await db_pool.fetchrow("""
+            UPDATE spaces
+            SET display_eui = NULL, updated_at = NOW()
+            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+            RETURNING id, code, name, building, floor, zone, state,
+                      sensor_eui, display_eui, site_id, tenant_id,
+                      created_at, updated_at
+        """, space_id, tenant.tenant_id)
+
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Space {space_id} not found in tenant {tenant.tenant_slug}")
+
+        logger.info(f"[Tenant:{tenant.tenant_id}] Unassigned display from space {space_id}")
+
+        return dict(result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Tenant:{tenant.tenant_id}] Error unassigning display from space: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
