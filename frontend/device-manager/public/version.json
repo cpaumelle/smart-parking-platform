@@ -1,10 +1,6 @@
 {
-  "version": "4.0.0",
-  "build": 44,
-  "buildTimestamp": "2025-10-17 16:40:29 UTC",
-  "buildDate": "20251017",
-  "buildTime": "164029",
-  "buildNumber": "20251017.44",
-  "gitCommit": "unknown",
-  "environment": "production"
+  "version": "20251021.5",
+  "buildDate": "2025-10-21T12:00:00Z",
+  "commit": "fix-ui-gateway-readonly",
+  "description": "Fixed all UI components to align with v5.3 read-only gateway API"
 }

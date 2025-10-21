@@ -1,7 +1,7 @@
 // src/components/gateways/GatewayForm.jsx
-// Updated to use real API data structure and validation
+// DISABLED - Gateways are read-only in v5.3 API (auto-discovered via ChirpStack)
 import { useState } from 'react';
-import { createGateway } from '../../services/gateways.js';
+// import { createGateway } from '../../services/gateways.js'; // REMOVED - read-only
 import { 
   GATEWAY_STATUS_OPTIONS, 
   validateGatewayEui, 
@@ -72,16 +72,18 @@ const GatewayForm = ({ onSaved, onCancel }) => {
         }
       });
 
-      await createGateway(payload);
-      
-      // Reset form
-      setFormData({
-        gw_eui: '',
-        gateway_name: '',
-        status: GATEWAY_STATUS.OFFLINE
-      });
-      
-      onSaved?.();
+      // await createGateway(payload); // REMOVED - gateways are read-only
+      setError('Gateways are auto-discovered via ChirpStack and cannot be manually created');
+      return;
+
+      // // Reset form
+      // setFormData({
+      //   gw_eui: '',
+      //   gateway_name: '',
+      //   status: GATEWAY_STATUS.OFFLINE
+      // });
+
+      // onSaved?.();
     } catch (err) {
       console.error('Failed to create gateway:', err);
       setError(err?.userMessage || err?.message || 'Failed to create gateway');

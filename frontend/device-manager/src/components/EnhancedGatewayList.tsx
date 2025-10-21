@@ -135,38 +135,46 @@ const EnhancedGatewayList: React.FC = () => {
   };
 
   const toggleGatewayStatus = async (gateway: Gateway) => {
-    try {
-      const newStatus = gateway.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
-      const response = await fetch(`https://api3.sensemy.cloud/v1/gateways/${gateway.gw_eui}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-      
-      if (!response.ok) throw new Error('Failed to update gateway status');
-      
-      await loadGateways();
-    } catch (err) {
-      console.error('Error updating gateway status:', err);
-      setError('Failed to update gateway status');
-    }
+    // DISABLED - Gateways are read-only in v5.3 API
+    setError('Gateways are managed via ChirpStack and cannot be manually updated. Status updates are not supported in v5.3.');
+    return;
+
+    // try {
+    //   const newStatus = gateway.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
+    //   const response = await fetch(`https://api3.sensemy.cloud/v1/gateways/${gateway.gw_eui}`, {
+    //     method: 'PUT',
+    //     headers: { 'Content-Type': 'application/json' },
+    //     body: JSON.stringify({ status: newStatus })
+    //   });
+    //
+    //   if (!response.ok) throw new Error('Failed to update gateway status');
+    //
+    //   await loadGateways();
+    // } catch (err) {
+    //   console.error('Error updating gateway status:', err);
+    //   setError('Failed to update gateway status');
+    // }
   };
 
   const archiveGateway = async (gateway: Gateway) => {
-    if (!confirm(`Archive gateway ${gateway.gateway_name || gateway.gw_eui}?`)) return;
-    
-    try {
-      const response = await fetch(`https://api3.sensemy.cloud/v1/gateways/${gateway.gw_eui}/archive?confirm=true`, {
-        method: 'PATCH'
-      });
-      
-      if (!response.ok) throw new Error('Failed to archive gateway');
-      
-      await loadGateways();
-    } catch (err) {
-      console.error('Error archiving gateway:', err);
-      setError('Failed to archive gateway');
-    }
+    // DISABLED - Gateways are read-only in v5.3 API
+    setError('Gateways are managed via ChirpStack and cannot be archived. Archive operations are not supported in v5.3.');
+    return;
+
+    // if (!confirm(`Archive gateway ${gateway.gateway_name || gateway.gw_eui}?`)) return;
+    //
+    // try {
+    //   const response = await fetch(`https://api3.sensemy.cloud/v1/gateways/${gateway.gw_eui}/archive?confirm=true`, {
+    //     method: 'PATCH'
+    //   });
+    //
+    //   if (!response.ok) throw new Error('Failed to archive gateway');
+    //
+    //   await loadGateways();
+    // } catch (err) {
+    //   console.error('Error archiving gateway:', err);
+    //   setError('Failed to archive gateway');
+    // }
   };
 
   const getStatusBadge = (statusType: string) => {

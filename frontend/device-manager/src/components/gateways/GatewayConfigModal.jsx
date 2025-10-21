@@ -1,14 +1,13 @@
 // src/components/gateways/GatewayConfigModal.jsx
-// Version: 2.0.1 - 2025-08-08 16:30 UTC
+// Version: 3.0.0 - v5.3 Multi-Tenant API
 // Changelog:
-// - Fixed JSX structure issues and HTML entities
-// - Removed problematic Unicode characters
-// - Fixed duplicate div tags
+// - DISABLED update functionality (gateways are read-only in v5.3)
+// - Gateways are auto-discovered and managed via ChirpStack
 
 import { useState, useEffect } from 'react';
 import { MapPin, Settings, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import Modal from '../common/Modal.jsx';
-import { updateGateway } from '../../services/gateways.js';
+// import { updateGateway } from '../../services/gateways.js'; // REMOVED - read-only
 import { locationService } from '../../services/locationService.js';
 import { formatLastSeen, formatDateTime } from '../../utils/formatters.js';
 import {
@@ -118,8 +117,9 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
         ...(selectedRoom && { room_id: selectedRoom })
       };
 
-      await updateGateway(gateway.gw_eui, updatePayload);
-      onSaved?.();
+      // await updateGateway(gateway.gw_eui, updatePayload); // REMOVED - gateways are read-only
+      setError('Gateways are managed via ChirpStack and cannot be manually updated. Configuration updates are not supported in v5.3.');
+      return;
     } catch (err) {
       console.error('Failed to update gateway configuration:', err);
       setError(err?.userMessage || err?.message || 'Failed to save configuration');

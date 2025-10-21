@@ -1,12 +1,13 @@
 // src/components/gateways/GatewayList.jsx
 // Redesigned as card-based layout like devices page, focusing on configuration
+// Version: 2.0.0 - v5.3 Multi-Tenant API (gateways are read-only)
 import { useState } from 'react';
 import { formatLastSeen, formatDateTime } from '../../utils/formatters.js';
-import { archiveGateway, updateGateway } from '../../services/gateways.js';
-import { 
-  getGatewayConfigBadge, 
+// import { archiveGateway, updateGateway } from '../../services/gateways.js'; // REMOVED - read-only
+import {
+  getGatewayConfigBadge,
   getRequiredGatewayAction,
-  gatewayNeedsConfiguration 
+  gatewayNeedsConfiguration
 } from '../../utils/gatewayConfigStatus.js';
 
 const GatewayCard = ({ gateway, onConfigure, onArchive, onUnarchive, isLoading }) => {
@@ -157,33 +158,41 @@ const GatewayList = ({ items, onChanged, onConfigure, loading }) => {
   };
 
   const handleArchive = async (gw_eui) => {
-    if (!confirm(`Archive gateway ${gw_eui}? This will hide it from the main list.`)) return;
-    
-    try {
-      setActionLoading(gw_eui, true);
-      await archiveGateway(gw_eui);
-      onChanged?.();
-    } catch (error) {
-      console.error('Failed to archive gateway:', error);
-      alert(`Failed to archive gateway: ${error?.message || 'Unknown error'}`);
-    } finally {
-      setActionLoading(gw_eui, false);
-    }
+    // DISABLED - Gateways are read-only in v5.3 API
+    alert('Gateways are managed via ChirpStack and cannot be archived. Archive operations are not supported in v5.3.');
+    return;
+
+    // if (!confirm(`Archive gateway ${gw_eui}? This will hide it from the main list.`)) return;
+    //
+    // try {
+    //   setActionLoading(gw_eui, true);
+    //   await archiveGateway(gw_eui);
+    //   onChanged?.();
+    // } catch (error) {
+    //   console.error('Failed to archive gateway:', error);
+    //   alert(`Failed to archive gateway: ${error?.message || 'Unknown error'}`);
+    // } finally {
+    //   setActionLoading(gw_eui, false);
+    // }
   };
 
   const handleUnarchive = async (gateway) => {
-    if (!confirm(`Unarchive gateway ${gateway.gw_eui}? This will restore it to the active list.`)) return;
-    
-    try {
-      setActionLoading(gateway.gw_eui, true);
-      await updateGateway(gateway.gw_eui, { archived_at: null });
-      onChanged?.();
-    } catch (error) {
-      console.error('Failed to unarchive gateway:', error);
-      alert(`Failed to unarchive gateway: ${error?.message || 'Unknown error'}`);
-    } finally {
-      setActionLoading(gateway.gw_eui, false);
-    }
+    // DISABLED - Gateways are read-only in v5.3 API
+    alert('Gateways are managed via ChirpStack and cannot be unarchived. Unarchive operations are not supported in v5.3.');
+    return;
+
+    // if (!confirm(`Unarchive gateway ${gateway.gw_eui}? This will restore it to the active list.`)) return;
+    //
+    // try {
+    //   setActionLoading(gateway.gw_eui, true);
+    //   await updateGateway(gateway.gw_eui, { archived_at: null });
+    //   onChanged?.();
+    // } catch (error) {
+    //   console.error('Failed to unarchive gateway:', error);
+    //   alert(`Failed to unarchive gateway: ${error?.message || 'Unknown error'}`);
+    // } finally {
+    //   setActionLoading(gateway.gw_eui, false);
+    // }
   };
 
   if (loading && items.length === 0) {
