@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "13",
-  "buildNumber": "20251021.13",
-  "buildTimestamp": "2025-10-21T18:00:00Z",
-  "buildDate": "2025-10-21T18:00:00Z",
-  "gitCommit": "fix-device-modal-sites-api",
-  "commit": "fix-device-modal-sites-api",
-  "description": "Fixed Device Configuration Modal: Device Type dropdown populated, Site selection uses Sites API, added Parking Space Registration section.",
+  "build": "14",
+  "buildNumber": "20251021.14",
+  "buildTimestamp": "2025-10-21T12:20:00Z",
+  "buildDate": "2025-10-21T12:20:00Z",
+  "gitCommit": "fix-gateway-and-device-modals",
+  "commit": "fix-gateway-and-device-modals",
+  "description": "Fixed Gateway modal selectedFloor error, DeviceConfigModal now uses Sites API instead of parking spaces, changed 'Location' to 'Site' throughout UI.",
   "environment": "production"
 }

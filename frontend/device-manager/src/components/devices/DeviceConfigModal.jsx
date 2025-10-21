@@ -4,7 +4,7 @@ import Modal from '../common/Modal.jsx';
 import StatusBadge from '../common/StatusBadge.jsx';
 import { getRequiredAction } from '../../utils/deviceStatus.js';
 import { deviceService } from '../../services/deviceService.js';
-import { locationService } from '../../services/locationService.js';
+import { siteService } from '../../services/siteService.js';
 import apiClient from '../../services/apiClient.js';
 
 const DeviceConfigModal = ({ device, onClose, onSave }) => {
@@ -13,7 +13,7 @@ const DeviceConfigModal = ({ device, onClose, onSave }) => {
   // Form state
   const [deviceName, setDeviceName] = useState(device.name || '');
   const [selectedDeviceTypeId, setSelectedDeviceTypeId] = useState(device.device_type_id || '');
-  const [selectedLocationId, setSelectedLocationId] = useState(device.location_id || '');
+  const [selectedSiteId, setSelectedSiteId] = useState(device.location_id || '');
 
   // Parking registration state
   const [isParkingSensor, setIsParkingSensor] = useState(false);
@@ -23,7 +23,7 @@ const DeviceConfigModal = ({ device, onClose, onSave }) => {
 
   // Data state
   const [deviceTypes, setDeviceTypes] = useState([]);
-  const [locations, setLocations] = useState([]);
+  const [sites, setSites] = useState([]);
 
   // UI state
   const [loading, setLoading] = useState(true);
@@ -42,9 +42,9 @@ const DeviceConfigModal = ({ device, onClose, onSave }) => {
         const typesResponse = await apiClient.get('/api/v1/devices/device-types');
         setDeviceTypes(typesResponse.data || []);
 
-        // Load locations
-        const locationsResponse = await locationService.getLocations();
-        setLocations(locationsResponse || []);
+        // Load sites
+        const sitesResponse = await siteService.getSites({ include_inactive: false });
+        setSites(sitesResponse.sites || []);
 
         // Load parking registration status
         try {
@@ -83,9 +83,9 @@ const DeviceConfigModal = ({ device, onClose, onSave }) => {
       const updateData = {
         name: deviceName || null,
         device_type_id: selectedDeviceTypeId ? parseInt(selectedDeviceTypeId) : null,
-        location_id: selectedLocationId || null
+        location_id: selectedSiteId || null
       };
-      console.log("📋 Form values:", { deviceName, selectedDeviceTypeId, selectedLocationId, isParkingSensor, isDisplay });
+      console.log("📋 Form values:", { deviceName, selectedDeviceTypeId, selectedSiteId, isParkingSensor, isDisplay });
 
       await deviceService.updateDevice(device.deveui, updateData);
 
@@ -261,27 +261,27 @@ const DeviceConfigModal = ({ device, onClose, onSave }) => {
                 )}
               </div>
 
-              {/* Location Assignment */}
+              {/* Site Assignment */}
               <div>
-                <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">
-                  Location (optional)
+                <label htmlFor="site" className="block text-sm font-medium text-gray-700 mb-1">
+                  Site (optional)
                 </label>
                 <select
-                  id="location"
-                  value={selectedLocationId}
-                  onChange={(e) => setSelectedLocationId(e.target.value)}
+                  id="site"
+                  value={selectedSiteId}
+                  onChange={(e) => setSelectedSiteId(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={saving}
                 >
-                  <option value="">-- No Location Assigned --</option>
-                  {locations.map((location) => (
-                    <option key={location.location_id} value={location.location_id}>
-                      {location.hierarchy_path || location.name || `Location ${location.location_id}`}
+                  <option value="">-- No Site Assigned --</option>
+                  {sites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      🏢 {site.name} {site.spaces_count ? `(${site.spaces_count} spaces)` : ''}
                     </option>
                   ))}
                 </select>
-                {locations.length === 0 && (
-                  <p className="mt-1 text-sm text-gray-500">No locations configured yet</p>
+                {sites.length === 0 && (
+                  <p className="mt-1 text-sm text-gray-500">No sites configured yet</p>
                 )}
               </div>
 

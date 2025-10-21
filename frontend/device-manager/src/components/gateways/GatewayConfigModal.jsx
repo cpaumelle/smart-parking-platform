@@ -65,9 +65,7 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
       const updatePayload = {
         gateway_name: formData.gateway_name.trim(),
         location_id: formData.location_id,
-        ...(selectedSite && { site_id: selectedSite }),
-        ...(selectedFloor && { floor_id: selectedFloor }),
-        ...(selectedRoom && { room_id: selectedRoom })
+        ...(selectedSite && { site_id: selectedSite })
       };
 
       // await updateGateway(gateway.gw_eui, updatePayload); // REMOVED - gateways are read-only
