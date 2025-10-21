@@ -1,15 +1,22 @@
 # src/routers/reservations.py
 # Reservations API Router for V5 Smart Parking Platform
 # Handles parking space reservations with V4 compatibility
+# Multi-tenancy enabled with tenant scoping
 
-from fastapi import APIRouter, Request, Query, HTTPException, status
+from fastapi import APIRouter, Request, Query, HTTPException, status, Depends
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
 import json
+import logging
+
+from ..models import TenantContext
+from ..tenant_auth import require_viewer, require_admin
+from ..api_scopes import require_scopes
 
 router = APIRouter(prefix="/api/v1/reservations", tags=["reservations"])
+logger = logging.getLogger(__name__)
 
 class ReservationCreate(BaseModel):
     """Request model for creating a reservation (V4 API compatible)"""
@@ -24,30 +31,34 @@ class ReservationCreate(BaseModel):
     user_email: Optional[str] = None
     user_phone: Optional[str] = None
 
-@router.get("/", response_model=Dict[str, Any])
+@router.get("/", response_model=Dict[str, Any], dependencies=[Depends(require_scopes("reservations:read"))])
 async def list_reservations(
     request: Request,
-    status_filter: Optional[str] = Query(None, alias="status", description="Filter by status: active, completed, cancelled, no_show")
+    status_filter: Optional[str] = Query(None, alias="status", description="Filter by status: active, completed, cancelled, no_show"),
+    tenant: TenantContext = Depends(require_viewer)
 ):
     """
-    List all reservations with optional status filter
+    List all reservations for the current tenant
 
     Returns reservations in V4-compatible format with:
     - id: space_id (for UI compatibility)
     - reservation_id: actual reservation UUID
     - reserved_from/reserved_until: V4 field names
+
+    Requires: VIEWER role or higher, API key requires reservations:read scope
     """
     try:
         db_pool = request.app.state.db_pool
 
-        conditions = []
-        params = []
+        # Always filter by tenant_id
+        conditions = ["r.tenant_id = $1"]
+        params = [tenant.tenant_id]
 
         if status_filter:
-            conditions.append(f"status = ${len(params) + 1}")
+            conditions.append(f"r.status = ${len(params) + 1}")
             params.append(status_filter)
 
-        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        where_clause = "WHERE " + " AND ".join(conditions)
 
         query = f"""
             SELECT
@@ -67,6 +78,7 @@ async def list_reservations(
         """
 
         results = await db_pool.fetch(query, *params)
+        logger.info(f"[Tenant:{tenant.tenant_id}] List reservations: count={len(results)}")
 
         reservations = []
         for row in results:
@@ -350,12 +362,17 @@ async def cancel_reservation(
             detail=f"Failed to cancel reservation: {str(e)}"
         )
 
-@router.get("/{reservation_id}", response_model=Dict[str, Any])
+@router.get("/{reservation_id}", response_model=Dict[str, Any], dependencies=[Depends(require_scopes("reservations:read"))])
 async def get_reservation(
     request: Request,
-    reservation_id: uuid.UUID
+    reservation_id: uuid.UUID,
+    tenant: TenantContext = Depends(require_viewer)
 ):
-    """Get details of a specific reservation"""
+    """
+    Get details of a specific reservation
+
+    Requires: VIEWER role or higher, API key requires reservations:read scope
+    """
     try:
         db_pool = request.app.state.db_pool
 
@@ -375,10 +392,10 @@ async def get_reservation(
                 s.code as space_code
             FROM reservations r
             JOIN spaces s ON s.id = r.space_id
-            WHERE r.id = $1
+            WHERE r.id = $1 AND r.tenant_id = $2
         """
 
-        result = await db_pool.fetchrow(query, reservation_id)
+        result = await db_pool.fetchrow(query, reservation_id, tenant.tenant_id)
 
         if not result:
             raise HTTPException(

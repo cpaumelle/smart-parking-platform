@@ -1,12 +1,17 @@
 """
 Devices Router - CRUD API for sensor and display devices
 Manages both sensor_devices and display_devices tables
+Multi-tenancy enabled with tenant scoping
 """
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from typing import Optional, List, Dict, Any
 import logging
 from uuid import UUID
 from datetime import datetime
+
+from ..models import TenantContext
+from ..tenant_auth import get_current_tenant, require_viewer, require_admin
+from ..api_scopes import require_scopes
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 logger = logging.getLogger(__name__)
@@ -82,20 +87,27 @@ async def list_device_types(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/", response_model=List[Dict[str, Any]])
+@router.get("/", response_model=List[Dict[str, Any]], dependencies=[Depends(require_scopes("devices:read"))])
 async def list_devices(
     request: Request,
     device_type: Optional[str] = Query(None, description="Filter by device_type (sensor/display)"),
     device_category: Optional[str] = Query(None, description="Filter by category: 'sensor' or 'display'"),
     status: Optional[str] = Query(None, description="Filter by status (orphan/active/inactive/decommissioned)"),
     enabled: Optional[bool] = Query(None, description="Filter by enabled flag"),
-    include_archived: bool = Query(False, description="Include disabled devices")
+    include_archived: bool = Query(False, description="Include disabled devices"),
+    include_orphans: bool = Query(True, description="Include orphan (unassigned) devices"),
+    tenant: TenantContext = Depends(require_viewer)
 ):
     """
-    List all devices (both sensors and displays) with optional filters
+    List devices visible to the current tenant
 
-    Returns combined list from sensor_devices and display_devices tables
+    Returns devices that are either:
+    - Assigned to spaces owned by the current tenant
+    - Orphan devices (not assigned to any space) if include_orphans=true
+
     Each device has a 'category' field indicating 'sensor' or 'display'
+
+    Requires: VIEWER role or higher, API key requires devices:read scope
     """
     try:
         db_pool = request.app.state.db_pool
@@ -110,52 +122,72 @@ async def list_devices(
         else:
             categories_to_fetch = ['sensor', 'display']
 
-        # Fetch sensor devices
+        # Fetch sensor devices (tenant-scoped)
         if 'sensor' in categories_to_fetch:
             sensor_conditions = []
-            sensor_params = []
-            param_count = 1
+            sensor_params = [tenant.tenant_id]
+            param_count = 2
+
+            # Tenant scoping: include devices assigned to tenant's spaces or orphans
+            if include_orphans:
+                sensor_conditions.append("""(
+                    sd.status = 'orphan' OR
+                    EXISTS (
+                        SELECT 1 FROM spaces s
+                        WHERE s.sensor_eui = sd.dev_eui
+                        AND s.tenant_id = $1
+                        AND s.deleted_at IS NULL
+                    )
+                )""")
+            else:
+                sensor_conditions.append("""EXISTS (
+                    SELECT 1 FROM spaces s
+                    WHERE s.sensor_eui = sd.dev_eui
+                    AND s.tenant_id = $1
+                    AND s.deleted_at IS NULL
+                )""")
 
             if device_type is not None:
-                sensor_conditions.append(f"device_type = ${param_count}")
+                sensor_conditions.append(f"sd.device_type = ${param_count}")
                 sensor_params.append(device_type)
                 param_count += 1
 
             if status is not None:
-                sensor_conditions.append(f"status = ${param_count}")
+                sensor_conditions.append(f"sd.status = ${param_count}")
                 sensor_params.append(status)
                 param_count += 1
 
             if enabled is not None:
-                sensor_conditions.append(f"enabled = ${param_count}")
+                sensor_conditions.append(f"sd.enabled = ${param_count}")
                 sensor_params.append(enabled)
                 param_count += 1
             elif not include_archived:
-                sensor_conditions.append("enabled = true")
+                sensor_conditions.append("sd.enabled = true")
 
-            where_clause = "WHERE " + " AND ".join(sensor_conditions) if sensor_conditions else ""
+            where_clause = "WHERE " + " AND ".join(sensor_conditions)
 
             sensor_query = f"""
                 SELECT
-                    id,
-                    dev_eui as deveui,
-                    device_type,
-                    device_model,
-                    manufacturer,
-                    payload_decoder,
-                    capabilities,
-                    enabled,
-                    last_seen_at,
-                    created_at,
-                    updated_at,
-                    status,
+                    sd.id,
+                    sd.dev_eui as deveui,
+                    sd.device_type,
+                    sd.device_model,
+                    sd.manufacturer,
+                    sd.payload_decoder,
+                    sd.capabilities,
+                    sd.enabled,
+                    sd.last_seen_at,
+                    sd.created_at,
+                    sd.updated_at,
+                    sd.status,
                     'sensor' as category
-                FROM sensor_devices
+                FROM sensor_devices sd
                 {where_clause}
-                ORDER BY created_at DESC
+                ORDER BY sd.created_at DESC
             """
 
             sensor_results = await db_pool.fetch(sensor_query, *sensor_params)
+            logger.info(f"[Tenant:{tenant.tenant_id}] Found {len(sensor_results)} sensor devices")
 
             for row in sensor_results:
                 devices.append({
@@ -174,53 +206,73 @@ async def list_devices(
                     "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
                 })
 
-        # Fetch display devices
+        # Fetch display devices (tenant-scoped)
         if 'display' in categories_to_fetch:
             display_conditions = []
-            display_params = []
-            param_count = 1
+            display_params = [tenant.tenant_id]
+            param_count = 2
+
+            # Tenant scoping: include devices assigned to tenant's spaces or orphans
+            if include_orphans:
+                display_conditions.append("""(
+                    dd.status = 'orphan' OR
+                    EXISTS (
+                        SELECT 1 FROM spaces s
+                        WHERE s.display_eui = dd.dev_eui
+                        AND s.tenant_id = $1
+                        AND s.deleted_at IS NULL
+                    )
+                )""")
+            else:
+                display_conditions.append("""EXISTS (
+                    SELECT 1 FROM spaces s
+                    WHERE s.display_eui = dd.dev_eui
+                    AND s.tenant_id = $1
+                    AND s.deleted_at IS NULL
+                )""")
 
             if device_type is not None:
-                display_conditions.append(f"device_type = ${param_count}")
+                display_conditions.append(f"dd.device_type = ${param_count}")
                 display_params.append(device_type)
                 param_count += 1
 
             if status is not None:
-                display_conditions.append(f"status = ${param_count}")
+                display_conditions.append(f"dd.status = ${param_count}")
                 display_params.append(status)
                 param_count += 1
 
             if enabled is not None:
-                display_conditions.append(f"enabled = ${param_count}")
+                display_conditions.append(f"dd.enabled = ${param_count}")
                 display_params.append(enabled)
                 param_count += 1
             elif not include_archived:
-                display_conditions.append("enabled = true")
+                display_conditions.append("dd.enabled = true")
 
-            where_clause = "WHERE " + " AND ".join(display_conditions) if display_conditions else ""
+            where_clause = "WHERE " + " AND ".join(display_conditions)
 
             display_query = f"""
                 SELECT
-                    id,
-                    dev_eui as deveui,
-                    device_type,
-                    device_model,
-                    manufacturer,
-                    display_codes,
-                    fport,
-                    confirmed_downlinks,
-                    enabled,
-                    last_seen_at,
-                    created_at,
-                    updated_at,
-                    status,
+                    dd.id,
+                    dd.dev_eui as deveui,
+                    dd.device_type,
+                    dd.device_model,
+                    dd.manufacturer,
+                    dd.display_codes,
+                    dd.fport,
+                    dd.confirmed_downlinks,
+                    dd.enabled,
+                    dd.last_seen_at,
+                    dd.created_at,
+                    dd.updated_at,
+                    dd.status,
                     'display' as category
-                FROM display_devices
+                FROM display_devices dd
                 {where_clause}
-                ORDER BY created_at DESC
+                ORDER BY dd.created_at DESC
             """
 
             display_results = await db_pool.fetch(display_query, *display_params)
+            logger.info(f"[Tenant:{tenant.tenant_id}] Found {len(display_results)} display devices")
 
             for row in display_results:
                 devices.append({

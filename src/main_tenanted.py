@@ -35,9 +35,10 @@ from .api_tenants import router as tenants_router
 from .routers.spaces_tenanted import router as spaces_router  # Tenanted version
 from .routers.downlink_monitor import router as downlink_monitor_router
 from .routers.metrics import router as metrics_router
-# from .routers.devices import router as devices_router  # TODO: Add tenant scoping
-# from .routers.reservations import router as reservations_router  # TODO: Add tenant scoping
-# from .routers.gateways import router as gateways_router  # Can remain public or add tenant scoping
+from .routers.display_policies import router as display_policies_router
+from .routers.devices import router as devices_router
+from .routers.reservations import router as reservations_router
+from .routers.gateways import router as gateways_router
 
 # Configure logging
 logging.basicConfig(
@@ -224,17 +225,20 @@ app.include_router(tenants_router)
 
 # Tenant-scoped resource endpoints
 app.include_router(spaces_router)
+app.include_router(reservations_router)
+app.include_router(devices_router)
+
+# Display policy management (tenant-scoped)
+app.include_router(display_policies_router)
 
 # Downlink queue monitoring (requires admin auth)
 app.include_router(downlink_monitor_router)
 
+# Gateway monitoring (infrastructure-level, shared across tenants)
+app.include_router(gateways_router)
+
 # Observability endpoints
 app.include_router(metrics_router)
-
-# TODO: Add tenant scoping to these routers
-# app.include_router(devices_router)
-# app.include_router(reservations_router)
-# app.include_router(gateways_router)
 
 # ============================================================
 # Exception Handlers

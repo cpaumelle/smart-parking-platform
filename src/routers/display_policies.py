@@ -28,12 +28,12 @@ class DisplayPolicyBase(BaseModel):
     debounce_window_sec: int = Field(10, ge=5, le=30, description="Require 2 readings within this window (5-30)")
 
     # Colors (hex RGB)
-    occupied_color: str = Field("FF0000", regex="^[0-9A-Fa-f]{6}$")
-    free_color: str = Field("00FF00", regex="^[0-9A-Fa-f]{6}$")
-    reserved_color: str = Field("FFA500", regex="^[0-9A-Fa-f]{6}$")
-    reserved_soon_color: str = Field("FFFF00", regex="^[0-9A-Fa-f]{6}$")
-    blocked_color: str = Field("808080", regex="^[0-9A-Fa-f]{6}$")
-    out_of_service_color: str = Field("800080", regex="^[0-9A-Fa-f]{6}$")
+    occupied_color: str = Field("FF0000", pattern="^[0-9A-Fa-f]{6}$")
+    free_color: str = Field("00FF00", pattern="^[0-9A-Fa-f]{6}$")
+    reserved_color: str = Field("FFA500", pattern="^[0-9A-Fa-f]{6}$")
+    reserved_soon_color: str = Field("FFFF00", pattern="^[0-9A-Fa-f]{6}$")
+    blocked_color: str = Field("808080", pattern="^[0-9A-Fa-f]{6}$")
+    out_of_service_color: str = Field("800080", pattern="^[0-9A-Fa-f]{6}$")
 
     # Behaviors
     blink_reserved_soon: bool = False
@@ -55,12 +55,12 @@ class DisplayPolicyUpdate(BaseModel):
     sensor_unknown_timeout_sec: Optional[int] = Field(None, ge=0, le=300)
     debounce_window_sec: Optional[int] = Field(None, ge=5, le=30)
 
-    occupied_color: Optional[str] = Field(None, regex="^[0-9A-Fa-f]{6}$")
-    free_color: Optional[str] = Field(None, regex="^[0-9A-Fa-f]{6}$")
-    reserved_color: Optional[str] = Field(None, regex="^[0-9A-Fa-f]{6}$")
-    reserved_soon_color: Optional[str] = Field(None, regex="^[0-9A-Fa-f]{6}$")
-    blocked_color: Optional[str] = Field(None, regex="^[0-9A-Fa-f]{6}$")
-    out_of_service_color: Optional[str] = Field(None, regex="^[0-9A-Fa-f]{6}$")
+    occupied_color: Optional[str] = Field(None, pattern="^[0-9A-Fa-f]{6}$")
+    free_color: Optional[str] = Field(None, pattern="^[0-9A-Fa-f]{6}$")
+    reserved_color: Optional[str] = Field(None, pattern="^[0-9A-Fa-f]{6}$")
+    reserved_soon_color: Optional[str] = Field(None, pattern="^[0-9A-Fa-f]{6}$")
+    blocked_color: Optional[str] = Field(None, pattern="^[0-9A-Fa-f]{6}$")
+    out_of_service_color: Optional[str] = Field(None, pattern="^[0-9A-Fa-f]{6}$")
 
     blink_reserved_soon: Optional[bool] = None
     blink_pattern_ms: Optional[int] = Field(None, ge=100, le=2000)
@@ -70,7 +70,7 @@ class DisplayPolicyUpdate(BaseModel):
 class AdminOverrideCreate(BaseModel):
     """Request model for creating an admin override"""
     space_id: uuid.UUID
-    override_type: str = Field(..., regex="^(blocked|out_of_service)$")
+    override_type: str = Field(..., pattern="^(blocked|out_of_service)$")
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     reason: Optional[str] = None

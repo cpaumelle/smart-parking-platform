@@ -3,6 +3,7 @@
 **Base URL:** `https://api.verdegris.eu`
 **Version:** 5.3.0
 **Last Updated:** 2025-10-21
+**Status:** ✅ All routers enabled and fully functional
 
 ---
 
@@ -1642,6 +1643,32 @@ GET /api/v1/reservations?date_from=2025-10-22T00:00:00Z&date_to=2025-10-23T00:00
 # Search by code (partial match)
 GET /api/v1/spaces?code=A-1*
 ```
+
+---
+
+## Recent Updates (v5.3 - October 2025)
+
+### All Routers Now Enabled ✅
+
+As of 2025-10-21, all API routers have been enabled and are fully functional:
+
+**Newly Enabled Routers:**
+1. **Display Policies** (`/api/v1/display-policies`) - 7 endpoints for policy-driven display control
+2. **Devices** (`/api/v1/devices`) - 6 endpoints with tenant scoping for device management
+3. **Reservations** (`/api/v1/reservations`) - 4 endpoints with tenant isolation
+4. **Gateways** (`/api/v1/gateways`) - 3 endpoints for infrastructure monitoring
+
+**Enhancements:**
+- Full tenant scoping on all multi-tenant resources
+- RBAC enforcement with role and scope validation
+- Prometheus metrics fully operational (`/metrics`)
+- Pydantic 2.10 compatibility
+
+**Total Endpoints:** 60+ endpoints across 9 routers
+
+For detailed implementation information, see:
+- [`docs/OPENAPI_VALIDATION_REPORT.md`](./OPENAPI_VALIDATION_REPORT.md) - Validation analysis
+- [`docs/OPENAPI_IMPLEMENTATION_SUMMARY.md`](./OPENAPI_IMPLEMENTATION_SUMMARY.md) - Implementation details
 
 ---
 

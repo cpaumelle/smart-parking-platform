@@ -3,8 +3,8 @@
 A production-ready smart parking management system using LoRaWAN sensors, ChirpStack network server, and a consolidated REST API.
 
 **Version:** 5.3.0
-**Status:** ✅ Production Deployment
-**Deployed:** 2025-10-20
+**Status:** ✅ Production Ready - All Routers Enabled
+**Last Updated:** 2025-10-21
 
 ---
 
@@ -2150,7 +2150,17 @@ When reporting issues, include:
 
 ### Version History
 
-- **v5.3.0** (2025-10-20) - Multi-Tenancy + Reservation Engine + Production Hardening
+- **v5.3.0** (2025-10-21) - Multi-Tenancy + All Routers Enabled + Production Hardening
+
+  **Router Implementation (2025-10-21):**
+  - **All API routers enabled** - Display policies, devices, reservations, gateways now fully functional
+  - **Tenant scoping on devices** - Devices filtered by space assignment + orphan status
+  - **Tenant scoping on reservations** - All queries enforce tenant_id isolation
+  - **RBAC enforcement** - Proper role and scope validation on all endpoints
+  - **Pydantic 2.10 compatibility** - Updated regex → pattern for field validation
+  - **Prometheus metrics operational** - /metrics endpoint fully functional
+  - **60+ endpoints now available** - Complete API surface area accessible
+  - Documentation: `OPENAPI_VALIDATION_REPORT.md`, `OPENAPI_IMPLEMENTATION_SUMMARY.md`
 
   **Multi-Tenancy & Authentication:**
   - **Complete tenant isolation** - Database-level enforcement via `tenant_id` foreign keys

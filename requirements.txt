@@ -23,6 +23,6 @@ bcrypt==4.1.2
 python-dateutil==2.8.2
 pyjwt==2.9.0  # For JWT authentication in multi-tenancy
 
-# Monitoring (add later)
-# prometheus-client==0.19.0
+# Monitoring
+prometheus-client==0.19.0
 chirpstack-api==4.8.1
