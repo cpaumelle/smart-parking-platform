@@ -1,11 +1,14 @@
 // src/components/gateways/GatewayConfigModal.jsx
-// Version: 4.0.0 - v5.3 Multi-Tenant API
+// Version: 6.0.0 - Build 16 - Editable site assignment via ChirpStack description field
 // Changelog:
+// - Version 6.0.0: Added editable description field with Save/Cancel buttons - updates ChirpStack directly
+// - Version 5.0.0: Added description field editing - updates ChirpStack database
 // - Version 4.0.0: Made modal fully informational (read-only) - gateways managed in ChirpStack
 // - Version 3.0.0: DISABLED update functionality (gateways are read-only in v5.3)
 // - Gateways are auto-discovered and managed via ChirpStack
 
-import { Settings, AlertCircle } from 'lucide-react';
+import { useState } from 'react';
+import { Settings, AlertCircle, Save } from 'lucide-react';
 import Modal from '../common/Modal.jsx';
 import { formatLastSeen, formatDateTime } from '../../utils/formatters.js';
 import {
@@ -13,9 +16,39 @@ import {
   getGatewayConfigBadge,
   getRequiredGatewayAction
 } from '../../utils/gatewayConfigStatus.js';
+import { updateGateway } from '../../services/gateways.js';
 
 const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
-  // No form state needed - this is a read-only informational modal
+  // Form state for editing description
+  const [description, setDescription] = useState(gateway.description || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      setError('');
+      setSuccess(false);
+
+      await updateGateway(gateway.gw_eui, { description });
+
+      setSuccess(true);
+      if (onSaved) {
+        onSaved();
+      }
+
+      // Close modal after 1 second
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+    } catch (err) {
+      console.error('Failed to update gateway:', err);
+      setError(err?.message || 'Failed to update gateway description');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Configuration status analysis
   const configStatus = getGatewayConfigStatus(gateway);
@@ -37,7 +70,7 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
     <Modal
       isOpen={true}
       onClose={onClose}
-      title={`Gateway Information: ${gateway.gateway_name || gateway.gw_eui}`}
+      title={`Configure Gateway: ${gateway.gateway_name || gateway.gw_eui}`}
       size="large"
     >
       <div className="space-y-6">
@@ -87,7 +120,7 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
                 <p className="text-yellow-800 font-medium">Configuration Required</p>
                 <p className="text-yellow-700">
                   {isOrphaned && 'This gateway was auto-created and needs a custom name. '}
-                  {!formData.location_id && 'Location assignment is required for spatial analytics and device management.'}
+                  {!description && 'Site assignment via description field is recommended for better organization.'}
                 </p>
               </div>
             </div>
@@ -95,26 +128,26 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
         </div>
 
         {/* Informational Notice */}
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-start">
-            <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" />
+            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
             <div>
-              <h4 className="text-sm font-medium text-yellow-900">Gateway Management</h4>
-              <p className="text-sm text-yellow-700 mt-1">
-                Gateways are managed directly in ChirpStack and are read-only in this interface.
-                To modify gateway settings (name, location, description), please use the ChirpStack admin interface.
+              <h4 className="text-sm font-medium text-blue-900">Site Assignment via Description Field</h4>
+              <p className="text-sm text-blue-700 mt-1">
+                Use the description field below to assign this gateway to a site or location.
+                This field is stored in ChirpStack and is also visible in the ChirpStack admin interface.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Gateway Details (Read-Only) */}
+        {/* Gateway Details */}
         <div className="bg-gray-50 p-4 rounded-lg">
           <h4 className="font-medium text-gray-900 mb-3">Gateway Details</h4>
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-                Gateway Name
+                Gateway Name (Read-Only)
               </label>
               <div className="text-sm text-gray-900 font-medium">
                 {gateway.gateway_name || 'Unnamed Gateway'}
@@ -130,16 +163,23 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
               </div>
             </div>
 
-            {gateway.description && (
-              <div>
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-                  Description
-                </label>
-                <div className="text-sm text-gray-900">
-                  {gateway.description}
-                </div>
-              </div>
-            )}
+            {/* Editable Description Field */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                Site / Location Description *
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g., Main Building - Floor 2, Downtown Parking Garage, etc."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                rows="2"
+                disabled={saving}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter the site name or location where this gateway is installed
+              </p>
+            </div>
 
             {(gateway.latitude || gateway.longitude) && (
               <div>
@@ -175,33 +215,61 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
           </div>
         </div>
 
-        {/* How to Update */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <Settings className="w-5 h-5 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
-            <div>
-              <h4 className="text-sm font-medium text-blue-900">How to Update Gateway Settings</h4>
-              <p className="text-sm text-blue-700 mt-1">
-                To modify this gateway's configuration:
-              </p>
-              <ol className="text-sm text-blue-700 mt-2 ml-4 list-decimal space-y-1">
-                <li>Open the ChirpStack admin interface</li>
-                <li>Navigate to Gateways → Select this gateway</li>
-                <li>Update name, description, location, or other settings</li>
-                <li>Changes will be automatically reflected here</li>
-              </ol>
+        {/* Success Message */}
+        {success && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <Save className="w-5 h-5 text-green-600 mt-0.5 mr-2 flex-shrink-0" />
+              <div>
+                <h4 className="text-sm font-medium text-green-900">Gateway Updated Successfully!</h4>
+                <p className="text-sm text-green-700 mt-1">
+                  The site/location assignment has been saved to ChirpStack.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Close Button */}
-        <div className="flex items-center justify-end pt-4 border-t border-gray-200">
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 mr-2 flex-shrink-0" />
+              <div>
+                <h4 className="text-sm font-medium text-red-900">Update Failed</h4>
+                <p className="text-sm text-red-700 mt-1">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-white bg-blue-600 border border-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            disabled={saving}
+            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Close
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+          >
+            {saving ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Save Site Assignment
+              </>
+            )}
           </button>
         </div>
       </div>

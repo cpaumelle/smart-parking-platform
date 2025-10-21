@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "15",
-  "buildNumber": "20251021.15",
-  "buildTimestamp": "2025-10-21T12:40:00Z",
-  "buildDate": "2025-10-21T12:40:00Z",
-  "gitCommit": "gateway-read-only-modal",
-  "commit": "gateway-read-only-modal",
-  "description": "Gateway modal now informational/read-only with clear instructions to use ChirpStack for updates. Removed confusing Save button.",
+  "build": "16",
+  "buildNumber": "20251021.16",
+  "buildTimestamp": "2025-10-21T14:30:00Z",
+  "buildDate": "2025-10-21T14:30:00Z",
+  "gitCommit": "gateway-chirpstack-update",
+  "commit": "gateway-chirpstack-update",
+  "description": "Gateway modal now allows editing description field to assign sites. Updates ChirpStack database directly via PATCH /api/v1/gateways/{gw_eui}",
   "environment": "production"
 }
