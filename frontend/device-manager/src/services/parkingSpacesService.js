@@ -62,29 +62,13 @@ export const parkingSpacesService = {
     }
   },
 
-  async restoreSpace(spaceId) {
-    try {
-      console.log('Restoring parking space:', spaceId);
-      const response = await apiClient.post('/api/v1/spaces/' + spaceId + '/restore');
-      console.log('Parking space restored successfully');
-      return response.data;
-    } catch (error) {
-      console.error('Failed to restore parking space:', error.userMessage);
-      throw error;
-    }
-  },
+  // REMOVED - /restore endpoint doesn't exist in v5.3 API
+  // Spaces are soft-deleted via DELETE and can be filtered with includeDeleted param
+  // async restoreSpace(spaceId) { ... }
 
-  async getSensorList() {
-    try {
-      console.log('Fetching sensor list');
-      const response = await apiClient.get('/api/v1/spaces/sensor-list');
-      console.log('Retrieved sensor list:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('Failed to fetch sensor list:', error.userMessage);
-      throw error;
-    }
-  },
+  // REMOVED - /sensor-list endpoint doesn't exist
+  // Use getAvailableSensors() instead which calls /api/v1/devices
+  // async getSensorList() { ... }
 
   async getAvailableSensors() {
     try {

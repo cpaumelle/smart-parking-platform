@@ -41,18 +41,11 @@ export const deviceService = {
     }
   },
 
-  // POST /api/v1/devices
-  async createDevice(data) {
-    try {
-      console.log('📝 Creating device:', data);
-      const response = await apiClient.post('/api/v1/devices', data);
-      console.log('✅ Device created successfully');
-      return response.data;
-    } catch (error) {
-      console.error('❌ Failed to create device:', error.userMessage);
-      throw error;
-    }
-  },
+  // REMOVED - POST /api/v1/devices not supported in v5.3 API
+  // Devices are auto-created when assigned to spaces via:
+  // - POST /api/v1/spaces/{space_id}/assign-sensor?sensor_eui=...
+  // - POST /api/v1/spaces/{space_id}/assign-display?display_eui=...
+  // async createDevice(data) { ... }
 
   // PATCH /api/v1/devices/{deveui}/archive
   async archiveDevice(deveui, confirm = true) {
