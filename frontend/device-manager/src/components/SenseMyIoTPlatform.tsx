@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import VersionInfo from "../components/common/VersionInfo.jsx";
+import { useAuth } from "../contexts/AuthContext.jsx";
 import {
   Wifi,
   MapPin,
@@ -18,7 +19,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Radio,
-  Car
+  Car,
+  LogOut,
+  User as UserIcon
 } from 'lucide-react';
 
 // Import real page implementations
@@ -63,7 +66,9 @@ const useSidebar = () => {
 const SenseMyIoTPlatform: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [pageFilters, setPageFilters] = useState<Record<string, any>>({});
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const sidebar = useSidebar();
+  const { user, currentTenant, logout } = useAuth();
 
   const navigationItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, disabled: false },
@@ -246,7 +251,7 @@ const SenseMyIoTPlatform: React.FC = () => {
               </h1>
             </div>
 
-            {/* Status indicators */}
+            {/* Status indicators and user menu */}
             <div className="flex items-center space-x-2 lg:space-x-4 xl:space-x-6">
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 lg:w-3 lg:h-3 bg-green-400 rounded-full"></div>
@@ -254,10 +259,48 @@ const SenseMyIoTPlatform: React.FC = () => {
               </div>
 
               <div className="hidden sm:flex items-center space-x-2 text-xs lg:text-sm xl:text-base text-gray-600">
-                <span>API:</span>
+                <span>Tenant:</span>
                 <code className="bg-gray-100 px-2 py-1 lg:px-3 lg:py-2 rounded text-xs lg:text-sm font-mono">
-                  transform.verdegris.eu
+                  {currentTenant?.name || 'N/A'}
                 </code>
+              </div>
+
+              {/* User menu */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  aria-label="User menu"
+                >
+                  <UserIcon className="w-5 h-5" />
+                  <span className="hidden lg:inline text-sm">{user?.email}</span>
+                </button>
+
+                {/* Dropdown menu */}
+                {showUserMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowUserMenu(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                      <div className="px-4 py-3 border-b border-gray-200">
+                        <p className="text-sm font-medium text-gray-900">{user?.email}</p>
+                        <p className="text-xs text-gray-500 mt-1">{currentTenant?.name}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          logout();
+                          setShowUserMenu(false);
+                        }}
+                        className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Logout</span>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

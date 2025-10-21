@@ -1,23 +1,33 @@
 // src/services/apiClient.js
 import axios from 'axios';
 import API_CONFIG from '../config/api.js';
+import authService from './authService.js';
 
 // Create axios instance
 const apiClient = axios.create(API_CONFIG);
 
-// Request interceptor - log all requests
+// Request interceptor - add auth token and log all requests
 apiClient.interceptors.request.use(
   (config) => {
+    // Add authentication header if token exists
+    const authHeader = authService.getAuthHeader();
+    if (authHeader.Authorization) {
+      config.headers = {
+        ...config.headers,
+        ...authHeader
+      };
+    }
+
     const timestamp = new Date().toISOString();
     console.log(`📤 [${timestamp}] ${config.method.toUpperCase()} ${config.baseURL}${config.url}`);
-    
+
     if (config.data) {
       console.log('📦 Request body:', config.data);
     }
     if (config.params) {
       console.log('🔍 Request params:', config.params);
     }
-    
+
     return config;
   },
   (error) => {
@@ -39,21 +49,47 @@ apiClient.interceptors.response.use(
     
     return response;
   },
-  (error) => {
+  async (error) => {
     const timestamp = new Date().toISOString();
     const status = error.response?.status || 'NO_RESPONSE';
     const url = error.config?.url || 'unknown';
-    
+
     console.error(`📥❌ [${timestamp}] ${status} ${url}`);
     console.error('Error details:', {
       message: error.message,
       code: error.code,
       response: error.response?.data
     });
-    
+
+    // Handle 401 Unauthorized - try to refresh token
+    if (error.response?.status === 401 && !error.config._retry) {
+      error.config._retry = true;
+
+      try {
+        console.log('🔄 401 Unauthorized - attempting token refresh...');
+        await authService.refreshAccessToken();
+
+        // Retry the original request with new token
+        const authHeader = authService.getAuthHeader();
+        error.config.headers = {
+          ...error.config.headers,
+          ...authHeader
+        };
+
+        return apiClient(error.config);
+      } catch (refreshError) {
+        console.error('❌ Token refresh failed - redirecting to login');
+        // Token refresh failed - user needs to login again
+        // This will be handled by the app (redirect to login)
+        return Promise.reject(error);
+      }
+    }
+
     // Add user-friendly error messages
     if (!error.response) {
       error.userMessage = 'Cannot connect to API - check if transform service is running';
+    } else if (error.response.status === 401) {
+      error.userMessage = 'Authentication required. Please login.';
     } else if (error.response.status === 404) {
       error.userMessage = 'API endpoint not found';
     } else if (error.response.status === 500) {
