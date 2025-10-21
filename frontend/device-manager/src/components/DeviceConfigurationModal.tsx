@@ -163,56 +163,40 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
 
   const loadLocations = async () => {
     try {
-      const response = await fetch('https://api3.sensemy.cloud/v1/locations/tree');
-      if (!response.ok) throw new Error('Failed to load locations');
-      const locationTree = await response.json();
-      
-      // Flatten the tree into hierarchical lists
-      const hierarchy = { sites: [], floors: [], rooms: [], zones: [] };
-      
-      const processNode = (node, level = 0) => {
-        const location = {
-          location_id: node.location_id,
-          name: node.name,
-          type: node.type,
-          parent_id: node.parent_id
-        };
-        
-        if (node.type === 'site') hierarchy.sites.push(location);
-        else if (node.type === 'floor') hierarchy.floors.push(location);
-        else if (node.type === 'room') hierarchy.rooms.push(location);
-        else if (node.type === 'zone') hierarchy.zones.push(location);
-        
-        // Process children
-        if (node.children) {
-          node.children.forEach(child => processNode(child, level + 1));
-        }
+      // Use locationService which calls /api/v1/sites
+      const { locationService } = await import('../services/locationService.js');
+      const sites = await locationService.getLocations();
+
+      // Sites from v5.3 API are flat, no tree structure
+      const hierarchy = {
+        sites: sites.filter(s => s.type === 'site' || !s.type),
+        floors: sites.filter(s => s.type === 'floor'),
+        rooms: sites.filter(s => s.type === 'room'),
+        zones: sites.filter(s => s.type === 'zone')
       };
-      
-      locationTree.forEach(node => processNode(node));
+
       setLocations(hierarchy);
     } catch (err) {
-      console.error('Error loading locations:', err);
-      setError('Failed to load locations');
+      console.error('Error loading sites:', err);
+      setError('Failed to load sites');
     }
   };
 
   const loadSmartSuggestions = async () => {
     try {
-      const response = await fetch(`https://api3.sensemy.cloud/v1/devices/full-metadata`);
-      if (response.ok) {
-        const allDevices = await response.json();
-        const currentDevice = allDevices.find(d => d.deveui === device.deveui);
-        
-        if (currentDevice?.device_type_lns) {
-          const suggestions = [{
-            device_type_id: 1000,
-            device_type: currentDevice.device_type_lns,
-            description: `Detected from recent data: ${currentDevice.device_type_lns}`,
-            confidence: 0.85
-          }];
-          setSmartSuggestions(suggestions);
-        }
+      // Use deviceService which calls /api/v1/devices/full-metadata
+      const { deviceService } = await import('../services/deviceService.js');
+      const allDevices = await deviceService.getDeviceMetadata();
+      const currentDevice = allDevices.find(d => d.deveui === device.deveui);
+
+      if (currentDevice?.device_type_lns) {
+        const suggestions = [{
+          device_type_id: 1000,
+          device_type: currentDevice.device_type_lns,
+          description: `Detected from recent data: ${currentDevice.device_type_lns}`,
+          confidence: 0.85
+        }];
+        setSmartSuggestions(suggestions);
       }
     } catch (err) {
       console.error('Error loading smart suggestions:', err);
@@ -230,7 +214,9 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
     setError(null);
 
     try {
-      // Use your existing devices API to update device assignment
+      // Use deviceService which calls /api/v1/devices/{deveui}
+      const { deviceService } = await import('../services/deviceService.js');
+
       const updateData = {
         device_type_id: config.device_type_id,
         location_id: config.location_id,
@@ -242,18 +228,7 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
         lifecycle_state: 'CONFIGURED'
       };
 
-      const response = await fetch(`https://api3.sensemy.cloud/v1/devices/${device.deveui}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updateData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Failed to save device configuration');
-      }
+      await deviceService.updateDevice(device.deveui, updateData);
 
       // Call the parent's onSave callback with the config
       await onSave({
@@ -262,7 +237,7 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
         name: config.name || device.deveui,
         assigned_at: config.assigned_at || new Date().toISOString(),
       });
-      
+
       onClose();
     } catch (err) {
       console.error('Error saving device configuration:', err);

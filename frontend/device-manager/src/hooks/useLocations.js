@@ -1,5 +1,6 @@
-// Lightweight hook to load the location tree from the Transform API
-// Version: 1.1.0 - Fixed API base URL to match other services
+// Lightweight hook to load the location tree from the Parking API
+// Version: 2.0.0 - Updated for v5.3 Multi-Tenant API
+// Changed from /v1/locations/tree to /api/v1/sites
 import { useEffect, useMemo, useRef, useState } from "react";
 import apiClient from "../services/apiClient.js";
 
@@ -14,15 +15,17 @@ export function useLocations({ archived = "false" } = {}) {
     setError(null);
     abortRef.current?.abort();
     abortRef.current = new AbortController();
-    
+
     try {
-      const response = await apiClient.get(`/v1/locations/tree?archived=${encodeURIComponent(archived)}`, {
-        signal: abortRef.current.signal
+      // Use /api/v1/sites instead of /v1/locations/tree for v5.3 multi-tenant API
+      const response = await apiClient.get(`/api/v1/sites`, {
+        signal: abortRef.current.signal,
+        params: { includeArchived: archived === "true" }
       });
       setTree(Array.isArray(response.data) ? response.data : []);
     } catch (e) {
       if (e.name !== "AbortError") {
-        console.error('Failed to fetch locations:', e);
+        console.error('Failed to fetch sites:', e);
         setError(e);
       }
     } finally {

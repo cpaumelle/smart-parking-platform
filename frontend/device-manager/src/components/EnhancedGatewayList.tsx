@@ -59,20 +59,19 @@ const EnhancedGatewayList: React.FC = () => {
   const loadGateways = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
-      const response = await fetch('https://api3.sensemy.cloud/v1/gateways?includeArchived=true');
-      if (!response.ok) throw new Error('Failed to load gateways');
-      
-      const gatewayData = await response.json();
-      
+      // Use listGateways from gateways service which calls /api/v1/gateways
+      const { listGateways } = await import('../services/gateways.js');
+      const gatewayData = await listGateways({ includeArchived: true });
+
       const enhancedGateways = gatewayData.map((gateway: Gateway) => ({
         ...gateway,
         statusType: getGatewayStatusType(gateway),
         signalQuality: deriveSignalQuality(gateway),
         deviceCount: Math.floor(Math.random() * 20)
       }));
-      
+
       setGateways(enhancedGateways);
     } catch (err) {
       console.error('Error loading gateways:', err);
