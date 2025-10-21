@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "17",
-  "buildNumber": "20251021.17",
-  "buildTimestamp": "2025-10-21T15:00:00Z",
-  "buildDate": "2025-10-21T15:00:00Z",
-  "gitCommit": "chirpstack-source-of-truth",
-  "commit": "chirpstack-source-of-truth",
-  "description": "Gateway status fixed, Site dropdown for gateways, Device Type read-only from ChirpStack device profile",
+  "build": "18",
+  "buildNumber": "20251021.18",
+  "buildTimestamp": "2025-10-21T16:00:00Z",
+  "buildDate": "2025-10-21T16:00:00Z",
+  "gitCommit": "devices-like-gateways",
+  "commit": "devices-like-gateways",
+  "description": "Devices page simplified - read-only from ChirpStack, site assignment via description (like Gateways)",
   "environment": "production"
 }

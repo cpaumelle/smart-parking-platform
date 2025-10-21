@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useDevices } from '../../hooks/useDevices.js';
 import StatusBadge from '../common/StatusBadge.jsx';
 import LoadingSpinner from '../common/LoadingSpinner.jsx';
-import DeviceConfigModal from './DeviceConfigModal.jsx';
+import DeviceInfoModal from './DeviceInfoModal.jsx';
 import { DEVICE_FILTERS, FILTER_LABELS } from '../../utils/constants.js';
 import { formatLastSeen } from '../../utils/formatters.js';
 import { deviceNeedsAction } from '../../utils/deviceStatus.js';
@@ -242,10 +242,10 @@ const DeviceList = ({ initialFilters }) => {
       </div>
 
       {showConfigModal && selectedDevice && (
-        <DeviceConfigModal
+        <DeviceInfoModal
           device={selectedDevice}
           onClose={handleConfigClose}
-          onSave={handleConfigClose}
+          onSaved={fetchDevices}
         />
       )}
     </div>

@@ -769,3 +769,115 @@ async def archive_device(
     except Exception as e:
         logger.error(f"Error archiving device {deveui}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class DeviceUpdate(BaseModel):
+    """Request model for updating device in ChirpStack"""
+    description: Optional[str] = None
+    tags: Optional[Dict[str, Any]] = None
+
+
+@router.patch("/{deveui}/description", response_model=Dict[str, Any])
+async def update_device_description(
+    request: Request,
+    deveui: str,
+    update_data: DeviceUpdate
+):
+    """
+    Update device description and/or tags in ChirpStack database
+
+    Similar to gateway updates, the description field is ideal for storing site assignment.
+    This updates the ChirpStack database directly.
+
+    Args:
+        deveui: Device EUI in hex format (16 chars)
+        update_data: Device update data (description and/or tags)
+
+    Returns:
+        Updated device information
+    """
+    description = update_data.description
+    tags = update_data.tags
+
+    try:
+        chirpstack_pool = request.app.state.chirpstack_client.pool
+
+        # Convert hex EUI to bytea for query
+        deveui_upper = deveui.upper()
+
+        # Check device exists
+        check_query = """
+            SELECT tags, description
+            FROM device
+            WHERE encode(dev_eui, 'hex') = $1
+        """
+
+        current = await chirpstack_pool.fetchrow(check_query, deveui_upper.lower())
+
+        if not current:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Device with EUI {deveui} not found in ChirpStack"
+            )
+
+        # Build update query dynamically
+        import json
+        update_fields = []
+        params = []
+        param_count = 1
+
+        if description is not None:
+            update_fields.append(f"description = ${param_count}")
+            params.append(description)
+            param_count += 1
+
+        if tags is not None:
+            # Merge tags with existing
+            current_tags = current["tags"] if current["tags"] else {}
+            updated_tags = {**current_tags, **tags}
+            update_fields.append(f"tags = ${param_count}")
+            params.append(json.dumps(updated_tags))
+            param_count += 1
+
+        if not update_fields:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No fields to update"
+            )
+
+        # Always update updated_at
+        update_fields.append("updated_at = NOW()")
+        params.append(deveui_upper.lower())
+
+        update_query = f"""
+            UPDATE device
+            SET {', '.join(update_fields)}
+            WHERE encode(dev_eui, 'hex') = ${param_count}
+            RETURNING
+                encode(dev_eui, 'hex') as dev_eui,
+                name,
+                description,
+                tags,
+                updated_at
+        """
+
+        result = await chirpstack_pool.fetchrow(update_query, *params)
+
+        logger.info(f"Updated device {deveui} in ChirpStack: description='{description}'")
+
+        return {
+            "deveui": result["dev_eui"],
+            "name": result["name"],
+            "description": result["description"],
+            "tags": result["tags"] if result["tags"] else {},
+            "updated_at": result["updated_at"].isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update device {deveui}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update device: {str(e)}"
+        )

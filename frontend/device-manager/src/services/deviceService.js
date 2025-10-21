@@ -71,5 +71,19 @@ export const deviceService = {
       console.error('❌ Failed to fetch device metadata:', error.userMessage);
       throw error;
     }
+  },
+
+  // PATCH /api/v1/devices/{deveui}/description
+  // Update device description in ChirpStack (for site assignment)
+  async updateDeviceDescription(deveui, payload) {
+    try {
+      console.log(`📝 Updating device ${deveui} description in ChirpStack:`, payload);
+      const response = await apiClient.patch(`/api/v1/devices/${deveui}/description`, payload);
+      console.log('✅ Device description updated successfully in ChirpStack');
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Failed to update device ${deveui} description:`, error.userMessage);
+      throw error;
+    }
   }
 };
