@@ -5,6 +5,7 @@ Multi-tenancy enabled with tenant scoping
 Device profiles are read from ChirpStack (source of truth)
 """
 from fastapi import APIRouter, HTTPException, Query, Request, Depends
+from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import logging
 from uuid import UUID

@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "18",
-  "buildNumber": "20251021.18",
-  "buildTimestamp": "2025-10-21T16:00:00Z",
-  "buildDate": "2025-10-21T16:00:00Z",
-  "gitCommit": "devices-like-gateways",
-  "commit": "devices-like-gateways",
-  "description": "Devices page simplified - read-only from ChirpStack, site assignment via description (like Gateways)",
+  "build": "18.1",
+  "buildNumber": "20251021.18.1",
+  "buildTimestamp": "2025-10-21T17:00:00Z",
+  "buildDate": "2025-10-21T17:00:00Z",
+  "gitCommit": "devices-like-gateways-fix",
+  "commit": "devices-like-gateways-fix",
+  "description": "Fixed API crash - added missing Pydantic BaseModel import for DeviceUpdate model",
   "environment": "production"
 }
