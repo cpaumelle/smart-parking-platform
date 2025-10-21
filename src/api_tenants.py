@@ -649,99 +649,10 @@ async def update_current_tenant(
     return Tenant(**dict(row))
 
 # ============================================================
-# Site Management
+# Site Management - MOVED TO src/routers/sites.py
 # ============================================================
-
-@router.get("/sites", response_model=List[Site], summary="List Sites", dependencies=[Depends(require_scopes("sites:read"))])
-async def list_sites(
-    tenant: TenantContext = Depends(get_current_tenant),
-    db: Pool = Depends(get_db)
-):
-    """List all sites in the current tenant (API key requires sites:read scope)"""
-    rows = await db.fetch("""
-        SELECT id, tenant_id, name, timezone, location, metadata, is_active, created_at, updated_at
-        FROM sites
-        WHERE tenant_id = $1 AND is_active = true
-        ORDER BY created_at ASC
-    """, tenant.tenant_id)
-
-    return [Site(**dict(row)) for row in rows]
-
-@router.post("/sites", response_model=Site, status_code=status.HTTP_201_CREATED, summary="Create Site", dependencies=[Depends(require_scopes("sites:write"))])
-async def create_site(
-    site_create: SiteCreate,
-    tenant: TenantContext = Depends(require_admin),
-    db: Pool = Depends(get_db)
-):
-    """Create a new site (requires ADMIN role, API key requires sites:write scope)"""
-    # Ensure site is created in current tenant
-    if site_create.tenant_id != tenant.tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot create site in different tenant"
-        )
-
-    row = await db.fetchrow("""
-        INSERT INTO sites (tenant_id, name, timezone, location, metadata)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, tenant_id, name, timezone, location, metadata, is_active, created_at, updated_at
-    """, site_create.tenant_id, site_create.name, site_create.timezone, site_create.location, site_create.metadata)
-
-    return Site(**dict(row))
-
-@router.get("/sites/{site_id}", response_model=Site, summary="Get Site", dependencies=[Depends(require_scopes("sites:read"))])
-async def get_site(
-    site_id: UUID,
-    tenant: TenantContext = Depends(get_current_tenant),
-    db: Pool = Depends(get_db)
-):
-    """Get a specific site (API key requires sites:read scope)"""
-    row = await db.fetchrow("""
-        SELECT id, tenant_id, name, timezone, location, metadata, is_active, created_at, updated_at
-        FROM sites
-        WHERE id = $1 AND tenant_id = $2
-    """, site_id, tenant.tenant_id)
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Site not found")
-
-    return Site(**dict(row))
-
-@router.patch("/sites/{site_id}", response_model=Site, summary="Update Site", dependencies=[Depends(require_scopes("sites:write"))])
-async def update_site(
-    site_id: UUID,
-    site_update: SiteUpdate,
-    tenant: TenantContext = Depends(require_admin),
-    db: Pool = Depends(get_db)
-):
-    """Update a site (requires ADMIN role, API key requires sites:write scope)"""
-    # Verify site belongs to tenant
-    existing = await db.fetchrow("SELECT id FROM sites WHERE id = $1 AND tenant_id = $2", site_id, tenant.tenant_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="Site not found")
-
-    update_fields = []
-    values = []
-    param_count = 1
-
-    for field, value in site_update.dict(exclude_unset=True).items():
-        update_fields.append(f"{field} = ${param_count}")
-        values.append(value)
-        param_count += 1
-
-    if not update_fields:
-        raise HTTPException(status_code=400, detail="No fields to update")
-
-    values.extend([site_id, tenant.tenant_id])
-    query = f"""
-        UPDATE sites
-        SET {', '.join(update_fields)}, updated_at = NOW()
-        WHERE id = ${param_count} AND tenant_id = ${param_count + 1}
-        RETURNING id, tenant_id, name, timezone, location, metadata, is_active, created_at, updated_at
-    """
-
-    row = await db.fetchrow(query, *values)
-    return Site(**dict(row))
+# Sites API has been moved to dedicated router: src/routers/sites.py
+# Use /api/v1/sites endpoints instead (see sites.py for implementation)
 
 # ============================================================
 # User Management (Tenant Users)
