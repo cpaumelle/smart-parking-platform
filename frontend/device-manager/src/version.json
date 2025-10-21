@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "23.2",
-  "buildNumber": "20251021.23.2",
-  "buildTimestamp": "2025-10-21T23:30:00Z",
-  "buildDate": "2025-10-21T23:30:00Z",
-  "gitCommit": "fix-reservation-api-field",
-  "commit": "fix-reservation-api-field",
-  "description": "Fixed reservation creation (use 'id' field for V4 API compatibility) and site selection persistence",
+  "build": "23.3",
+  "buildNumber": "20251021.23.3",
+  "buildTimestamp": "2025-10-21T23:45:00Z",
+  "buildDate": "2025-10-21T23:45:00Z",
+  "gitCommit": "fix-reservation-display",
+  "commit": "fix-reservation-display",
+  "description": "Fixed reservation display (status='confirmed' not 'active') and effective state calculation",
   "environment": "production"
 }

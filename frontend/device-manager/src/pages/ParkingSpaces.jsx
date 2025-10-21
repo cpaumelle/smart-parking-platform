@@ -34,7 +34,7 @@ const ParkingSpaces = () => {
   // Fetch active reservations for all spaces using new service
   const fetchReservations = async () => {
     try {
-      const data = await reservationService.getReservations({ status: 'active' });
+      const data = await reservationService.getReservations({ status: 'confirmed' });  // v5.3 uses 'confirmed' not 'active'
       const reservationMap = {};
       data.reservations.forEach(res => {
         reservationMap[res.space_id] = res;
@@ -72,6 +72,15 @@ const ParkingSpaces = () => {
       case 'reserved': return 'bg-yellow-100 text-yellow-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  // Get effective state considering both database state and active reservations
+  const getEffectiveState = (space) => {
+    // If there's an active reservation, override state to RESERVED
+    if (reservations[space.id]) {
+      return 'RESERVED';
+    }
+    return space.state || 'unknown';
   };
 
   const handleCreate = () => {
@@ -324,9 +333,14 @@ const ParkingSpaces = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStateBadgeColor(space.state)}`}>
-                          {space.state || 'unknown'}
-                        </span>
+                        {(() => {
+                          const effectiveState = getEffectiveState(space);
+                          return (
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStateBadgeColor(effectiveState)}`}>
+                              {effectiveState}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-xs font-mono text-gray-500">
                         {space.sensor_eui ? `...${space.sensor_eui.slice(-6)}` : '-'}
@@ -335,14 +349,19 @@ const ParkingSpaces = () => {
                         {space.display_eui ? `...${space.display_eui.slice(-6)}` : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center space-x-2">
-                          {/* Colored indicator matching display state */}
-                          {space.state?.toLowerCase() === 'free' && <span className="text-green-500 text-2xl leading-none">●</span>}
-                          {space.state?.toLowerCase() === 'occupied' && <span className="text-red-500 text-2xl leading-none">●</span>}
-                          {space.state?.toLowerCase() === 'reserved' && <span className="text-yellow-500 text-2xl leading-none">●</span>}
-                          {(!space.state || !['free', 'occupied', 'reserved'].includes(space.state.toLowerCase())) && <span className="text-gray-400 text-2xl leading-none">●</span>}
-                          {/* Enabled/disabled indicator */}
-                        </div>
+                        {(() => {
+                          const effectiveState = getEffectiveState(space);
+                          return (
+                            <div className="flex items-center space-x-2">
+                              {/* Colored indicator matching display state */}
+                              {effectiveState?.toLowerCase() === 'free' && <span className="text-green-500 text-2xl leading-none">●</span>}
+                              {effectiveState?.toLowerCase() === 'occupied' && <span className="text-red-500 text-2xl leading-none">●</span>}
+                              {effectiveState?.toLowerCase() === 'reserved' && <span className="text-yellow-500 text-2xl leading-none">●</span>}
+                              {(!effectiveState || !['free', 'occupied', 'reserved'].includes(effectiveState.toLowerCase())) && <span className="text-gray-400 text-2xl leading-none">●</span>}
+                              {/* Enabled/disabled indicator */}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm space-x-2">
                         <button onClick={() => handleEdit(space)} className="text-blue-600 hover:text-blue-900">Edit</button>
