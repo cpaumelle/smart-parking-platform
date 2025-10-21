@@ -32,7 +32,8 @@ import Gateways from "../pages/Gateways.jsx";
 import Sites from "../pages/Sites.jsx";
 import ParkingSpaces from "../pages/ParkingSpaces.jsx";
 import Analytics from "../pages/Analytics.jsx";
-import ChirpStackDevices from "../pages/ChirpStackDevices.jsx";
+// ChirpStack Manager removed - use ChirpStack admin UI directly
+// import ChirpStackDevices from "../pages/ChirpStackDevices.jsx";
 
 // Custom hook for sidebar state management
 const useSidebar = () => {
@@ -78,7 +79,8 @@ const SenseMyIoTPlatform: React.FC = () => {
     { id: 'devices', label: 'Devices', icon: Wifi, disabled: false },
     { id: 'gateways', label: 'Gateways', icon: Settings, disabled: false },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, disabled: false },
-    { id: 'chirpstack', label: 'ChirpStack Manager', icon: Radio, disabled: false },
+    // ChirpStack Manager removed - use ChirpStack admin UI directly for device registration
+    // { id: 'chirpstack', label: 'ChirpStack Manager', icon: Radio, disabled: false },
     { id: 'users', label: 'Users', icon: Users, disabled: true },
   ];
 
@@ -106,8 +108,9 @@ const SenseMyIoTPlatform: React.FC = () => {
         return <Gateways initialFilters={pageFilters} />;
       case 'analytics':
         return <Analytics />;
-      case 'chirpstack':
-        return <ChirpStackDevices />;
+      // ChirpStack Manager removed
+      // case 'chirpstack':
+      //   return <ChirpStackDevices />;
       case 'users':
         return <UsersPlaceholder />;
       default:

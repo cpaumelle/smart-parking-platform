@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "19",
-  "buildNumber": "20251021.19",
-  "buildTimestamp": "2025-10-21T18:00:00Z",
-  "buildDate": "2025-10-21T18:00:00Z",
-  "gitCommit": "simplified-device-status",
-  "commit": "simplified-device-status",
-  "description": "Simplified device status - removed ORPHANED, now just UNASSIGNED vs ASSIGNED (to site)",
+  "build": "20",
+  "buildNumber": "20251021.20",
+  "buildTimestamp": "2025-10-21T19:00:00Z",
+  "buildDate": "2025-10-21T19:00:00Z",
+  "gitCommit": "fix-device-assignment-status",
+  "commit": "fix-device-assignment-status",
+  "description": "Fixed device assignment status + removed ChirpStack Manager UI (use ChirpStack admin directly)",
   "environment": "production"
 }
