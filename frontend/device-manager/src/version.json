@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "16",
-  "buildNumber": "20251021.16",
-  "buildTimestamp": "2025-10-21T14:30:00Z",
-  "buildDate": "2025-10-21T14:30:00Z",
-  "gitCommit": "gateway-chirpstack-update",
-  "commit": "gateway-chirpstack-update",
-  "description": "Gateway modal now allows editing description field to assign sites. Updates ChirpStack database directly via PATCH /api/v1/gateways/{gw_eui}",
+  "build": "17",
+  "buildNumber": "20251021.17",
+  "buildTimestamp": "2025-10-21T15:00:00Z",
+  "buildDate": "2025-10-21T15:00:00Z",
+  "gitCommit": "chirpstack-source-of-truth",
+  "commit": "chirpstack-source-of-truth",
+  "description": "Gateway status fixed, Site dropdown for gateways, Device Type read-only from ChirpStack device profile",
   "environment": "production"
 }

@@ -7,7 +7,7 @@
 // - Version 3.0.0: DISABLED update functionality (gateways are read-only in v5.3)
 // - Gateways are auto-discovered and managed via ChirpStack
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Settings, AlertCircle, Save } from 'lucide-react';
 import Modal from '../common/Modal.jsx';
 import { formatLastSeen, formatDateTime } from '../../utils/formatters.js';
@@ -17,13 +17,43 @@ import {
   getRequiredGatewayAction
 } from '../../utils/gatewayConfigStatus.js';
 import { updateGateway } from '../../services/gateways.js';
+import siteService from '../../services/siteService.js';
 
 const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
   // Form state for editing description
   const [description, setDescription] = useState(gateway.description || '');
+  const [selectedSiteId, setSelectedSiteId] = useState('');
+  const [sites, setSites] = useState([]);
+  const [loadingSites, setLoadingSites] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  // Load sites from API
+  useEffect(() => {
+    const fetchSites = async () => {
+      try {
+        setLoadingSites(true);
+        const response = await siteService.getSites({ include_inactive: false });
+        setSites(response.sites || []);
+      } catch (err) {
+        console.error('Failed to load sites:', err);
+        setError('Failed to load sites. Using manual entry.');
+      } finally {
+        setLoadingSites(false);
+      }
+    };
+    fetchSites();
+  }, []);
+
+  // Handle site selection from dropdown
+  const handleSiteSelect = (siteId) => {
+    setSelectedSiteId(siteId);
+    const site = sites.find(s => s.id === siteId);
+    if (site) {
+      setDescription(site.name);
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -163,21 +193,49 @@ const GatewayConfigModal = ({ gateway, onClose, onSaved }) => {
               </div>
             </div>
 
-            {/* Editable Description Field */}
+            {/* Site Selection Dropdown */}
             <div>
               <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-                Site / Location Description *
+                Site Assignment *
               </label>
-              <textarea
+              {loadingSites ? (
+                <div className="text-sm text-gray-500 py-2">Loading sites...</div>
+              ) : (
+                <select
+                  value={selectedSiteId}
+                  onChange={(e) => handleSiteSelect(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={saving}
+                >
+                  <option value="">-- Select a Site --</option>
+                  {sites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      🏢 {site.name} ({site.spaces_count || 0} spaces)
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Select the site where this gateway is installed
+              </p>
+            </div>
+
+            {/* Description Field (Auto-populated or Manual) */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                Description (Auto-populated from site selection)
+              </label>
+              <input
+                type="text"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g., Main Building - Floor 2, Downtown Parking Garage, etc."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                rows="2"
+                placeholder="e.g., Main Building - Floor 2"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
                 disabled={saving}
+                readOnly
               />
               <p className="text-xs text-gray-500 mt-1">
-                Enter the site name or location where this gateway is installed
+                This value is stored in ChirpStack's description field
               </p>
             </div>
 

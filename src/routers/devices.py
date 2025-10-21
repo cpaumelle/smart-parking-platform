@@ -2,6 +2,7 @@
 Devices Router - CRUD API for sensor and display devices
 Manages both sensor_devices and display_devices tables
 Multi-tenancy enabled with tenant scoping
+Device profiles are read from ChirpStack (source of truth)
 """
 from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from typing import Optional, List, Dict, Any
@@ -85,6 +86,56 @@ async def list_device_types(
     except Exception as e:
         logger.error(f"Error listing device types: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chirpstack-profiles", response_model=List[Dict[str, Any]])
+async def list_chirpstack_device_profiles(request: Request):
+    """
+    List all device profiles from ChirpStack
+
+    Device profiles are the source of truth for device types in ChirpStack.
+    This is read-only data - device profiles must be managed in ChirpStack admin interface.
+
+    Returns list of device profiles with id and name.
+    """
+    try:
+        chirpstack_pool = request.app.state.chirpstack_client.pool
+
+        query = """
+            SELECT
+                id,
+                name,
+                description,
+                region,
+                mac_version,
+                supports_otaa,
+                supports_class_b,
+                supports_class_c
+            FROM device_profile
+            ORDER BY name
+        """
+
+        results = await chirpstack_pool.fetch(query)
+
+        profiles = []
+        for row in results:
+            profiles.append({
+                "id": str(row["id"]),
+                "name": row["name"],
+                "description": row["description"] if row["description"] else "",
+                "region": row["region"] if row["region"] else "",
+                "mac_version": row["mac_version"] if row["mac_version"] else "",
+                "supports_otaa": row["supports_otaa"],
+                "supports_class_b": row["supports_class_b"],
+                "supports_class_c": row["supports_class_c"]
+            })
+
+        logger.info(f"List ChirpStack device profiles: count={len(profiles)}")
+        return profiles
+
+    except Exception as e:
+        logger.error(f"Error listing ChirpStack device profiles: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch device profiles from ChirpStack: {str(e)}")
 
 
 @router.get("/", response_model=List[Dict[str, Any]], dependencies=[Depends(require_scopes("devices:read"))])

@@ -49,7 +49,16 @@ async def list_gateways(
         results = await chirpstack_pool.fetch(query)
 
         gateways = []
+        from datetime import datetime, timezone, timedelta
+
         for row in results:
+            # Determine online/offline status based on last_seen_at
+            # Online if seen within last 5 minutes
+            is_online = False
+            if row["last_seen_at"]:
+                time_since_seen = datetime.now(timezone.utc) - row["last_seen_at"]
+                is_online = time_since_seen < timedelta(minutes=5)
+
             gateway = {
                 "gw_eui": row["gw_eui"],
                 "gateway_name": row["gateway_name"],
@@ -62,7 +71,8 @@ async def list_gateways(
                 "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
                 "tags": row["tags"] if row["tags"] else {},
                 "properties": row["properties"] if row["properties"] else {},
-                "is_online": bool(row["last_seen_at"]) if row["last_seen_at"] else False
+                "is_online": is_online,
+                "status": "online" if is_online else "offline"
             }
             gateways.append(gateway)
 
@@ -115,6 +125,13 @@ async def get_gateway(
                 detail=f"Gateway with EUI {gw_eui} not found"
             )
 
+        # Determine online/offline status based on last_seen_at
+        from datetime import datetime, timezone, timedelta
+        is_online = False
+        if result["last_seen_at"]:
+            time_since_seen = datetime.now(timezone.utc) - result["last_seen_at"]
+            is_online = time_since_seen < timedelta(minutes=5)
+
         gateway = {
             "gw_eui": result["gw_eui"],
             "gateway_name": result["gateway_name"],
@@ -128,7 +145,8 @@ async def get_gateway(
             "stats_interval_secs": result["stats_interval_secs"],
             "tags": result["tags"] if result["tags"] else {},
             "properties": result["properties"] if result["properties"] else {},
-            "is_online": bool(result["last_seen_at"]) if result["last_seen_at"] else False
+            "is_online": is_online,
+            "status": "online" if is_online else "offline"
         }
 
         return gateway

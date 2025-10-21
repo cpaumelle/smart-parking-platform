@@ -212,8 +212,8 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
   };
 
   const handleSave = async () => {
-    if (!config.device_type_id || !config.location_id) {
-      setError('Please select both device type and location');
+    if (!config.location_id) {
+      setError('Please select a site');
       return;
     }
 
@@ -225,13 +225,11 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
       const { deviceService } = await import('../services/deviceService.js');
 
       const updateData = {
-        device_type_id: config.device_type_id,
+        // device_type_id removed - read-only from ChirpStack device profile
         location_id: config.location_id,
         name: config.name || device.deveui,
         // Map location_id to site/floor/room based on selection
         ...(selectedSite && { site_id: selectedSite }),
-        ...(selectedFloor && { floor_id: selectedFloor }),
-        ...(selectedRoom && { room_id: selectedRoom }),
         lifecycle_state: 'CONFIGURED'
       };
 
@@ -239,7 +237,6 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
 
       // Call the parent's onSave callback with the config
       await onSave({
-        device_type_id: config.device_type_id!,
         location_id: config.location_id!,
         name: config.name || device.deveui,
         assigned_at: config.assigned_at || new Date().toISOString(),
@@ -321,50 +318,20 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
             />
           </div>
 
-          {/* Device Type Selection */}
+          {/* Device Type (Read-Only from ChirpStack) */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Device Type *
+              Device Type (from ChirpStack Device Profile)
             </label>
-            
-            {/* Smart Suggestions */}
-            {smartSuggestions.length > 0 && (
-              <div className="mb-3">
-                <p className="text-xs text-gray-600 mb-2">💡 Smart suggestions based on recent data:</p>
-                <div className="flex flex-wrap gap-2">
-                  {smartSuggestions.map((suggestion) => (
-                    <button
-                      key={suggestion.device_type_id}
-                      onClick={() => setConfig(prev => ({ ...prev, device_type_id: suggestion.device_type_id }))}
-                      className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                        config.device_type_id === suggestion.device_type_id
-                          ? 'bg-blue-100 border-blue-300 text-blue-700'
-                          : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      {suggestion.device_type} 
-                      {suggestion.confidence && (
-                        <span className="ml-1 text-gray-500">({Math.round(suggestion.confidence * 100)}%)</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <select
-              value={config.device_type_id || ''}
-              onChange={(e) => setConfig(prev => ({ ...prev, device_type_id: parseInt(e.target.value) }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            >
-              <option value="">Select device type...</option>
-              {deviceTypes.map((type) => (
-                <option key={type.device_type_id} value={type.device_type_id}>
-                  {type.device_type} - {type.description}
-                </option>
-              ))}
-            </select>
+            <div className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 font-medium">
+              {device.device_type || device.device_profile_name || (
+                <span className="text-gray-400 italic font-normal">Not configured in ChirpStack</span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              📋 Device type is determined by the ChirpStack device profile assignment.
+              To change it, update the device profile in ChirpStack admin interface.
+            </p>
           </div>
 
           {/* Site Selection */}
@@ -454,7 +421,7 @@ const DeviceConfigurationModal: React.FC<DeviceConfigurationProps> = ({
           </button>
           <button
             onClick={handleSave}
-            disabled={loading || !config.device_type_id || !config.location_id}
+            disabled={loading || !config.location_id}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
           >
             {loading ? (
