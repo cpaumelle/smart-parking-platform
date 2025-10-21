@@ -484,3 +484,60 @@ async def add_request_id(request: Request, call_next):
     # Add request ID to response headers
     response.headers["X-Request-ID"] = request_id
     return response
+
+# ============================================================
+# Row-Level Security (RLS) Middleware
+# ============================================================
+
+@app.middleware("http")
+async def set_tenant_context_for_rls(request: Request, call_next):
+    """
+    Set tenant context for Row-Level Security on every request
+
+    This middleware extracts the tenant_id from:
+    1. JWT token (for user authentication)
+    2. API key (for service-to-service auth)
+
+    And stores it in request.state.tenant_id for use by database operations.
+
+    Note: The actual RLS setting (app.current_tenant) is done by the
+    DatabasePool.acquire() method when tenant_id is passed to it.
+    """
+    # Extract tenant_id from authentication
+    tenant_id = None
+
+    try:
+        # Try JWT authentication first (Bearer token)
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            from .tenant_auth import decode_access_token
+            token_data = decode_access_token(token)
+            if token_data:
+                tenant_id = token_data.tenant_id
+
+        # Try API key authentication if JWT not present
+        if not tenant_id:
+            api_key = request.headers.get("X-API-Key")
+            if api_key:
+                from .auth import verify_api_key
+                api_key_info = await verify_api_key(api_key)
+                if api_key_info:
+                    from .tenant_auth import resolve_tenant_from_api_key
+                    tenant_context = await resolve_tenant_from_api_key(api_key_info)
+                    if tenant_context:
+                        tenant_id = tenant_context.tenant_id
+
+        # Store tenant_id in request state for database operations
+        request.state.tenant_id = tenant_id
+
+        # Log tenant context (for debugging)
+        if tenant_id:
+            logger.debug(f"RLS tenant context set: {tenant_id}")
+
+    except Exception as e:
+        logger.warning(f"Error setting tenant context for RLS: {e}")
+        request.state.tenant_id = None
+
+    response = await call_next(request)
+    return response

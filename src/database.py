@@ -78,18 +78,32 @@ class DatabasePool:
             logger.info("Database pool closed")
 
     @asynccontextmanager
-    async def acquire(self) -> AsyncGenerator[asyncpg.Connection, None]:
-        """Acquire connection from pool"""
+    async def acquire(self, tenant_id: Optional[UUID] = None) -> AsyncGenerator[asyncpg.Connection, None]:
+        """
+        Acquire connection from pool with optional tenant context for RLS
+
+        Args:
+            tenant_id: Optional tenant ID to set for Row-Level Security isolation
+                      If provided, sets app.current_tenant for this connection
+        """
         if not self.pool:
             raise DatabaseError("Database pool not initialized")
 
         async with self.pool.acquire() as conn:
+            # Set tenant context for Row-Level Security if provided
+            if tenant_id:
+                await conn.execute(f"SET LOCAL app.current_tenant = '{tenant_id}'")
             yield conn
 
     @asynccontextmanager
-    async def transaction(self) -> AsyncGenerator[asyncpg.Connection, None]:
-        """Execute in transaction"""
-        async with self.acquire() as conn:
+    async def transaction(self, tenant_id: Optional[UUID] = None) -> AsyncGenerator[asyncpg.Connection, None]:
+        """
+        Execute in transaction with optional tenant context for RLS
+
+        Args:
+            tenant_id: Optional tenant ID to set for Row-Level Security isolation
+        """
+        async with self.acquire(tenant_id=tenant_id) as conn:
             async with conn.transaction():
                 yield conn
 
@@ -840,3 +854,41 @@ async def get_db() -> DatabasePool:
     """
     pool = await get_db_pool()
     return pool
+
+@asynccontextmanager
+async def get_db_with_tenant(request, tenant_id: Optional[UUID] = None) -> AsyncGenerator[asyncpg.Connection, None]:
+    """
+    FastAPI dependency to get database connection with tenant context for RLS
+
+    This function automatically sets the tenant context (app.current_tenant) for
+    Row-Level Security enforcement.
+
+    Args:
+        request: FastAPI request object (contains request.state.tenant_id from middleware)
+        tenant_id: Optional tenant_id override (defaults to request.state.tenant_id)
+
+    Usage:
+        from fastapi import Request, Depends
+
+        @app.get("/spaces")
+        async def get_spaces(
+            request: Request,
+            db: asyncpg.Connection = Depends(get_db_with_tenant)
+        ):
+            # This query is automatically filtered by tenant_id via RLS
+            rows = await db.fetch("SELECT * FROM spaces")
+            return rows
+
+    Note:
+        If tenant_id is not available (e.g., public endpoints), the connection
+        will work normally but RLS policies will not filter data. Make sure
+        all tenant-scoped endpoints require authentication.
+    """
+    pool = await get_db_pool()
+
+    # Extract tenant_id from request state (set by middleware)
+    if tenant_id is None and hasattr(request, 'state') and hasattr(request.state, 'tenant_id'):
+        tenant_id = request.state.tenant_id
+
+    async with pool.acquire(tenant_id=tenant_id) as conn:
+        yield conn
