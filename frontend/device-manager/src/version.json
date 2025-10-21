@@ -1,11 +1,11 @@
 {
   "version": "5.3.1",
-  "build": "21",
-  "buildNumber": "20251021.21",
-  "buildTimestamp": "2025-10-21T21:00:00Z",
-  "buildDate": "2025-10-21T21:00:00Z",
-  "gitCommit": "hide-space-count",
-  "commit": "hide-space-count",
-  "description": "Removed (X spaces) count from Site Assignment dropdown to reduce UI clutter",
+  "build": "22",
+  "buildNumber": "20251021.22",
+  "buildTimestamp": "2025-10-21T22:00:00Z",
+  "buildDate": "2025-10-21T22:00:00Z",
+  "gitCommit": "parking-spaces-hierarchy-refactor",
+  "commit": "parking-spaces-hierarchy-refactor",
+  "description": "Refactored Parking Spaces with service layer, Site/Building/Floor/Zone hierarchy, reservation integration",
   "environment": "production"
 }

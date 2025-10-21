@@ -2,20 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useSpaces } from '../hooks/useSpaces.js';
 import SpaceFormModal from '../components/parking-spaces/SpaceFormModal.jsx';
-
-const PARKING_DISPLAY_API = 'https://api.verdegris.eu/api';
-const PARKING_API_KEY = import.meta.env.VITE_PARKING_API_KEY;
-
-// Format date for PostgreSQL timestamp without timezone (in UTC)
-const formatDateForAPI = (date) => {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  const hours = String(date.getUTCHours()).padStart(2, '0');
-  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-  const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-};
+import { reservationService } from '../services/reservationService.js';
+import siteService from '../services/siteService.js';
 
 const ParkingSpaces = () => {
   const { spaces, loading, error, filters, setFilters, fetchSpaces, createSpace, updateSpace, deleteSpace, autoRefresh, setAutoRefresh, lastRefresh } = useSpaces();
@@ -24,23 +12,34 @@ const ParkingSpaces = () => {
   const [reservations, setReservations] = useState({});
   const [reservationLoading, setReservationLoading] = useState({});
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [sites, setSites] = useState([]);
+  const [loadingSites, setLoadingSites] = useState(true);
 
-  // Fetch active reservations for all spaces
+  // Fetch sites for filter dropdown
+  useEffect(() => {
+    const fetchSites = async () => {
+      try {
+        setLoadingSites(true);
+        const response = await siteService.getSites({ include_inactive: false });
+        setSites(response.sites || []);
+      } catch (err) {
+        console.error('Failed to load sites:', err);
+      } finally {
+        setLoadingSites(false);
+      }
+    };
+    fetchSites();
+  }, []);
+
+  // Fetch active reservations for all spaces using new service
   const fetchReservations = async () => {
     try {
-      const response = await fetch(`${PARKING_DISPLAY_API}/api/v1/reservations/?status=active`, {
-        headers: {
-          'X-API-Key': PARKING_API_KEY
-        }
+      const data = await reservationService.getReservations({ status: 'active' });
+      const reservationMap = {};
+      data.reservations.forEach(res => {
+        reservationMap[res.space_id] = res;
       });
-      if (response.ok) {
-        const data = await response.json();
-        const reservationMap = {};
-        data.reservations.forEach(res => {
-          reservationMap[res.id] = res;
-        });
-        setReservations(reservationMap);
-      }
+      setReservations(reservationMap);
     } catch (err) {
       console.error('Error fetching reservations:', err);
     }
@@ -99,7 +98,7 @@ const ParkingSpaces = () => {
     }
   };
 
-  // Create a 2-hour reservation
+  // Create a 2-hour reservation using new service
   const handleReserve = async (space) => {
     if (reservationLoading[space.id]) return;
 
@@ -109,45 +108,35 @@ const ParkingSpaces = () => {
       const now = new Date();
       const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
 
-      const response = await fetch(`${PARKING_DISPLAY_API}/api/v1/reservations/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': PARKING_API_KEY
-        },
-        body: JSON.stringify({
-          id: space.id,
-          reserved_from: formatDateForAPI(now),
-          reserved_until: formatDateForAPI(twoHoursLater),
-          external_booking_id: `UI-${Date.now()}`,
-          external_system: 'device_manager_ui',
-          reservation_type: 'manual',
-          grace_period_minutes: 15
-        })
+      const data = await reservationService.createReservation({
+        space_id: space.id,
+        reserved_from: now,
+        reserved_until: twoHoursLater,
+        external_booking_id: `UI-${Date.now()}`,
+        external_system: 'device_manager_ui',
+        reservation_type: 'manual',
+        grace_period_minutes: 15
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        const startLocal = now.toLocaleString();
-        const startUTC = now.toISOString().replace('T', ' ').substring(0, 19);
-        const endLocal = twoHoursLater.toLocaleString();
-        const endUTC = twoHoursLater.toISOString().replace('T', ' ').substring(0, 19);
-        alert(`✅ Reservation created successfully!\n\nSpace: ${space.name}\nDuration: 2 hours\nReservation ID: ${data.reservation_id.substring(0, 8)}...\n\nStart (Local): ${startLocal}\nStart (UTC): ${startUTC}\n\nEnd (Local): ${endLocal}\nEnd (UTC): ${endUTC}`);
-        await fetchReservations();
-        await fetchSpaces();
-      } else {
-        const error = await response.json();
-        alert(`❌ Error creating reservation: ${error.detail || 'Unknown error'}`);
-      }
+      const startLocal = now.toLocaleString();
+      const startUTC = now.toISOString().replace('T', ' ').substring(0, 19);
+      const endLocal = twoHoursLater.toLocaleString();
+      const endUTC = twoHoursLater.toISOString().replace('T', ' ').substring(0, 19);
+
+      alert(`✅ Reservation created successfully!\n\nSpace: ${space.name}\nDuration: 2 hours\nReservation ID: ${data.reservation_id.substring(0, 8)}...\n\nStart (Local): ${startLocal}\nStart (UTC): ${startUTC}\n\nEnd (Local): ${endLocal}\nEnd (UTC): ${endUTC}`);
+
+      await fetchReservations();
+      await fetchSpaces();
     } catch (err) {
       console.error('Error creating reservation:', err);
-      alert(`❌ Error: ${err.message}`);
+      const errorMessage = err.userMessage || err.message || 'Unknown error';
+      alert(`❌ Error creating reservation: ${errorMessage}`);
     } finally {
       setReservationLoading(prev => ({ ...prev, [space.id]: false }));
     }
   };
 
-  // Cancel active reservation
+  // Cancel active reservation using new service
   const handleCancelReservation = async (space) => {
     const reservation = reservations[space.id];
     if (!reservation) return;
@@ -159,24 +148,14 @@ const ParkingSpaces = () => {
     setReservationLoading(prev => ({ ...prev, [space.id]: true }));
 
     try {
-      const response = await fetch(`${PARKING_DISPLAY_API}/api/v1/reservations/${reservation.reservation_id}?reason=ui_cancellation`, {
-        method: 'DELETE',
-        headers: {
-          'X-API-Key': PARKING_API_KEY
-        }
-      });
-
-      if (response.ok) {
-        alert(`✅ Reservation cancelled successfully for ${space.name}`);
-        await fetchReservations();
-        await fetchSpaces();
-      } else {
-        const error = await response.json();
-        alert(`❌ Error cancelling reservation: ${error.detail || 'Unknown error'}`);
-      }
+      await reservationService.cancelReservation(reservation.reservation_id, 'ui_cancellation');
+      alert(`✅ Reservation cancelled successfully for ${space.name}`);
+      await fetchReservations();
+      await fetchSpaces();
     } catch (err) {
       console.error('Error cancelling reservation:', err);
-      alert(`❌ Error: ${err.message}`);
+      const errorMessage = err.userMessage || err.message || 'Unknown error';
+      alert(`❌ Error cancelling reservation: ${errorMessage}`);
     } finally {
       setReservationLoading(prev => ({ ...prev, [space.id]: false }));
     }
@@ -252,7 +231,23 @@ const ParkingSpaces = () => {
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg border space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Site</label>
+            <select
+              value={filters.site_id || ''}
+              onChange={(e) => updateFilters({ site_id: e.target.value })}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+              disabled={loadingSites}
+            >
+              <option value="">All Sites</option>
+              {sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Building</label>
             <input type="text" placeholder="Filter by building..." value={filters.building || ''} onChange={(e) => updateFilters({ building: e.target.value })} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
@@ -317,9 +312,15 @@ const ParkingSpaces = () => {
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-6 py-4">
                         <div className="text-sm text-gray-900">
-                          {[space.building, space.floor, space.zone].filter(Boolean).join(' • ') || '-'}
+                          {space.site_name && <div className="font-medium">{space.site_name}</div>}
+                          {[space.building, space.floor, space.zone].filter(Boolean).length > 0 && (
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {[space.building, space.floor, space.zone].filter(Boolean).join(' • ')}
+                            </div>
+                          )}
+                          {!space.site_name && [space.building, space.floor, space.zone].filter(Boolean).length === 0 && '-'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
