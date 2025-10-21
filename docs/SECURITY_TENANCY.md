@@ -442,7 +442,7 @@ brew install 1password-cli
 eval $(op run --env-file=.env.tpl -- env)
 
 # Run app
-uvicorn src.main_tenanted:app
+uvicorn src.main:app
 ```
 
 ### Webhook Secret Rotation

@@ -307,7 +307,7 @@ audit_log.tenant_id → tenants.id
 - Backup & restore procedures
 
 **Implementation:**
-- Code: `src/metrics.py`, `src/routers/metrics.py`, `src/main_tenanted.py`
+- Code: `src/metrics.py`, `src/routers/metrics.py`, `src/main.py`
 - Documentation: `docs/OPERATIONAL_RUNBOOKS.md`
 
 ### Security & Tenancy (v5.3.0)

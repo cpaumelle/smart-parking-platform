@@ -42,7 +42,7 @@ Edit `Dockerfile` line 47:
 CMD ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # NEW:
-CMD ["python", "-m", "uvicorn", "src.main_tenanted:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ### 3. Rebuild and Restart API Container
@@ -90,7 +90,7 @@ docker compose stop api
 
 # Run new API manually with main_tenanted
 docker compose run --rm --service-ports api \
-  python -m uvicorn src.main_tenanted:app --host 0.0.0.0 --port 8000
+  python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
 
 ## Rollback Plan
@@ -154,7 +154,7 @@ docker exec parking-api bash tests/smoke_test_tenancy.sh
 ### API Won't Start
 
 - Check logs: `docker compose logs api`
-- Check if main_tenanted.py imports correctly
+- Check if main.py imports correctly
 - Verify JWT_SECRET_KEY is set in environment
 
 ### Endpoints Not Found

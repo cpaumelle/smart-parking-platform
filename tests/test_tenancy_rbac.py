@@ -25,7 +25,7 @@ async def test_tenant_isolation_spaces():
     3. Tenant B lists spaces
     4. Verify Tenant B cannot see Tenant A's space
     """
-    from src.main_tenanted import app
+    from src.main import app
 
     async with AsyncClient(app=app, base_url="http://test") as ac:
         # Login as Tenant A user
@@ -94,7 +94,7 @@ async def test_rbac_role_hierarchy():
     3. ADMIN can create spaces (201)
     4. OWNER can create spaces (201)
     """
-    from src.main_tenanted import app
+    from src.main import app
 
     async with AsyncClient(app=app, base_url="http://test") as ac:
         # Login as VIEWER
@@ -164,7 +164,7 @@ async def test_api_key_authentication():
     2. Use API key to list spaces (should work)
     3. Verify API key only sees Tenant A's spaces
     """
-    from src.main_tenanted import app
+    from src.main import app
 
     async with AsyncClient(app=app, base_url="http://test") as ac:
         # Login as OWNER to create API key
@@ -210,7 +210,7 @@ async def test_tenant_rate_limiting():
     3. Make request from Tenant B
     4. Verify Tenant B is not affected by Tenant A's rate limit
     """
-    from src.main_tenanted import app
+    from src.main import app
 
     async with AsyncClient(app=app, base_url="http://test") as ac:
         # Login as Tenant A
@@ -255,7 +255,7 @@ async def test_space_code_uniqueness_per_tenant():
     2. Tenant B creates space with code "A-001" (should succeed)
     3. Tenant A tries to create another space with code "A-001" (should fail)
     """
-    from src.main_tenanted import app
+    from src.main import app
 
     async with AsyncClient(app=app, base_url="http://test") as ac:
         # Login as Tenant A
