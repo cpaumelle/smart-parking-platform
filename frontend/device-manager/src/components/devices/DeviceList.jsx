@@ -199,7 +199,7 @@ const DeviceList = ({ initialFilters }) => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">
-                        {device.location_name || (
+                        {device.description || (
                           <span className="text-gray-400 italic">Not assigned</span>
                         )}
                       </div>
