@@ -2,11 +2,18 @@
 # Gateways API Router for V5 Smart Parking Platform
 # Queries ChirpStack database for gateway information
 
-from fastapi import APIRouter, Request, Query, HTTPException, status
+from fastapi import APIRouter, Request, Query, HTTPException, status, Body
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v1/gateways", tags=["gateways"])
+
+
+class GatewayUpdate(BaseModel):
+    """Request model for updating gateway"""
+    description: Optional[str] = None
+    tags: Optional[Dict[str, Any]] = None
 
 @router.get("/", response_model=List[Dict[str, Any]])
 async def list_gateways(
@@ -167,4 +174,103 @@ async def get_gateway_stats(request: Request):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch gateway statistics: {str(e)}"
+        )
+
+
+@router.patch("/{gw_eui}", response_model=Dict[str, Any])
+async def update_gateway(
+    request: Request,
+    gw_eui: str,
+    update_data: GatewayUpdate
+):
+    """
+    Update gateway description and/or tags in ChirpStack database
+
+    The description field is ideal for storing site assignment.
+    Tags can be used for additional metadata.
+
+    Args:
+        gw_eui: Gateway EUI in hex format
+        update_data: Gateway update data (description and/or tags)
+
+    Returns:
+        Updated gateway information
+    """
+    description = update_data.description
+    tags = update_data.tags
+    try:
+        chirpstack_pool = request.app.state.chirpstack_client.pool
+
+        # Check gateway exists
+        check_query = """
+            SELECT tags, description
+            FROM gateway
+            WHERE encode(gateway_id, 'hex') = $1
+        """
+
+        current = await chirpstack_pool.fetchrow(check_query, gw_eui.lower())
+
+        if not current:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Gateway with EUI {gw_eui} not found"
+            )
+
+        # Build update query dynamically
+        import json
+        update_fields = []
+        params = []
+        param_count = 1
+
+        if description is not None:
+            update_fields.append(f"description = ${param_count}")
+            params.append(description)
+            param_count += 1
+
+        if tags is not None:
+            # Merge tags with existing
+            current_tags = current["tags"] if current["tags"] else {}
+            updated_tags = {**current_tags, **tags}
+            update_fields.append(f"tags = ${param_count}")
+            params.append(json.dumps(updated_tags))
+            param_count += 1
+
+        if not update_fields:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No fields to update"
+            )
+
+        # Always update updated_at
+        update_fields.append("updated_at = NOW()")
+        params.append(gw_eui.lower())
+
+        update_query = f"""
+            UPDATE gateway
+            SET {', '.join(update_fields)}
+            WHERE encode(gateway_id, 'hex') = ${param_count}
+            RETURNING
+                encode(gateway_id, 'hex') as gw_eui,
+                name as gateway_name,
+                description,
+                tags,
+                updated_at
+        """
+
+        result = await chirpstack_pool.fetchrow(update_query, *params)
+
+        return {
+            "gw_eui": result["gw_eui"],
+            "gateway_name": result["gateway_name"],
+            "description": result["description"],
+            "tags": result["tags"] if result["tags"] else {},
+            "updated_at": result["updated_at"].isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update gateway: {str(e)}"
         )
