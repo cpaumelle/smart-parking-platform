@@ -30,12 +30,16 @@ const SpaceFormModal = ({ isOpen, onClose, onSave, space = null }) => {
   const [displays, setDisplays] = useState([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
 
+  // Load hierarchy and devices when modal opens
   useEffect(() => {
     if (isOpen) {
       loadHierarchyData();
       loadDevices();
     }
+  }, [isOpen]);
 
+  // Populate form data when space prop changes
+  useEffect(() => {
     if (space) {
       setFormData({
         name: space.name || '',
@@ -61,7 +65,7 @@ const SpaceFormModal = ({ isOpen, onClose, onSave, space = null }) => {
         enabled: true
       });
     }
-  }, [space, isOpen]);
+  }, [space]);
 
   // Load sites and populate hierarchy dropdowns
   const loadHierarchyData = async () => {

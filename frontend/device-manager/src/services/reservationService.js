@@ -80,7 +80,7 @@ export const reservationService = {
       console.log(`Creating reservation for space ${space_id} from ${fromDate} to ${untilDate}`);
 
       const response = await apiClient.post('/api/v1/reservations/', {
-        space_id,
+        id: space_id,  // API expects 'id' field (V4 compatibility - this is actually space_id)
         reserved_from: fromDate,
         reserved_until: untilDate,
         external_booking_id,
