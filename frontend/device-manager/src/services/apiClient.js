@@ -6,7 +6,7 @@ import authService from './authService.js';
 // Create axios instance
 const apiClient = axios.create(API_CONFIG);
 
-// Request interceptor - add auth token and log all requests
+// Request interceptor - add auth token, tenant context, and log all requests
 apiClient.interceptors.request.use(
   (config) => {
     // Add authentication header if token exists
@@ -16,6 +16,13 @@ apiClient.interceptors.request.use(
         ...config.headers,
         ...authHeader
       };
+    }
+
+    // Add tenant context header for multi-tenancy
+    const currentTenant = authService.getCurrentTenant();
+    if (currentTenant && currentTenant.slug) {
+      config.headers['X-Tenant-Slug'] = currentTenant.slug;
+      console.log(`🏢 Tenant context: ${currentTenant.slug} (${currentTenant.name})`);
     }
 
     const timestamp = new Date().toISOString();
@@ -69,12 +76,16 @@ apiClient.interceptors.response.use(
         console.log('🔄 401 Unauthorized - attempting token refresh...');
         await authService.refreshAccessToken();
 
-        // Retry the original request with new token
+        // Retry the original request with new token and tenant context
         const authHeader = authService.getAuthHeader();
+        const currentTenant = authService.getCurrentTenant();
         error.config.headers = {
           ...error.config.headers,
           ...authHeader
         };
+        if (currentTenant && currentTenant.slug) {
+          error.config.headers['X-Tenant-Slug'] = currentTenant.slug;
+        }
 
         return apiClient(error.config);
       } catch (refreshError) {
