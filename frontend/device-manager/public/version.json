@@ -1,11 +1,11 @@
 {
   "version": "5.8.0",
-  "build": "27",
-  "buildNumber": "20251022.27",
-  "buildTimestamp": "2025-10-22 14:32:49 UTC",
-  "buildDate": "2025-10-22 14:32:49 UTC",
-  "gitCommit": "ad4f853",
-  "commit": "ad4f853",
-  "description": "Build 27",
+  "build": "28",
+  "buildNumber": "20251022.28",
+  "buildTimestamp": "2025-10-22 14:46:11 UTC",
+  "buildDate": "2025-10-22 14:46:11 UTC",
+  "gitCommit": "db25fd2",
+  "commit": "db25fd2",
+  "description": "Build 28",
   "environment": "production"
 }

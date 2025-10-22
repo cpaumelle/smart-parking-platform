@@ -1,11 +1,13 @@
 // src/components/TenantSwitcher.jsx
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import authService from '../services/authService';
 
 export default function TenantSwitcher() {
   const { user, currentTenant, switchTenant } = useAuth();
   const [availableTenants, setAvailableTenants] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     // Get available tenants from user data (populated during login)
@@ -19,12 +21,28 @@ export default function TenantSwitcher() {
     }
   }, [user]);
 
-  const handleTenantSwitch = (tenant) => {
-    console.log('🔄 Switching to tenant:', tenant.name);
-    switchTenant(tenant);
-    setIsOpen(false);
-    // Reload page to refresh data with new tenant context
-    window.location.reload();
+  const handleTenantSwitch = async (tenant) => {
+    if (switching) return;  // Prevent double-clicks
+
+    try {
+      setSwitching(true);
+      setIsOpen(false);
+
+      console.log('🔄 Switching to tenant:', tenant.name, tenant.slug);
+
+      // Call backend to get new token for this tenant
+      const result = await authService.switchTenant(tenant.slug);
+
+      // Update auth context
+      switchTenant(result.tenants.find(t => t.slug === tenant.slug));
+
+      // Reload page to refresh all data with new tenant context
+      window.location.reload();
+    } catch (error) {
+      console.error('❌ Tenant switch failed:', error);
+      alert('Failed to switch tenant: ' + error.message);
+      setSwitching(false);
+    }
   };
 
   // Determine role badge styling

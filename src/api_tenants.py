@@ -196,6 +196,122 @@ async def login(
             detail="Login failed"
         )
 
+@router.post("/auth/switch-tenant", response_model=LoginResponse, summary="Switch Tenant Context")
+async def switch_tenant(
+    tenant_slug: str,
+    tenant: TenantContext = Depends(get_current_tenant),
+    db: Pool = Depends(get_db)
+):
+    """
+    Switch to a different tenant and get a new JWT token
+
+    The user must have access to the requested tenant.
+    Returns a new access token with the new tenant context.
+    """
+    try:
+        # Get user's tenants (same logic as login)
+        PLATFORM_TENANT_ID = UUID('00000000-0000-0000-0000-000000000000')
+
+        platform_admin_row = await db.fetchrow("""
+            SELECT role FROM user_memberships
+            WHERE user_id = $1 AND tenant_id = $2 AND is_active = true
+        """, tenant.user_id, PLATFORM_TENANT_ID)
+
+        is_platform_admin = (
+            platform_admin_row and
+            platform_admin_row['role'] == UserRole.PLATFORM_ADMIN.value
+        )
+
+        if is_platform_admin:
+            # Platform admins can switch to ANY tenant
+            tenant_row = await db.fetchrow("""
+                SELECT t.id, t.name, t.slug, $1::text as role
+                FROM tenants t
+                WHERE t.slug = $2 AND t.is_active = true
+            """, UserRole.PLATFORM_ADMIN.value, tenant_slug)
+        else:
+            # Regular users can only switch to their assigned tenants
+            tenant_row = await db.fetchrow("""
+                SELECT t.id, t.name, t.slug, um.role
+                FROM user_memberships um
+                INNER JOIN tenants t ON um.tenant_id = t.id
+                WHERE um.user_id = $1 AND t.slug = $2
+                  AND um.is_active = true AND t.is_active = true
+            """, tenant.user_id, tenant_slug)
+
+        if not tenant_row:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied to tenant: {tenant_slug}"
+            )
+
+        # Get user info
+        user_row = await db.fetchrow("""
+            SELECT id, email, name, is_active, email_verified
+            FROM users
+            WHERE id = $1
+        """, tenant.user_id)
+
+        # Create new JWT token with new tenant
+        access_token = create_access_token(
+            user_id=user_row['id'],
+            tenant_id=tenant_row['id'],
+            role=UserRole(tenant_row['role'])
+        )
+
+        # Get all available tenants (for consistency with login response)
+        if is_platform_admin:
+            tenant_rows = await db.fetch("""
+                SELECT t.id, t.name, t.slug, $1::text as role, true as is_active
+                FROM tenants t
+                WHERE t.is_active = true
+                ORDER BY t.name ASC
+            """, UserRole.PLATFORM_ADMIN.value)
+        else:
+            tenant_rows = await db.fetch("""
+                SELECT t.id, t.name, t.slug, um.role, um.is_active
+                FROM user_memberships um
+                INNER JOIN tenants t ON um.tenant_id = t.id
+                WHERE um.user_id = $1 AND um.is_active = true AND t.is_active = true
+                ORDER BY um.created_at ASC
+            """, user_row['id'])
+
+        logger.info(f"User {user_row['email']} switched to tenant: {tenant_row['slug']}")
+
+        return LoginResponse(
+            access_token=access_token,
+            refresh_token="",  # Don't issue new refresh token on switch
+            token_type="bearer",
+            expires_in=15 * 60,
+            refresh_expires_in=0,
+            user=User(
+                id=user_row['id'],
+                email=user_row['email'],
+                name=user_row['name'],
+                is_active=user_row['is_active'],
+                email_verified=user_row['email_verified'],
+                created_at=datetime.utcnow()
+            ),
+            tenants=[
+                {
+                    "id": str(row['id']),
+                    "name": row['name'],
+                    "slug": row['slug'],
+                    "role": row['role']
+                }
+                for row in tenant_rows
+            ]
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Tenant switch error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Tenant switch failed"
+        )
+
 @router.post("/auth/register", response_model=User, status_code=status.HTTP_201_CREATED, summary="Register New User (with new tenant)")
 async def register(
     registration: RegistrationRequest,

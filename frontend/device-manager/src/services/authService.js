@@ -101,6 +101,47 @@ class AuthService {
   }
 
   /**
+   * Switch to a different tenant
+   * @param {string} tenantSlug
+   * @returns {Promise<{user, token, tenants}>}
+   */
+  async switchTenant(tenantSlug) {
+    try {
+      console.log('🔄 Switching to tenant:', tenantSlug);
+
+      const response = await this.apiClient.post('/api/v1/auth/switch-tenant', null, {
+        params: { tenant_slug: tenantSlug }
+      });
+
+      const { access_token, user, tenants } = response.data;
+
+      // Update stored token (keep existing refresh token)
+      this.setAccessToken(access_token);
+
+      // Update user with tenants
+      const userWithTenants = { ...user, tenants };
+      this.setUser(userWithTenants);
+
+      // Update current tenant
+      const newTenant = tenants.find(t => t.slug === tenantSlug);
+      if (newTenant) {
+        this.setCurrentTenant(newTenant);
+      }
+
+      console.log('✅ Switched to tenant:', tenantSlug);
+
+      return {
+        user: userWithTenants,
+        token: access_token,
+        tenants
+      };
+    } catch (error) {
+      console.error('❌ Tenant switch failed:', error.response?.data?.detail || error.message);
+      throw new Error(error.response?.data?.detail || 'Tenant switch failed');
+    }
+  }
+
+  /**
    * Logout - clear all stored auth data
    */
   logout() {
