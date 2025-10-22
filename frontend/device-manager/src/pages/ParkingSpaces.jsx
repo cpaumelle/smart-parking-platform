@@ -1,12 +1,16 @@
 // src/pages/ParkingSpaces.jsx
 import { useState, useEffect } from 'react';
 import { useSpaces } from '../hooks/useSpaces.js';
+import { useAuth } from '../contexts/AuthContext.jsx';
 import SpaceFormModal from '../components/parking-spaces/SpaceFormModal.jsx';
 import { reservationService } from '../services/reservationService.js';
 import siteService from '../services/siteService.js';
 
 const ParkingSpaces = () => {
   const { spaces, loading, error, filters, setFilters, fetchSpaces, createSpace, updateSpace, deleteSpace, autoRefresh, setAutoRefresh, lastRefresh } = useSpaces();
+  const { currentTenant } = useAuth();
+  const isPlatformAdmin = currentTenant?.role === 'platform_admin';
+
   const [showModal, setShowModal] = useState(false);
   const [editingSpace, setEditingSpace] = useState(null);
   const [reservations, setReservations] = useState({});
@@ -294,6 +298,9 @@ const ParkingSpaces = () => {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Space</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                  {isPlatformAdmin && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tenant</th>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">State</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sensor</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Display</th>
@@ -332,6 +339,15 @@ const ParkingSpaces = () => {
                           {!space.site_name && [space.building, space.floor, space.zone].filter(Boolean).length === 0 && '-'}
                         </div>
                       </td>
+                      {isPlatformAdmin && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {space.tenant_name || (
+                              <span className="text-gray-400 italic">No tenant</span>
+                            )}
+                          </div>
+                        </td>
+                      )}
                       <td className="px-6 py-4 whitespace-nowrap">
                         {(() => {
                           const effectiveState = getEffectiveState(space);

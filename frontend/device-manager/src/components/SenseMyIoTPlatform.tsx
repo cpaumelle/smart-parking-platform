@@ -7,6 +7,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import VersionInfo from "../components/common/VersionInfo.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import TenantSwitcher from "./TenantSwitcher.jsx";
+import PlatformAdminBanner from "./PlatformAdminBanner.jsx";
 import {
   Wifi,
   MapPin,
@@ -262,11 +264,9 @@ const SenseMyIoTPlatform: React.FC = () => {
                 <span className="text-xs lg:text-sm xl:text-base text-gray-600">Online</span>
               </div>
 
-              <div className="hidden sm:flex items-center space-x-2 text-xs lg:text-sm xl:text-base text-gray-600">
-                <span>Tenant:</span>
-                <code className="bg-gray-100 px-2 py-1 lg:px-3 lg:py-2 rounded text-xs lg:text-sm font-mono">
-                  {currentTenant?.name || 'N/A'}
-                </code>
+              {/* Tenant Switcher */}
+              <div className="hidden sm:block">
+                <TenantSwitcher />
               </div>
 
               {/* User menu */}
@@ -309,6 +309,9 @@ const SenseMyIoTPlatform: React.FC = () => {
             </div>
           </div>
         </header>
+
+        {/* Platform Admin Warning Banner */}
+        <PlatformAdminBanner />
 
         {/* Page Content - Full width utilization */}
         <main className="w-full">

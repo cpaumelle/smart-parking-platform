@@ -1,6 +1,7 @@
 // src/components/devices/DeviceList.jsx
 import { useState } from 'react';
 import { useDevices } from '../../hooks/useDevices.js';
+import { useAuth } from '../../contexts/AuthContext.jsx';
 import StatusBadge from '../common/StatusBadge.jsx';
 import LoadingSpinner from '../common/LoadingSpinner.jsx';
 import DeviceInfoModal from './DeviceInfoModal.jsx';
@@ -18,6 +19,9 @@ const DeviceList = ({ initialFilters }) => {
     getDeviceCounts,
     fetchDevices
   } = useDevices(initialFilters);
+
+  const { currentTenant } = useAuth();
+  const isPlatformAdmin = currentTenant?.role === 'platform_admin';
 
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -186,6 +190,11 @@ const DeviceList = ({ initialFilters }) => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Site
                   </th>
+                  {isPlatformAdmin && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Tenant
+                    </th>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
@@ -224,6 +233,15 @@ const DeviceList = ({ initialFilters }) => {
                         )}
                       </div>
                     </td>
+                    {isPlatformAdmin && (
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">
+                          {device.tenant_name || (
+                            <span className="text-gray-400 italic">No tenant</span>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     <td className="px-6 py-4">
                       <StatusBadge device={device} size="small" />
                     </td>
