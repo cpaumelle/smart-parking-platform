@@ -20,7 +20,11 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(docker compose restart:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(SELECT r.*, s.code, s.name, ...)",
+      "Bash(FROM reservations r)",
+      "Bash(JOIN spaces s ON r.space_id = s.id)",
+      "Bash(WHERE r.tenant_id = $1)"
     ],
     "deny": [],
     "ask": []

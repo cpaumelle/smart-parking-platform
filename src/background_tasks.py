@@ -41,6 +41,7 @@ class BackgroundTaskManager:
         self._queue_cleanup_task: Optional[asyncio.Task] = None
         self._reconciliation_task: Optional[asyncio.Task] = None
         self._reservation_expiry_task: Optional[asyncio.Task] = None
+        self._materialized_views_refresh_task: Optional[asyncio.Task] = None
 
     async def start(self):
         """Start background task manager"""
@@ -66,6 +67,10 @@ class BackgroundTaskManager:
         # Start reservation expiry task
         self._reservation_expiry_task = asyncio.create_task(self._reservation_expiry_loop())
         logger.info("Started reservation expiry task")
+
+        # Start materialized views refresh task
+        self._materialized_views_refresh_task = asyncio.create_task(self._materialized_views_refresh_loop())
+        logger.info("Started materialized views refresh task")
 
         # Load and schedule active reservations
         await self._load_active_reservations()
@@ -98,6 +103,8 @@ class BackgroundTaskManager:
             self._reconciliation_task.cancel()
         if self._reservation_expiry_task:
             self._reservation_expiry_task.cancel()
+        if self._materialized_views_refresh_task:
+            self._materialized_views_refresh_task.cancel()
 
         logger.info("Background task manager stopped")
 
@@ -583,3 +590,42 @@ class BackgroundTaskManager:
                 break
             except Exception as e:
                 logger.error(f"Reservation expiry loop error: {e}", exc_info=True)
+
+    async def _materialized_views_refresh_loop(self):
+        """Refresh materialized views for analytics (every hour)"""
+        while self.running:
+            try:
+                # Wait 1 hour between refreshes
+                await asyncio.sleep(3600)  # 3600 seconds = 1 hour
+
+                logger.info("Starting materialized views refresh...")
+
+                views_to_refresh = [
+                    "space_utilization_daily",
+                    "api_usage_hourly",
+                    "reservation_stats_daily",
+                    "device_health_summary"
+                ]
+
+                for view_name in views_to_refresh:
+                    try:
+                        start_time = datetime.now()
+
+                        # Use CONCURRENTLY to avoid blocking reads
+                        await self.db_pool.execute(
+                            f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view_name}"
+                        )
+
+                        duration = (datetime.now() - start_time).total_seconds()
+                        logger.info(f"Refreshed materialized view '{view_name}' in {duration:.2f}s")
+
+                    except Exception as e:
+                        # Log error but continue with other views
+                        logger.error(f"Failed to refresh materialized view '{view_name}': {e}")
+
+                logger.info("Materialized views refresh completed")
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Materialized views refresh loop error: {e}", exc_info=True)
