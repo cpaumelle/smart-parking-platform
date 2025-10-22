@@ -60,6 +60,7 @@ async def list_reservations(
 
         where_clause = "WHERE " + " AND ".join(conditions)
 
+        # Optimized query with JOIN to fetch space details in single query (N+1 prevention)
         query = f"""
             SELECT
                 r.id as reservation_id,
@@ -71,8 +72,15 @@ async def list_reservations(
                 r.user_phone,
                 r.metadata,
                 r.created_at,
-                r.updated_at
+                r.updated_at,
+                s.code as space_code,
+                s.name as space_name,
+                s.building,
+                s.floor,
+                s.zone,
+                s.state as space_state
             FROM reservations r
+            JOIN spaces s ON r.space_id = s.id
             {where_clause}
             ORDER BY r.start_time DESC
         """
@@ -92,7 +100,16 @@ async def list_reservations(
                 "user_phone": row["user_phone"],
                 "metadata": row["metadata"] if row["metadata"] else {},
                 "created_at": row["created_at"].isoformat(),
-                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                # Space details (from JOIN - no N+1 query needed)
+                "space": {
+                    "code": row["space_code"],
+                    "name": row["space_name"],
+                    "building": row["building"],
+                    "floor": row["floor"],
+                    "zone": row["zone"],
+                    "state": row["space_state"]
+                }
             }
             reservations.append(res_dict)
 
