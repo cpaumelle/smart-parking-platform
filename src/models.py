@@ -40,6 +40,7 @@ class DeviceType(str, Enum):
 
 class UserRole(str, Enum):
     """User roles for RBAC"""
+    PLATFORM_ADMIN = "platform_admin"  # Cross-tenant super admin (see/do everything)
     OWNER = "owner"       # Full access including billing and API keys
     ADMIN = "admin"       # Manage sites, spaces, devices, users (not billing)
     OPERATOR = "operator" # Manage reservations, view telemetry, trigger displays

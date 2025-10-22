@@ -156,15 +156,26 @@ async def list_devices(
     Returns devices that are either:
     - Assigned to spaces owned by the current tenant
     - Orphan devices (not assigned to any space) if include_orphans=true
+    - ALL devices if user is platform_admin (cross-tenant access)
 
     Each device has a 'category' field indicating 'sensor' or 'display'
 
     Requires: VIEWER role or higher, API key requires devices:read scope
     """
     try:
+        from uuid import UUID
+        from ..models import UserRole
+
         db_pool = request.app.state.db_pool
         chirpstack_pool = request.app.state.chirpstack_client.pool
         devices = []
+
+        # Check if user is platform admin
+        PLATFORM_TENANT_ID = UUID('00000000-0000-0000-0000-000000000000')
+        is_platform_admin = (
+            tenant.role == UserRole.PLATFORM_ADMIN and
+            tenant.tenant_id == PLATFORM_TENANT_ID
+        )
 
         # Determine which device categories to fetch
         categories_to_fetch = []
@@ -175,30 +186,39 @@ async def list_devices(
         else:
             categories_to_fetch = ['sensor', 'display']
 
-        # Fetch sensor devices (tenant-scoped)
+        # Fetch sensor devices (tenant-scoped OR platform admin)
         if 'sensor' in categories_to_fetch:
             sensor_conditions = []
-            sensor_params = [tenant.tenant_id]
-            param_count = 2
+            sensor_params = []
+            param_count = 1
 
-            # Tenant scoping: include devices assigned to tenant's spaces or orphans
-            if include_orphans:
-                sensor_conditions.append("""(
-                    sd.status = 'orphan' OR
-                    EXISTS (
+            # Platform admin sees ALL devices
+            if is_platform_admin:
+                # No tenant scoping for platform admin
+                pass
+            else:
+                # Regular tenant scoping
+                sensor_params.append(tenant.tenant_id)
+                # Tenant scoping: include devices assigned to tenant's spaces or orphans
+                if include_orphans:
+                    sensor_conditions.append("""(
+                        sd.status = 'orphan' OR
+                        EXISTS (
+                            SELECT 1 FROM spaces s
+                            WHERE s.sensor_eui = sd.dev_eui
+                            AND s.tenant_id = $1
+                            AND s.deleted_at IS NULL
+                        )
+                    )""")
+                    param_count = 2
+                else:
+                    sensor_conditions.append("""EXISTS (
                         SELECT 1 FROM spaces s
                         WHERE s.sensor_eui = sd.dev_eui
                         AND s.tenant_id = $1
                         AND s.deleted_at IS NULL
-                    )
-                )""")
-            else:
-                sensor_conditions.append("""EXISTS (
-                    SELECT 1 FROM spaces s
-                    WHERE s.sensor_eui = sd.dev_eui
-                    AND s.tenant_id = $1
-                    AND s.deleted_at IS NULL
-                )""")
+                    )""")
+                    param_count = 2
 
             if device_type is not None:
                 sensor_conditions.append(f"sd.device_type = ${param_count}")
@@ -240,7 +260,8 @@ async def list_devices(
             """
 
             sensor_results = await db_pool.fetch(sensor_query, *sensor_params)
-            logger.info(f"[Tenant:{tenant.tenant_id}] Found {len(sensor_results)} sensor devices")
+            access_type = "PLATFORM_ADMIN" if is_platform_admin else "TENANT"
+            logger.info(f"[{access_type}:{tenant.tenant_id}] Found {len(sensor_results)} sensor devices")
 
             for row in sensor_results:
                 dev_eui_upper = row["deveui"].upper()
@@ -278,30 +299,39 @@ async def list_devices(
                     "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
                 })
 
-        # Fetch display devices (tenant-scoped)
+        # Fetch display devices (tenant-scoped OR platform admin)
         if 'display' in categories_to_fetch:
             display_conditions = []
-            display_params = [tenant.tenant_id]
-            param_count = 2
+            display_params = []
+            param_count = 1
 
-            # Tenant scoping: include devices assigned to tenant's spaces or orphans
-            if include_orphans:
-                display_conditions.append("""(
-                    dd.status = 'orphan' OR
-                    EXISTS (
+            # Platform admin sees ALL devices
+            if is_platform_admin:
+                # No tenant scoping for platform admin
+                pass
+            else:
+                # Regular tenant scoping
+                display_params.append(tenant.tenant_id)
+                # Tenant scoping: include devices assigned to tenant's spaces or orphans
+                if include_orphans:
+                    display_conditions.append("""(
+                        dd.status = 'orphan' OR
+                        EXISTS (
+                            SELECT 1 FROM spaces s
+                            WHERE s.display_eui = dd.dev_eui
+                            AND s.tenant_id = $1
+                            AND s.deleted_at IS NULL
+                        )
+                    )""")
+                    param_count = 2
+                else:
+                    display_conditions.append("""EXISTS (
                         SELECT 1 FROM spaces s
                         WHERE s.display_eui = dd.dev_eui
                         AND s.tenant_id = $1
                         AND s.deleted_at IS NULL
-                    )
-                )""")
-            else:
-                display_conditions.append("""EXISTS (
-                    SELECT 1 FROM spaces s
-                    WHERE s.display_eui = dd.dev_eui
-                    AND s.tenant_id = $1
-                    AND s.deleted_at IS NULL
-                )""")
+                    )""")
+                    param_count = 2
 
             if device_type is not None:
                 display_conditions.append(f"dd.device_type = ${param_count}")
@@ -344,7 +374,7 @@ async def list_devices(
             """
 
             display_results = await db_pool.fetch(display_query, *display_params)
-            logger.info(f"[Tenant:{tenant.tenant_id}] Found {len(display_results)} display devices")
+            logger.info(f"[{access_type}:{tenant.tenant_id}] Found {len(display_results)} display devices")
 
             for row in display_results:
                 dev_eui_upper = row["deveui"].upper()
@@ -383,7 +413,7 @@ async def list_devices(
                     "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
                 })
 
-        logger.info(f"List devices: count={len(devices)} category_filter={device_category}")
+        logger.info(f"[{access_type}:{tenant.tenant_id}] List devices: count={len(devices)} category_filter={device_category}")
         return devices
 
     except Exception as e:
