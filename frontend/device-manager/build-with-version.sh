@@ -25,19 +25,31 @@ else
     CURRENT_BUILD="0"
 fi
 
-# Increment build number
-NEW_BUILD=$((CURRENT_BUILD + 1))
+# Extract just the integer part if build has decimal (e.g., "23.7" -> "23")
+# This handles both integer and decimal build numbers
+CURRENT_BUILD_INT=$(echo "$CURRENT_BUILD" | cut -d. -f1)
+# If empty or not a number, default to 0
+if ! [[ "$CURRENT_BUILD_INT" =~ ^[0-9]+$ ]]; then
+    CURRENT_BUILD_INT="0"
+fi
 
-# Create version info
+# Increment build number
+NEW_BUILD=$((CURRENT_BUILD_INT + 1))
+
+# Get git commit
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')
+
+# Create version info (matching our standard format)
 cat > "$VERSION_FILE" << EOV
 {
   "version": "$CURRENT_VERSION",
-  "build": $NEW_BUILD,
-  "buildTimestamp": "$BUILD_TIMESTAMP",
-  "buildDate": "$BUILD_DATE",
-  "buildTime": "$BUILD_TIME",
+  "build": "$NEW_BUILD",
   "buildNumber": "${BUILD_DATE}.${NEW_BUILD}",
-  "gitCommit": "$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')",
+  "buildTimestamp": "$BUILD_TIMESTAMP",
+  "buildDate": "$BUILD_TIMESTAMP",
+  "gitCommit": "$GIT_COMMIT",
+  "commit": "$GIT_COMMIT",
+  "description": "Build $NEW_BUILD",
   "environment": "production"
 }
 EOV

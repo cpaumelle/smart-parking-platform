@@ -1,11 +1,11 @@
 {
   "version": "5.8.0",
-  "build": "23.7",
-  "buildNumber": "20251022.23.7",
-  "buildTimestamp": "2025-10-22T14:00:00Z",
-  "buildDate": "2025-10-22T14:00:00Z",
-  "gitCommit": "c37e2e7",
-  "commit": "c37e2e7",
-  "description": "Platform admin UI with tenant switcher, warning banner, and tenant columns",
+  "build": "24",
+  "buildNumber": "20251022.24",
+  "buildTimestamp": "2025-10-22 14:08:14 UTC",
+  "buildDate": "2025-10-22 14:08:14 UTC",
+  "gitCommit": "1d53ef6",
+  "commit": "1d53ef6",
+  "description": "Build 24",
   "environment": "production"
 }
