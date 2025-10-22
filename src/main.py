@@ -41,7 +41,6 @@ from typing import Dict, Any
 # Multi-tenancy imports
 from .tenant_auth import set_db_pool as set_tenant_auth_db_pool, set_jwt_secret
 from .auth import set_db_pool as set_auth_db_pool
-from .rate_limit import RateLimiter, set_rate_limiter, RateLimitConfig
 
 # Routers
 from .api_tenants import router as tenants_router
@@ -128,10 +127,9 @@ async def lifespan(app: FastAPI):
     app.state.cache = cache_manager
     logger.info("[OK] Redis cache initialized")
 
-    # Initialize rate limiter (for API requests)
-    rate_limiter = RateLimiter(settings.redis_url)
-    await rate_limiter.initialize()
-    set_rate_limiter(rate_limiter)
+    # Initialize rate limiter (for API requests) - uses same Redis as cache
+    from .rate_limiter import RateLimiter
+    rate_limiter = RateLimiter(cache_manager.redis)
     app.state.rate_limiter = rate_limiter
     logger.info("[OK] Rate limiter initialized")
 
@@ -143,8 +141,9 @@ async def lifespan(app: FastAPI):
     logger.info("[OK] Webhook spool initialized")
 
     # Initialize downlink queue and worker (for Class-C displays)
-    downlink_queue = DownlinkQueue(rate_limiter.redis_client)
-    downlink_rate_limiter = DownlinkRateLimiter(rate_limiter.redis_client)
+    # Use cache Redis client for downlink operations
+    downlink_queue = DownlinkQueue(cache_manager.redis)
+    downlink_rate_limiter = DownlinkRateLimiter(cache_manager.redis)
     app.state.downlink_queue = downlink_queue
     app.state.downlink_rate_limiter = downlink_rate_limiter
     logger.info("[OK] Downlink queue initialized")
@@ -238,9 +237,7 @@ async def lifespan(app: FastAPI):
         await app.state.state_manager.close()
         logger.info("[OK] State manager closed")
 
-    if hasattr(app.state, 'rate_limiter'):
-        await app.state.rate_limiter.close()
-        logger.info("[OK] Rate limiter closed")
+    # Note: rate_limiter uses cache Redis client, no separate cleanup needed
 
     if hasattr(app.state, 'db_pool'):
         await app.state.db_pool.close()
@@ -281,7 +278,24 @@ app.add_middleware(RequestTracingMiddleware)
 # 4. Tenant context middleware (propagates tenant/user context)
 app.add_middleware(TenantContextMiddleware)
 
-# 5. CORS middleware
+# 5. Rate limiting middleware (uses tenant_id from context)
+# Note: Will access app.state.rate_limiter after startup
+from .rate_limiter import RateLimitMiddleware
+
+class DeferredRateLimitMiddleware(BaseHTTPMiddleware):
+    """Wrapper that accesses rate_limiter from app.state after startup"""
+    async def dispatch(self, request: Request, call_next):
+        if hasattr(request.app.state, 'rate_limiter'):
+            # Use the actual rate limit middleware
+            middleware = RateLimitMiddleware(request.app, request.app.state.rate_limiter)
+            return await middleware.dispatch(request, call_next)
+        else:
+            # Rate limiter not ready yet, skip rate limiting
+            return await call_next(request)
+
+app.add_middleware(DeferredRateLimitMiddleware)
+
+# 6. CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -671,8 +685,10 @@ async def health_check(request: Request):
     # Rate limiter check
     try:
         rate_limiter = request.app.state.rate_limiter
-        if rate_limiter and rate_limiter.redis_client:
+        if rate_limiter and rate_limiter.enabled:
             checks["rate_limiter"] = "healthy"
+        elif rate_limiter and not rate_limiter.enabled:
+            checks["rate_limiter"] = "disabled"
         else:
             checks["rate_limiter"] = "not initialized"
             overall_status = "degraded"
