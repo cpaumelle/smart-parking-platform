@@ -122,6 +122,12 @@ async def lifespan(app: FastAPI):
     set_jwt_secret(jwt_secret)
     logger.info("[OK] Multi-tenancy authentication initialized")
 
+    # Initialize Redis cache
+    from .cache import init_cache
+    cache_manager = init_cache(settings.redis_url)
+    app.state.cache = cache_manager
+    logger.info("[OK] Redis cache initialized")
+
     # Initialize rate limiter (for API requests)
     rate_limiter = RateLimiter(settings.redis_url)
     await rate_limiter.initialize()

@@ -5,6 +5,8 @@ Multi-tenancy enabled with RBAC
 from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from typing import Optional, List, Dict, Any
 import logging
+import hashlib
+import json
 from uuid import UUID
 from datetime import datetime
 
@@ -15,6 +17,7 @@ from ..models import (
 from ..tenant_auth import get_current_tenant, require_viewer, require_admin
 from ..rate_limit import get_rate_limiter
 from ..api_scopes import require_scopes
+from ..cache import get_cache, invalidate_space_cache
 
 router = APIRouter(prefix="/api/v1/spaces", tags=["spaces"])
 logger = logging.getLogger(__name__)
@@ -37,6 +40,28 @@ async def list_spaces(
     Requires: VIEWER role or higher, API key requires spaces:read scope
     """
     try:
+        # Generate cache key from filters
+        cache_key_data = {
+            "tenant_id": str(tenant.tenant_id),
+            "building": building,
+            "floor": floor,
+            "zone": zone,
+            "state": state.value if state else None,
+            "site_id": str(site_id) if site_id else None,
+            "include_deleted": include_deleted
+        }
+        cache_key = f"spaces:list:{hashlib.md5(json.dumps(cache_key_data, sort_keys=True).encode()).hexdigest()}"
+
+        # Try cache first
+        try:
+            cache = get_cache()
+            cached = await cache.get(cache_key)
+            if cached:
+                logger.debug(f"[Tenant:{tenant.tenant_id}] Cache HIT for spaces list")
+                return cached
+        except Exception as cache_error:
+            logger.warning(f"Cache get error (continuing without cache): {cache_error}")
+
         db_pool = request.app.state.db_pool
 
         # Build dynamic query with filters - ALWAYS include tenant_id
@@ -126,8 +151,17 @@ async def list_spaces(
                 "deleted_at": row["deleted_at"].isoformat() if row["deleted_at"] else None
             })
 
+        result = {"spaces": spaces, "count": len(spaces)}
+
+        # Cache the result (60 second TTL for frequently changing data)
+        try:
+            await cache.set(cache_key, result, ttl=60)
+            logger.debug(f"[Tenant:{tenant.tenant_id}] Cached spaces list result")
+        except Exception as cache_error:
+            logger.warning(f"Cache set error (continuing): {cache_error}")
+
         logger.info(f"[Tenant:{tenant.tenant_id}] List spaces: count={len(spaces)} filters={len(conditions)-1}")
-        return {"spaces": spaces, "count": len(spaces)}
+        return result
 
     except Exception as e:
         logger.error(f"[Tenant:{tenant.tenant_id}] Error listing spaces: {e}", exc_info=True)
@@ -283,6 +317,13 @@ async def create_space(
             "updated_at": row["updated_at"].isoformat()
         }
 
+        # Invalidate space caches for this tenant
+        try:
+            await invalidate_space_cache(str(tenant.tenant_id))
+            logger.debug(f"[Tenant:{tenant.tenant_id}] Invalidated space cache after creation")
+        except Exception as cache_error:
+            logger.warning(f"Cache invalidation error (continuing): {cache_error}")
+
         logger.info(f"[Tenant:{tenant.tenant_id}] Created space {row['code']} in site {space.site_id}")
         return result
 
@@ -367,6 +408,13 @@ async def update_space(
             "updated_at": row["updated_at"].isoformat()
         }
 
+        # Invalidate space caches for this tenant and specific space
+        try:
+            await invalidate_space_cache(str(tenant.tenant_id), str(space_id))
+            logger.debug(f"[Tenant:{tenant.tenant_id}] Invalidated space cache after update")
+        except Exception as cache_error:
+            logger.warning(f"Cache invalidation error (continuing): {cache_error}")
+
         logger.info(f"[Tenant:{tenant.tenant_id}] Updated space {space_id}")
         return result
 
@@ -400,6 +448,13 @@ async def delete_space(
 
         if result == "UPDATE 0":
             raise HTTPException(status_code=404, detail="Space not found")
+
+        # Invalidate space caches for this tenant and specific space
+        try:
+            await invalidate_space_cache(str(tenant.tenant_id), str(space_id))
+            logger.debug(f"[Tenant:{tenant.tenant_id}] Invalidated space cache after deletion")
+        except Exception as cache_error:
+            logger.warning(f"Cache invalidation error (continuing): {cache_error}")
 
         logger.info(f"[Tenant:{tenant.tenant_id}] Deleted space {space_id}")
         return None

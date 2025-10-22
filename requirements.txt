@@ -8,8 +8,8 @@ pydantic-settings==2.6.1
 asyncpg==0.30.0
 psycopg2-binary==2.9.9  # For migrations only
 
-# Redis
-redis==5.0.1
+# Redis (with hiredis for better performance)
+redis[hiredis]==5.0.1
 
 # HTTP/gRPC
 httpx==0.27.2

@@ -16,7 +16,11 @@
       "Bash(mv:*)",
       "Bash(git add:*)",
       "Bash(tree:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(docker compose restart:*)",
+      "Bash(docker compose:*)"
     ],
     "deny": [],
     "ask": []
