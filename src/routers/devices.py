@@ -173,7 +173,7 @@ async def list_devices(
         # Check if user is platform admin
         PLATFORM_TENANT_ID = UUID('00000000-0000-0000-0000-000000000000')
         is_platform_admin = (
-            tenant.role == UserRole.PLATFORM_ADMIN and
+            tenant.user_role == UserRole.PLATFORM_ADMIN and
             tenant.tenant_id == PLATFORM_TENANT_ID
         )
 
