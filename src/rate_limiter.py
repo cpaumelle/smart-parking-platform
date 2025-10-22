@@ -187,13 +187,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         """Apply rate limiting to request"""
 
-        # Skip rate limiting for health check, docs, and webhook endpoints
+        # Skip rate limiting for health check, docs, webhook, and auth endpoints
         skip_paths = [
             "/health",
             "/docs",
             "/redoc",
             "/openapi.json",
             "/api/v1/uplink",  # ChirpStack webhook (high volume, authenticated separately)
+            "/api/v1/auth/login",  # Allow login attempts
+            "/api/v1/auth/refresh",  # Allow token refresh (critical for UX)
         ]
         if request.url.path in skip_paths:
             return await call_next(request)
