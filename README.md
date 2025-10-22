@@ -2,9 +2,9 @@
 
 A production-ready smart parking management system using LoRaWAN sensors, ChirpStack network server, and a consolidated REST API.
 
-**Version:** 5.3.0
+**Version:** 5.8.0-dev
 **Status:** ✅ Production Ready - All Routers Enabled
-**Last Updated:** 2025-10-21
+**Last Updated:** 2025-10-22
 
 ---
 
@@ -890,6 +890,28 @@ cat /opt/v5-smart-parking/config/traefik/ADMIN-CREDENTIALS.txt
 - Username: parking_user
 - Password: (from .env)
 - Database: parking_v2
+
+---
+
+## Documentation
+
+Comprehensive documentation is organized in the `docs/` directory:
+
+### 📚 [Documentation Hub](docs/README.md)
+
+- **[Architecture](docs/architecture/)** - System design, database schema, state machines, and IoT integration
+- **[API Reference](docs/api/)** - REST API endpoints, OpenAPI spec, and webhook integration
+- **[Operations](docs/operations/)** - Deployment guides, monitoring, runbooks, and testing
+- **[Security](docs/security/)** - Multi-tenancy, RBAC, and security policies
+- **[Changelog](docs/changelog/)** - Version history and implementation plans
+
+### Quick Links
+
+- [Database Schema](docs/architecture/database-schema.md) - Complete PostgreSQL v5 schema
+- [API Reference](docs/api/reference.md) - Full API endpoint documentation
+- [Deployment Guide](docs/operations/deployment.md) - Production deployment procedures
+- [Multi-Tenancy Security](docs/security/tenancy.md) - Row-level security and tenant isolation
+- [Current Implementation Plan](docs/changelog/IMPLEMENTATION_PLAN_v5.8.md) - v5.8 roadmap
 
 ---
 

@@ -54,12 +54,13 @@ from .routers.devices import router as devices_router
 from .routers.reservations import router as reservations_router
 from .routers.gateways import router as gateways_router
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Configure structured logging
+from .logging_config import configure_logging, get_logger
+
+# Initialize structured logging (JSON in production, human-readable in dev)
+json_logs = os.getenv('ENVIRONMENT', 'production') == 'production'
+configure_logging(settings.log_level, json_logs=json_logs)
+logger = get_logger(__name__)
 
 # ============================================================
 # Proxy Headers Middleware
@@ -256,6 +257,50 @@ app = FastAPI(
 
 # Proxy headers middleware (MUST be first to handle X-Forwarded-* headers)
 app.add_middleware(ProxyHeadersMiddleware)
+
+# Request tracing middleware
+import structlog
+import uuid
+import time
+
+@app.middleware("http")
+async def request_tracing_middleware(request: Request, call_next):
+    """Add request ID, timing, and structured logging to all requests"""
+
+    # Generate or extract request ID
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+
+    # Bind to structlog context
+    structlog.contextvars.bind_contextvars(
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path
+    )
+
+    start_time = time.time()
+
+    logger.info("request_started",
+        client_host=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent", "unknown")
+    )
+
+    # Process request
+    response = await call_next(request)
+
+    # Add timing
+    duration_ms = (time.time() - start_time) * 1000
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Response-Time"] = f"{duration_ms:.2f}ms"
+
+    logger.info("request_completed",
+        status_code=response.status_code,
+        duration_ms=round(duration_ms, 2)
+    )
+
+    # Clear context
+    structlog.contextvars.unbind_contextvars("request_id", "method", "path")
+
+    return response
 
 # CORS middleware
 app.add_middleware(

@@ -10,6 +10,14 @@ services:
       dockerfile: Dockerfile
     container_name: parking-api
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
@@ -33,9 +41,10 @@ services:
         condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
+      interval: 10s
+      timeout: 3s
       retries: 3
+      start_period: 40s
     volumes:
       - ./src:/app/src  # Hot reload in development
     networks:
@@ -79,6 +88,14 @@ services:
     image: postgres:16-alpine
     container_name: parking-postgres
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
     environment:
       POSTGRES_USER: parking
       POSTGRES_PASSWORD: ${DB_PASSWORD:-parking}
@@ -105,6 +122,14 @@ services:
     image: redis:7-alpine
     container_name: parking-redis
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     command: >
       redis-server
       --appendonly yes
@@ -130,6 +155,14 @@ services:
     image: chirpstack/chirpstack:4
     container_name: parking-chirpstack
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     command: -c /etc/chirpstack
     environment:
       POSTGRESQL_DSN: postgresql://parking:${DB_PASSWORD:-parking}@postgres:5432/chirpstack?sslmode=disable
@@ -142,7 +175,13 @@ services:
       postgres:
         condition: service_healthy
       mosquitto:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     networks:
       - parking-network
     labels:
@@ -157,6 +196,14 @@ services:
     image: eclipse-mosquitto:2
     container_name: parking-mosquitto
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
     volumes:
       - ./config/mosquitto:/mosquitto/config
       - mosquitto_data:/mosquitto/data
@@ -164,6 +211,12 @@ services:
     ports:
       - "1883:1883"
       - "9001:9001"  # WebSocket
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 nc -z localhost 1883 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - parking-network
 
@@ -174,6 +227,14 @@ services:
     build: ./config/adminer-custom
     container_name: parking-adminer
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
     networks:
       - parking-network
     environment:
@@ -181,6 +242,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "if(fsockopen('localhost',8080)){exit(0);}else{exit(1);}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.adminer.rule=Host(`adminer.${DOMAIN}`)"
@@ -197,6 +264,14 @@ services:
     image: chirpstack/chirpstack-gateway-bridge:4
     container_name: parking-gateway-bridge
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
     ports:
       - "1700:1700/udp"  # Semtech UDP
       - "3001:3001"      # Basic Station
@@ -215,6 +290,14 @@ services:
     image: traefik:v3.1
     container_name: parking-traefik
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     command:
       - --api.dashboard=true
       - --providers.docker=true
@@ -230,6 +313,7 @@ services:
       - --log.level=INFO
       - --providers.docker.watch=true
       - --providers.file.filename=/config/dynamic.yml
+      - --ping=true
     ports:
       - "80:80"
       - "443:443"
@@ -238,6 +322,12 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./certs:/letsencrypt
       - ./config/traefik:/config:ro
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - parking-network
     labels:
@@ -256,6 +346,20 @@ services:
     build: /opt/www-verdegris
     container_name: parking-website
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - parking-network
     labels:
@@ -274,12 +378,26 @@ services:
     build: /opt/www-verdegris/contact-api
     container_name: parking-contact-api
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     environment:
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       TO_EMAIL: contact@eroundit.eu
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - parking-network
     labels:
@@ -294,6 +412,14 @@ services:
     build: ./frontend/device-manager
     container_name: parking-device-manager
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
     networks:
       - parking-network
     labels:
@@ -314,9 +440,23 @@ services:
     image: nginx:alpine
     container_name: parking-kuando-ui
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
     volumes:
       - ./services/kuando-ui/index.html:/usr/share/nginx/html/index.html:ro
       - ./services/kuando-ui/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     networks:
       - parking-network
     depends_on:
@@ -336,12 +476,26 @@ services:
     image: filebrowser/filebrowser:latest
     container_name: parking-filebrowser
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
     volumes:
       - /opt/v5-smart-parking:/srv
       - filebrowser_db:/database
     environment:
       - FB_DATABASE=/database/filebrowser.db
       - FB_ROOT=/srv
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - parking-network
     labels:

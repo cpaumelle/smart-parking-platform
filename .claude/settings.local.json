@@ -1,7 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "Bash(./check-version.sh:*)"
+      "Bash(./check-version.sh:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(for service in api postgres redis chirpstack mosquitto adminer gateway-bridge traefik website contact-api device-manager-ui kuando-ui filebrowser)",
+      "Bash(do echo -n \"$service: \" if grep -A 1 \"^  $service:\" docker-compose.yml)",
+      "Bash(then echo \"✅ HAS HEALTHCHECK\" else echo \"❌ NO HEALTHCHECK\" fi done)",
+      "Bash(docker inspect:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker stats:*)",
+      "Bash(sort:*)",
+      "Bash(mkdir:*)",
+      "Bash(git mv:*)",
+      "Bash(mv:*)",
+      "Bash(git add:*)",
+      "Bash(tree:*)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []
