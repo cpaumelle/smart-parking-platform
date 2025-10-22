@@ -187,8 +187,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         """Apply rate limiting to request"""
 
-        # Skip rate limiting for health check and docs
-        if request.url.path in ["/health", "/docs", "/redoc", "/openapi.json"]:
+        # Skip rate limiting for health check, docs, and webhook endpoints
+        skip_paths = [
+            "/health",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/api/v1/uplink",  # ChirpStack webhook (high volume, authenticated separately)
+        ]
+        if request.url.path in skip_paths:
             return await call_next(request)
 
         # Extract tenant ID from request state (set by auth middleware)
