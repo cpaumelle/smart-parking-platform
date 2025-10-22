@@ -51,7 +51,7 @@ class AuthService {
       console.log('📦 Tenants stored in user object');
 
       return {
-        user,
+        user: userWithTenants,  // Return the merged user object with tenants
         token: access_token,
         refreshToken: refresh_token,
         tenants

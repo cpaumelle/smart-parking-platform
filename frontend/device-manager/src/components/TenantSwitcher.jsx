@@ -9,8 +9,13 @@ export default function TenantSwitcher() {
 
   useEffect(() => {
     // Get available tenants from user data (populated during login)
+    console.log('🏢 TenantSwitcher - user:', user);
+    console.log('🏢 TenantSwitcher - user.tenants:', user?.tenants);
     if (user && user.tenants) {
+      console.log('🏢 TenantSwitcher - Setting available tenants:', user.tenants.length);
       setAvailableTenants(user.tenants);
+    } else {
+      console.warn('⚠️ TenantSwitcher - No tenants found in user object');
     }
   }, [user]);
 
