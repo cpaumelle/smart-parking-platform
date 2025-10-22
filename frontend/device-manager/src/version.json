@@ -1,11 +1,11 @@
 {
-  "version": "5.3.1",
-  "build": "23.3",
-  "buildNumber": "20251021.23.3",
-  "buildTimestamp": "2025-10-21T23:45:00Z",
-  "buildDate": "2025-10-21T23:45:00Z",
-  "gitCommit": "fix-reservation-display",
-  "commit": "fix-reservation-display",
-  "description": "Fixed reservation display (status='confirmed' not 'active') and effective state calculation",
+  "version": "5.8.0",
+  "build": "23.6",
+  "buildNumber": "20251022.23.6",
+  "buildTimestamp": "2025-10-22T13:25:00Z",
+  "buildDate": "2025-10-22T13:25:00Z",
+  "gitCommit": "45ac998",
+  "commit": "45ac998",
+  "description": "Platform admin role with cross-tenant access for devices and spaces",
   "environment": "production"
 }
