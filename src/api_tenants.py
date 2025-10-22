@@ -90,13 +90,37 @@ async def login(
             )
 
         # Get user's tenants
-        tenant_rows = await db.fetch("""
-            SELECT t.id, t.name, t.slug, um.role, um.is_active
-            FROM user_memberships um
-            INNER JOIN tenants t ON um.tenant_id = t.id
-            WHERE um.user_id = $1 AND um.is_active = true AND t.is_active = true
-            ORDER BY um.created_at ASC
-        """, user_row['id'])
+        # Check if user is platform admin (has membership in platform meta-tenant)
+        PLATFORM_TENANT_ID = UUID('00000000-0000-0000-0000-000000000000')
+
+        platform_admin_row = await db.fetchrow("""
+            SELECT role FROM user_memberships
+            WHERE user_id = $1 AND tenant_id = $2 AND is_active = true
+        """, user_row['id'], PLATFORM_TENANT_ID)
+
+        is_platform_admin = (
+            platform_admin_row and
+            platform_admin_row['role'] == UserRole.PLATFORM_ADMIN.value
+        )
+
+        if is_platform_admin:
+            # Platform admins see ALL tenants
+            logger.info(f"Platform admin login: {login_req.email}")
+            tenant_rows = await db.fetch("""
+                SELECT t.id, t.name, t.slug, $1::text as role, true as is_active
+                FROM tenants t
+                WHERE t.is_active = true
+                ORDER BY t.name ASC
+            """, UserRole.PLATFORM_ADMIN.value)
+        else:
+            # Regular users see only their assigned tenants
+            tenant_rows = await db.fetch("""
+                SELECT t.id, t.name, t.slug, um.role, um.is_active
+                FROM user_memberships um
+                INNER JOIN tenants t ON um.tenant_id = t.id
+                WHERE um.user_id = $1 AND um.is_active = true AND t.is_active = true
+                ORDER BY um.created_at ASC
+            """, user_row['id'])
 
         if not tenant_rows:
             logger.warning(f"User {login_req.email} has no active tenant memberships")
