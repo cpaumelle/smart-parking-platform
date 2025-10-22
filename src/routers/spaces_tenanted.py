@@ -12,7 +12,7 @@ from datetime import datetime
 
 from ..models import (
     SpaceCreate, SpaceUpdate, Space, SpaceState,
-    TenantContext
+    TenantContext, UserRole
 )
 from ..tenant_auth import get_current_tenant, require_viewer, require_admin
 from ..rate_limit import get_rate_limiter
@@ -64,10 +64,23 @@ async def list_spaces(
 
         db_pool = request.app.state.db_pool
 
-        # Build dynamic query with filters - ALWAYS include tenant_id
-        conditions = ["s.tenant_id = $1"]
-        params = [tenant.tenant_id]
-        param_count = 2
+        # Check if user is platform admin
+        PLATFORM_TENANT_ID = UUID('00000000-0000-0000-0000-000000000000')
+        is_platform_admin = (
+            tenant.user_role == UserRole.PLATFORM_ADMIN and
+            tenant.tenant_id == PLATFORM_TENANT_ID
+        )
+
+        # Build dynamic query with filters
+        conditions = []
+        params = []
+        param_count = 1
+
+        # Platform admin sees ALL spaces, regular users see only their tenant's spaces
+        if not is_platform_admin:
+            conditions.append(f"s.tenant_id = ${param_count}")
+            params.append(tenant.tenant_id)
+            param_count += 1
 
         if building is not None:
             conditions.append(f"s.building = ${param_count}")
@@ -98,7 +111,7 @@ async def list_spaces(
         if not include_deleted:
             conditions.append("s.deleted_at IS NULL")
 
-        where_clause = "WHERE " + " AND ".join(conditions)
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         query = f"""
             SELECT
@@ -160,11 +173,15 @@ async def list_spaces(
         except Exception as cache_error:
             logger.warning(f"Cache set error (continuing): {cache_error}")
 
-        logger.info(f"[Tenant:{tenant.tenant_id}] List spaces: count={len(spaces)} filters={len(conditions)-1}")
+        access_type = "PLATFORM_ADMIN" if is_platform_admin else "TENANT"
+        tenant_scope_info = f"[{access_type}:{tenant.tenant_id}]"
+        filter_count = len(conditions) - (0 if is_platform_admin else 1)  # Exclude tenant_id from count
+        logger.info(f"{tenant_scope_info} List spaces: count={len(spaces)} filters={filter_count}")
         return result
 
     except Exception as e:
-        logger.error(f"[Tenant:{tenant.tenant_id}] Error listing spaces: {e}", exc_info=True)
+        access_type = "PLATFORM_ADMIN" if is_platform_admin else "TENANT"
+        logger.error(f"[{access_type}:{tenant.tenant_id}] Error listing spaces: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
