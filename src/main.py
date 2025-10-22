@@ -261,54 +261,27 @@ app = FastAPI(
     root_path_in_servers=False
 )
 
-# Proxy headers middleware (MUST be first to handle X-Forwarded-* headers)
+# Import middleware from dedicated module
+from .middleware import (
+    RequestTracingMiddleware,
+    TenantContextMiddleware,
+    SecurityHeadersMiddleware
+)
+
+# Middleware stack (order matters!)
+# 1. Proxy headers middleware (MUST be first to handle X-Forwarded-* headers)
 app.add_middleware(ProxyHeadersMiddleware)
 
-# Request tracing middleware
-import structlog
-import uuid
-import time
+# 2. Security headers middleware
+app.add_middleware(SecurityHeadersMiddleware)
 
-@app.middleware("http")
-async def request_tracing_middleware(request: Request, call_next):
-    """Add request ID, timing, and structured logging to all requests"""
+# 3. Request tracing middleware (request ID, timing, logging)
+app.add_middleware(RequestTracingMiddleware)
 
-    # Generate or extract request ID
-    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+# 4. Tenant context middleware (propagates tenant/user context)
+app.add_middleware(TenantContextMiddleware)
 
-    # Bind to structlog context
-    structlog.contextvars.bind_contextvars(
-        request_id=request_id,
-        method=request.method,
-        path=request.url.path
-    )
-
-    start_time = time.time()
-
-    logger.info("request_started",
-        client_host=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent", "unknown")
-    )
-
-    # Process request
-    response = await call_next(request)
-
-    # Add timing
-    duration_ms = (time.time() - start_time) * 1000
-    response.headers["X-Request-ID"] = request_id
-    response.headers["X-Response-Time"] = f"{duration_ms:.2f}ms"
-
-    logger.info("request_completed",
-        status_code=response.status_code,
-        duration_ms=round(duration_ms, 2)
-    )
-
-    # Clear context
-    structlog.contextvars.unbind_contextvars("request_id", "method", "path")
-
-    return response
-
-# CORS middleware
+# 5. CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
