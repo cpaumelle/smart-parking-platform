@@ -36,7 +36,10 @@ class AuthService {
       // Store tokens and user info
       this.setAccessToken(access_token);
       this.setRefreshToken(refresh_token);
-      this.setUser(user);
+
+      // Store user with tenants included
+      const userWithTenants = { ...user, tenants };
+      this.setUser(userWithTenants);
 
       // Store first tenant as current tenant (can be changed later)
       if (tenants && tenants.length > 0) {
@@ -45,6 +48,7 @@ class AuthService {
 
       console.log('✅ Login successful:', user.email);
       console.log('📋 Available tenants:', tenants.length);
+      console.log('📦 Tenants stored in user object');
 
       return {
         user,
