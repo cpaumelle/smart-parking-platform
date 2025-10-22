@@ -1,11 +1,11 @@
 {
   "version": "5.8.0",
-  "build": "23.6",
-  "buildNumber": "20251022.23.6",
-  "buildTimestamp": "2025-10-22T13:25:00Z",
-  "buildDate": "2025-10-22T13:25:00Z",
-  "gitCommit": "45ac998",
-  "commit": "45ac998",
-  "description": "Platform admin role with cross-tenant access for devices and spaces",
+  "build": "23.7",
+  "buildNumber": "20251022.23.7",
+  "buildTimestamp": "2025-10-22T14:00:00Z",
+  "buildDate": "2025-10-22T14:00:00Z",
+  "gitCommit": "c37e2e7",
+  "commit": "c37e2e7",
+  "description": "Platform admin UI with tenant switcher, warning banner, and tenant columns",
   "environment": "production"
 }
