@@ -246,8 +246,8 @@ class DatabasePool:
                 row = await conn.fetchrow(
                     query,
                     space.name, space.code, space.building, space.floor, space.zone,
-                    space.sensor_eui.lower() if space.sensor_eui else None,
-                    space.display_eui.lower() if space.display_eui else None,
+                    space.sensor_eui.upper() if space.sensor_eui else None,
+                    space.display_eui.upper() if space.display_eui else None,
                     space.state.value,
                     space.gps_latitude, space.gps_longitude,
                     json.dumps(space.metadata) if space.metadata else None
@@ -731,7 +731,7 @@ class DatabasePool:
         async with self.acquire() as conn:
             result = await conn.execute(
                 query,
-                device_eui.lower(),
+                device_eui.upper(),
                 space_id,
                 occupancy_state,
                 battery,
@@ -775,7 +775,7 @@ class DatabasePool:
         async with self.acquire() as conn:
             await conn.execute(
                 query,
-                device_eui.lower(),
+                device_eui.upper(),
                 occupancy_state,
                 data_dict.get('battery'),
                 data_dict.get('rssi'),

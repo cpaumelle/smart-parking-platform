@@ -64,7 +64,7 @@ class DevEUIMixin(BaseModel):
         if v is not None:
             if not re.match(r"^[0-9a-fA-F]{16}$", v):
                 raise ValueError(f"Invalid DevEUI format: {v}")
-            return v.lower()
+            return v.upper()  # Changed from .lower() to .upper() to match database triggers
         return v
 
 # ============================================================

@@ -203,6 +203,49 @@ display_policies.tenant_id → tenants.id
 audit_log.tenant_id → tenants.id
 ```
 
+### EUI Case Convention
+
+**IMPORTANT:** The system uses different EUI case conventions at different layers:
+
+| Layer | Case Convention | Rationale |
+|-------|----------------|-----------|
+| **ChirpStack (Network Layer)** | `lowercase` | ChirpStack stores and sends EUIs in lowercase hex (e.g., `e8e1e1000103c3f8`) |
+| **Application Layer (v5 API)** | `UPPERCASE` | Application stores and processes EUIs in uppercase hex (e.g., `E8E1E1000103C3F8`) |
+| **Database** | `UPPERCASE` (enforced) | PostgreSQL triggers automatically convert all EUIs to uppercase on INSERT/UPDATE |
+
+**Normalization Process:**
+
+1. **Incoming webhooks** from ChirpStack arrive with lowercase EUIs
+2. **Application code** normalizes to UPPERCASE using `normalize_deveui()` utility
+3. **Pydantic models** enforce UPPERCASE via field validators
+4. **Database triggers** (`enforce_eui_uppercase()`) provide final enforcement layer
+5. **Outgoing ChirpStack queries** convert to lowercase just before API calls
+
+**Example Flow:**
+```python
+# ChirpStack webhook arrives
+webhook_data = {"deviceInfo": {"devEui": "e8e1e1000103c3f8"}}
+
+# Application normalizes to UPPERCASE
+device_eui = normalize_deveui(webhook_data["deviceInfo"]["devEui"])
+# Result: "E8E1E1000103C3F8"
+
+# Query database (UPPERCASE)
+space = await db.get_space_by_sensor(device_eui)
+
+# Query ChirpStack (lowercase)
+device = await chirpstack.get_device(device_eui.lower())
+```
+
+**Why This Matters:**
+
+- **v5.7.0 Bug Fix:** Previous code used lowercase in Pydantic models, causing display device lookups to fail for EUIs with letters (e.g., `202020390C0E0902` worked but `202020390c0e0902` didn't)
+- **Consistency:** UPPERCASE is more readable and aligns with IEEE MAC address standards
+- **Boundary normalization:** Convert at system boundaries (webhook ingress, ChirpStack API calls)
+- **Internal consistency:** UPPERCASE everywhere internally prevents case-sensitivity bugs
+
+**For complete EUI architecture, see:** `docs/V5_DATABASE_SCHEMA.md` (Section: EUI Normalization Triggers)
+
 ---
 
 ## v5.3 Features Deep Dive
