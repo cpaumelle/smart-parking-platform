@@ -23,11 +23,15 @@ services:
       REDIS_URL: ${REDIS_URL}
       CHIRPSTACK_HOST: ${CHIRPSTACK_HOST}
       CHIRPSTACK_PORT: ${CHIRPSTACK_PORT}
-      CHIRPSTACK_API_KEY: ${CHIRPSTACK_API_KEY}
+      # Note: CHIRPSTACK_API_KEY can still be set via env var as fallback
+      # The secrets loader will prioritize /run/secrets/chirpstack_api_token
+      CHIRPSTACK_API_KEY: ${CHIRPSTACK_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       CORS_ORIGINS: ${CORS_ORIGINS}
-      SECRET_KEY: ${SECRET_KEY}
+      # Note: SECRET_KEY can still be set via env var as fallback
+      # The secrets loader will prioritize /run/secrets/jwt_secret_key
+      SECRET_KEY: ${SECRET_KEY:-change-this-in-production-minimum-32-characters-long}
       APP_NAME: ${APP_NAME:-Smart Parking Platform v2}
       APP_VERSION: ${APP_VERSION:-2.0.0}
     expose:
@@ -47,6 +51,10 @@ services:
       start_period: 40s
     volumes:
       - ./src:/app/src  # Hot reload in development
+      # Docker secrets via bind mounts (works in non-Swarm mode)
+      # These files are mounted read-only to /run/secrets/
+      - ./secrets/jwt_secret_key.txt:/run/secrets/jwt_secret_key:ro
+      - ./secrets/chirpstack_api_token.txt:/run/secrets/chirpstack_api_token:ro
     networks:
       - parking-network
     labels:

@@ -26,6 +26,11 @@ htmlcov/
 .env
 *.env.local
 
+# Secrets (Docker secrets - NEVER commit!)
+secrets/*.txt
+secrets/*.key
+secrets/*.pem
+
 # Certificates (sensitive)
 certs/acme.json
 

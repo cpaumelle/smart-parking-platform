@@ -1,12 +1,15 @@
 """
 Centralized configuration management using Pydantic Settings
 Single source of truth for all application configuration
+
+Supports Docker secrets and environment variables with automatic fallback.
 """
 from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
 from typing import List, Optional
 import os
 from functools import lru_cache
+from .secrets import load_secret
 
 
 class Settings(BaseSettings):
@@ -143,8 +146,9 @@ class Settings(BaseSettings):
         le=65535,
         description="ChirpStack gRPC port"
     )
+    # ChirpStack API credentials: Support Docker secrets
     chirpstack_api_key: str = Field(
-        default="",
+        default_factory=lambda: load_secret("chirpstack_api_key", default=""),
         description="ChirpStack API key"
     )
     chirpstack_api_url: str = Field(
@@ -152,7 +156,7 @@ class Settings(BaseSettings):
         description="ChirpStack API base URL"
     )
     chirpstack_api_token: str = Field(
-        default="",
+        default_factory=lambda: load_secret("chirpstack_api_token", default=""),
         description="ChirpStack API token (alias for api_key)"
     )
 
@@ -195,15 +199,23 @@ class Settings(BaseSettings):
     # ========================================================================
     # Security (JWT)
     # ========================================================================
+    # Secret key: Supports Docker secrets, environment variables, or default
+    # Priority: 1) /run/secrets/secret_key, 2) SECRET_KEY_FILE, 3) SECRET_KEY env
     secret_key: str = Field(
-        default="change-this-in-production-minimum-32-characters-long",
+        default_factory=lambda: load_secret(
+            "secret_key",
+            default="change-this-in-production-minimum-32-characters-long"
+        ),
         min_length=32,
         description="Application secret key (for JWT signing)"
     )
+
+    # JWT secret: Optional override for JWT-specific key
     jwt_secret_key: Optional[str] = Field(
-        default=None,
+        default_factory=lambda: load_secret("jwt_secret_key"),
         description="JWT secret key (if different from secret_key)"
     )
+
     jwt_algorithm: str = Field(
         default="HS256",
         description="JWT signing algorithm"
