@@ -1,0 +1,169 @@
+version: '3.8'
+
+networks:
+  smart-parking:
+    name: smart-parking-network
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  chirpstack_data:
+    driver: local
+  mosquitto_data:
+    driver: local
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: parking-postgres-v6
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: parking_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-parking_password}
+      POSTGRES_DB: parking_v6
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../migrations:/docker-entrypoint-initdb.d:ro
+      - ../scripts/postgres:/scripts:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - smart-parking
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parking_user -d parking_v6"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: parking-redis-v6
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - smart-parking
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Mosquitto MQTT Broker
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: parking-mosquitto
+    restart: unless-stopped
+    volumes:
+      - ./config/mosquitto:/mosquitto/config
+      - mosquitto_data:/mosquitto/data
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    networks:
+      - smart-parking
+
+  # ChirpStack Network Server
+  chirpstack:
+    image: chirpstack/chirpstack:4
+    container_name: parking-chirpstack
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./config/chirpstack:/etc/chirpstack
+      - chirpstack_data:/var/lib/chirpstack
+    ports:
+      - "8080:8080"
+    networks:
+      - smart-parking
+    environment:
+      DATABASE_URL: postgresql://parking_user:${DB_PASSWORD:-parking_password}@postgres:5432/chirpstack?sslmode=disable
+      REDIS_URL: redis://redis:6379
+
+  # ChirpStack Gateway Bridge
+  gateway-bridge:
+    image: chirpstack/chirpstack-gateway-bridge:4
+    container_name: parking-gateway-bridge
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    ports:
+      - "1700:1700/udp"
+    volumes:
+      - ./config/gateway-bridge:/etc/chirpstack-gateway-bridge
+    networks:
+      - smart-parking
+
+  # API Service (V6)
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: parking-api-v6
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://parking_user:parking_password@postgres:5432/parking_v6}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CHIRPSTACK_HOST: ${CHIRPSTACK_HOST:-chirpstack}
+      CHIRPSTACK_API_KEY: ${CHIRPSTACK_API_KEY}
+      SECRET_KEY: ${SECRET_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      USE_V6_API: ${USE_V6_API:-true}
+      ENABLE_RLS: ${ENABLE_RLS:-true}
+    volumes:
+      - ../backend:/app
+      - /var/spool/parking-uplinks:/var/spool/parking-uplinks
+    ports:
+      - "8000:8000"
+    networks:
+      - smart-parking
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  # Frontend (React)
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.dev
+    container_name: parking-frontend-v6
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: http://localhost:8000
+      REACT_APP_USE_V6_API: true
+      REACT_APP_ENABLE_PLATFORM_ADMIN: true
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    networks:
+      - smart-parking

@@ -1,76 +1,92 @@
-# src/core/database.py
+"""Database connection with RLS support"""
 
-import asyncpg
+from typing import AsyncGenerator, Optional
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
-import os
+import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.orm import declarative_base
+from sqlalchemy import event, text
+import logging
 
-class TenantAwareDatabase:
-    """Database connection manager with automatic RLS context setting"""
+from .config import settings
 
-    def __init__(self, connection_string: str = None):
-        self.connection_string = connection_string or os.getenv(
-            'DATABASE_URL',
-            'postgresql://parking_user:password@localhost/parking_v6'
-        )
-        self.pool = None
+logger = logging.getLogger(__name__)
 
-    async def connect(self):
-        """Initialize connection pool"""
-        self.pool = await asyncpg.create_pool(
-            self.connection_string,
-            min_size=10,
-            max_size=20
-        )
+# Create async engine
+engine = create_async_engine(
+    settings.database_url,
+    echo=settings.debug,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_pool_max_overflow,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
 
-    async def disconnect(self):
-        """Close connection pool"""
-        if self.pool:
-            await self.pool.close()
+# Create session factory
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
+)
 
+# Base class for models
+Base = declarative_base()
+
+class TenantAwareSession:
+    """Database session with automatic RLS context"""
+    
+    def __init__(self, tenant_id: str, is_platform_admin: bool = False, user_role: str = "viewer"):
+        self.tenant_id = tenant_id
+        self.is_platform_admin = is_platform_admin
+        self.user_role = user_role
+    
     @asynccontextmanager
-    async def transaction(self, tenant_context) -> AsyncGenerator:
-        """Execute queries within tenant context"""
-        async with self.pool.acquire() as connection:
-            async with connection.transaction():
-                # Set RLS context
-                await connection.execute(
-                    "SET LOCAL app.current_tenant_id = $1",
-                    str(tenant_context.tenant_id)
-                )
-                await connection.execute(
-                    "SET LOCAL app.is_platform_admin = $1",
-                    tenant_context.is_platform_admin
-                )
-                await connection.execute(
-                    "SET LOCAL app.user_role = $1",
-                    str(tenant_context.role)
-                )
-                yield connection
+    async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
+        """Get a session with RLS context set"""
+        async with AsyncSessionLocal() as session:
+            try:
+                if settings.enable_rls:
+                    # Set RLS context
+                    await session.execute(
+                        text("SET LOCAL app.current_tenant_id = :tenant_id"),
+                        {"tenant_id": self.tenant_id}
+                    )
+                    await session.execute(
+                        text("SET LOCAL app.is_platform_admin = :is_admin"),
+                        {"is_admin": str(self.is_platform_admin).lower()}
+                    )
+                    await session.execute(
+                        text("SET LOCAL app.user_role = :role"),
+                        {"role": self.user_role}
+                    )
+                
+                yield session
+                await session.commit()
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"Database session error: {e}")
+                raise
+            finally:
+                await session.close()
 
-    async def execute(self, query: str, *args):
-        """Execute a query"""
-        async with self.pool.acquire() as connection:
-            return await connection.execute(query, *args)
+# Dependency for FastAPI
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Get database session for FastAPI dependency injection"""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
-    async def fetch(self, query: str, *args):
-        """Fetch multiple rows"""
-        async with self.pool.acquire() as connection:
-            return await connection.fetch(query, *args)
+async def init_db():
+    """Initialize database (create tables if needed)"""
+    async with engine.begin() as conn:
+        # Run any initialization needed
+        logger.info("Database initialized")
 
-    async def fetchrow(self, query: str, *args):
-        """Fetch single row"""
-        async with self.pool.acquire() as connection:
-            return await connection.fetchrow(query, *args)
-
-    async def fetchval(self, query: str, *args):
-        """Fetch single value"""
-        async with self.pool.acquire() as connection:
-            return await connection.fetchval(query, *args)
-
-# Global database instance
-db = TenantAwareDatabase()
-
-async def get_db():
-    """FastAPI dependency for database access"""
-    return db
+async def close_db():
+    """Close database connections"""
+    await engine.dispose()
+    logger.info("Database connections closed")
