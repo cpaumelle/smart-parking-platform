@@ -1,0 +1,33 @@
+# Smart Parking Platform v6 - Backend Requirements
+
+# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
+# Database
+asyncpg==0.29.0
+sqlalchemy==2.0.23
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+
+# ChirpStack Integration
+grpcio==1.59.3
+protobuf==4.25.1
+# chirpstack-api==4.5.1  # Uncomment when needed
+
+# Utilities
+python-dotenv==1.0.0
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Monitoring & Logging
+prometheus-client==0.19.0
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2

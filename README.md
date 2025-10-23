@@ -1,2338 +1,405 @@
-# Smart Parking Platform v5
+# Smart Parking Platform v6
 
-A production-ready smart parking management system using LoRaWAN sensors, ChirpStack network server, and a consolidated REST API.
+Multi-tenant parking management system with Row-Level Security and device pool management.
 
-**Version:** 5.8.0-dev
-**Status:** ✅ Production Ready - All Routers Enabled
-**Last Updated:** 2025-10-22
+## 🌟 What's New in v6
 
----
+### Core Architecture Improvements
+- **Direct Tenant Ownership**: All entities (devices, gateways, spaces) now have direct `tenant_id` relationships
+- **Row-Level Security (RLS)**: Database-level tenant isolation ensures data security
+- **Efficient Queries**: Reduced 3-hop joins to direct tenant-scoped queries
+- **Device Lifecycle Management**: Clear state transitions (provisioned → commissioned → operational → decommissioned)
+- **Platform Admin Features**: Cross-tenant visibility and device pool management
 
-## Table of Contents
+### Key Features
+- ✅ Multi-tenant architecture with complete data isolation
+- ✅ Row-Level Security (RLS) at database level
+- ✅ Device pool management for platform admins
+- ✅ ChirpStack synchronization service
+- ✅ Optimized API endpoints with caching
+- ✅ Platform admin UI components
+- ✅ Comprehensive migration scripts
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Quick Start](#quick-start)
-- [Gateway Onboarding](#gateway-onboarding)
-- [Services](#services)
-- [API Documentation](#api-documentation)
-- [Development](#development)
-- [Deployment](#deployment)
-- [Monitoring](#monitoring)
-- [Troubleshooting](#troubleshooting)
-- [Security](#security)
-
----
-
-## Overview
-
-### What is Smart Parking v5?
-
-Smart Parking v5 is a complete rewrite of the parking management platform, consolidating 7 microservices into a single, maintainable FastAPI application. It provides:
-
-- **Multi-tenancy with RBAC** - Complete tenant isolation with 4-level role hierarchy (v5.3.0)
-- **Dual authentication** - JWT tokens + API keys with scope enforcement (v5.3.0)
-- **Real-time occupancy tracking** via LoRaWAN sensors
-- **Reservation engine** with DB-level overlap prevention and idempotency (v5.3.0)
-- **Display state machine** - Policy-driven display control with cache invalidation (v5.3.0)
-- **Class-C downlink queue** - Durable, rate-limited downlink delivery with Redis (v5.3.0)
-- **Webhook hardening** - Signature validation, idempotency, back-pressure handling (v5.3.0)
-- **Comprehensive observability** - Prometheus metrics, enhanced health checks, operational runbooks (v5.3.0)
-- **Security hardening** - Append-only audit log, API key revocation, refresh tokens (v5.3.0)
-- **Complete test coverage** - Property-based, integration, and load tests with CI/CD (v5.3.0)
-- **ChirpStack integration** for LoRaWAN device management
-- **ORPHAN device auto-discovery** - zero-touch device provisioning (v5.2.0)
-- **Admin device management API** - assign/unassign devices to spaces (v5.2.0)
-- **RESTful API** with auto-generated documentation
-- **Production-ready** with health checks, metrics, and observability
-
-### Key Improvements Over v4
-
-| Feature | v4 | v5 |
-|---------|----|----|
-| **Services** | 7 separate microservices | 1 consolidated API |
-| **Lines of Code** | ~15,000 | ~3,000 |
-| **Database Schema** | Complex, distributed | Simple, normalized |
-| **API Endpoints** | Spread across services | Single unified API |
-| **Deployment** | Complex orchestration | Single docker-compose |
-| **Maintenance** | High complexity | Low complexity |
-
-### Technology Stack
-
-- **Backend:** Python 3.11, FastAPI, Uvicorn
-- **Database:** PostgreSQL 16 with connection pooling
-- **Cache:** Redis 7 with LRU eviction
-- **Message Queue:** Mosquitto MQTT
-- **Network Server:** ChirpStack v4
-- **Reverse Proxy:** Traefik v3.1 with automatic HTTPS
-- **Frontend:** React + Vite (Device Manager UI)
-
----
-
-## Architecture
-
-### System Architecture
+## 📁 Project Structure
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         INTERNET                                 │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-                    ┌────────────────┐
-                    │   Traefik      │  (Reverse Proxy + SSL)
-                    │   Port 80/443  │
-                    └────────┬───────┘
-                             │
-        ┏━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━┓
-        ▼                    ▼                    ▼
-┌───────────────┐   ┌──────────────┐    ┌──────────────┐
-│  API v5       │   │ ChirpStack   │    │  Device      │
-│  Port 8000    │   │ Port 8080    │    │  Manager UI  │
-└───────┬───────┘   └──────┬───────┘    └──────────────┘
-        │                  │
-        │                  │
-        ▼                  ▼
-┌───────────────┐   ┌──────────────┐
-│  PostgreSQL   │   │  Mosquitto   │
-│  Port 5432    │   │  Port 1883   │
-└───────┬───────┘   └──────────────┘
-        │
-        ▼
-┌───────────────┐
-│     Redis     │
-│  Port 6379    │
-└───────────────┘
+v6_smart_parking/
+├── backend/                    # FastAPI backend
+│   ├── src/
+│   │   ├── core/              # Core services (tenant context, database)
+│   │   ├── services/          # Business logic services
+│   │   ├── routers/           # API endpoints
+│   │   │   └── v6/           # v6 API routers
+│   │   └── models/           # Data models
+│   └── tests/                # Backend tests
+├── frontend/                  # React frontend
+│   └── src/
+│       ├── services/         # API client services
+│       │   └── api/v6/      # v6 API clients
+│       ├── components/       # React components
+│       │   └── PlatformAdmin/ # Platform admin UI
+│       ├── hooks/            # Custom React hooks
+│       └── config/           # Configuration (feature flags)
+├── migrations/               # Database migration scripts
+│   ├── 001_v6_add_tenant_columns.sql
+│   ├── 002_v6_backfill_tenant_data.sql
+│   ├── 003_v6_create_new_tables.sql
+│   └── 004_v6_row_level_security.sql
+├── scripts/                  # Utility scripts
+│   └── validate_migration.py
+├── deployment/              # Deployment configurations
+│   └── docker-compose.yml
+└── docs/                    # Documentation
 ```
 
-### LoRaWAN Data Flow
-
-```
-Sensor → Gateway → Gateway Bridge (UDP:1700) → Mosquitto (MQTT) →
-ChirpStack (Processing) → API Webhook (HTTPS) → API v5 →
-State Manager → Database + Redis → Display Downlink
-```
-
-### Domain Architecture
-
-**Production Domains:**
-- `api.verdegris.eu` - Main consolidated API
-- `chirpstack.verdegris.eu` - ChirpStack UI
-- `devices.verdegris.eu` - Device Manager UI
-- `traefik.verdegris.eu` - Traefik Dashboard (admin auth)
-- `adminer.verdegris.eu` - Database Admin (admin auth)
-- `www.verdegris.eu` - Company website
-- `contact.verdegris.eu` - Contact form API
-
-**Legacy Compatibility:**
-- `parking-ingest.verdegris.eu` → redirects to `api.verdegris.eu`
-- `parking-display.verdegris.eu` → redirects to `api.verdegris.eu`
-- `parking-api.verdegris.eu` → redirects to `api.verdegris.eu`
-
-### Multi-Tenancy Architecture (v5.3.0)
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                         TENANT A                              │
-├──────────────────────────────────────────────────────────────┤
-│  Users (Owner/Admin/Operator/Viewer)                         │
-│    ↓                                                          │
-│  JWT Auth + API Keys with Scopes                             │
-│    ↓                                                          │
-│  Sites → Spaces → Reservations → Devices                     │
-└──────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│                         TENANT B                              │
-├──────────────────────────────────────────────────────────────┤
-│  Users (Owner/Admin/Operator/Viewer)                         │
-│    ↓                                                          │
-│  JWT Auth + API Keys with Scopes                             │
-│    ↓                                                          │
-│  Sites → Spaces → Reservations → Devices                     │
-└──────────────────────────────────────────────────────────────┘
-```
-
-**Key Features:**
-- **Strict tenant isolation** - Database-level enforcement via `tenant_id` foreign keys
-- **4-level RBAC** - Owner → Admin → Operator → Viewer hierarchy
-- **API key scopes** - Least-privilege access control (read, write, manage, admin)
-- **JWT authentication** - User sessions with 24-hour expiry
-- **Per-tenant rate limiting** - Redis-based token bucket algorithm
-- **Webhook signature validation** - HMAC-SHA256 for external integrations
-
-### Database Schema
-
-**For complete schema documentation, see:** `docs/V5_DATABASE_SCHEMA.md`
-
-```sql
--- Multi-tenancy tables (v5.3.0)
-tenants             -- Tenant organizations
-sites               -- Physical locations per tenant
-users               -- User accounts
-user_memberships    -- User-tenant-role mappings (RBAC)
-webhook_secrets     -- Per-tenant webhook signing keys
-orphan_devices      -- Auto-discovered devices awaiting assignment
-
--- Core tables
-spaces              -- Parking space definitions (tenant_id, site_id)
-reservations        -- Reservation records (tenant_id, request_id for idempotency)
-sensor_readings     -- Time-series sensor data (fcnt deduplication)
-state_changes       -- State change audit log
-api_keys           -- API authentication (tenant_id, scopes, revoked_at)
-
--- Display & Downlink (v5.3.0)
-display_policies    -- Policy-driven display control rules
-display_state_cache -- Redis cache version tracking
-sensor_debounce_state -- Duplicate sensor event prevention
-
--- Security & Audit (v5.3.0)
-audit_log          -- Append-only audit trail (immutable via trigger)
-refresh_tokens     -- JWT refresh tokens (30-day expiry)
-
--- Relationships
-sites.tenant_id → tenants.id
-spaces.tenant_id → tenants.id
-spaces.site_id → sites.id
-reservations.tenant_id → tenants.id
-reservations.space_id → spaces.id
-user_memberships.tenant_id → tenants.id
-user_memberships.user_id → users.id
-api_keys.tenant_id → tenants.id
-display_policies.tenant_id → tenants.id
-audit_log.tenant_id → tenants.id
-```
-
-### EUI Case Convention
-
-**IMPORTANT:** The system uses different EUI case conventions at different layers:
-
-| Layer | Case Convention | Rationale |
-|-------|----------------|-----------|
-| **ChirpStack (Network Layer)** | `lowercase` | ChirpStack stores and sends EUIs in lowercase hex (e.g., `e8e1e1000103c3f8`) |
-| **Application Layer (v5 API)** | `UPPERCASE` | Application stores and processes EUIs in uppercase hex (e.g., `E8E1E1000103C3F8`) |
-| **Database** | `UPPERCASE` (enforced) | PostgreSQL triggers automatically convert all EUIs to uppercase on INSERT/UPDATE |
-
-**Normalization Process:**
-
-1. **Incoming webhooks** from ChirpStack arrive with lowercase EUIs
-2. **Application code** normalizes to UPPERCASE using `normalize_deveui()` utility
-3. **Pydantic models** enforce UPPERCASE via field validators
-4. **Database triggers** (`enforce_eui_uppercase()`) provide final enforcement layer
-5. **Outgoing ChirpStack queries** convert to lowercase just before API calls
-
-**Example Flow:**
-```python
-# ChirpStack webhook arrives
-webhook_data = {"deviceInfo": {"devEui": "e8e1e1000103c3f8"}}
-
-# Application normalizes to UPPERCASE
-device_eui = normalize_deveui(webhook_data["deviceInfo"]["devEui"])
-# Result: "E8E1E1000103C3F8"
-
-# Query database (UPPERCASE)
-space = await db.get_space_by_sensor(device_eui)
-
-# Query ChirpStack (lowercase)
-device = await chirpstack.get_device(device_eui.lower())
-```
-
-**Why This Matters:**
-
-- **v5.7.0 Bug Fix:** Previous code used lowercase in Pydantic models, causing display device lookups to fail for EUIs with letters (e.g., `202020390C0E0902` worked but `202020390c0e0902` didn't)
-- **Consistency:** UPPERCASE is more readable and aligns with IEEE MAC address standards
-- **Boundary normalization:** Convert at system boundaries (webhook ingress, ChirpStack API calls)
-- **Internal consistency:** UPPERCASE everywhere internally prevents case-sensitivity bugs
-
-**For complete EUI architecture, see:** `docs/V5_DATABASE_SCHEMA.md` (Section: EUI Normalization Triggers)
-
----
-
-## v5.3 Features Deep Dive
-
-### Display State Machine (v5.3.0)
-
-**Policy-driven display control** with database-enforced business rules.
-
-**Key Features:**
-- **Active policy enforcement** - One active policy per tenant (enforced by partial unique index)
-- **State machine transitions** - Deterministic state changes (FREE ↔ OCCUPIED ↔ RESERVED)
-- **Redis cache invalidation** - Version-based cache busting on policy changes
-- **Display code mapping** - Database-driven color/pattern assignments
-
-**Implementation:**
-- Migration: `migrations/006_display_state_machine.sql`
-- Code: `src/display_state_machine.py`, `src/routers/display_policies.py`
-- Documentation: Embedded in migration comments
-
-**Example Policy:**
-```json
-{
-  "tenant_id": "uuid",
-  "policy_name": "Standard 3-Color",
-  "display_codes": {
-    "free": {"led_color": "green"},
-    "occupied": {"led_color": "red"},
-    "reserved": {"led_color": "blue"}
-  },
-  "is_active": true
-}
-```
-
-### Class-C Downlink Queue (v5.3.0)
-
-**Durable, rate-limited downlink delivery** with Redis-backed FIFO queue.
-
-**Key Features:**
-- **Exactly-once delivery** - SHA256 content hashing prevents duplicates
-- **Automatic coalescing** - Newer commands replace pending ones for same device
-- **Rate limiting** - Per-gateway (30/min) and per-tenant (100/min) limits
-- **Exponential backoff** - 2s, 4s, 8s, 16s, 32s (max 60s)
-- **Dead-letter queue** - Failed commands after 5 attempts
-- **Survives API restarts** - Redis persistence
-
-**Implementation:**
-- Code: `src/downlink_queue.py`, `src/routers/downlink_monitor.py`
-- Documentation: `docs/CLASS_C_DOWNLINK_QUEUE.md`
-- Tests: `tests/test_downlink_queue.py`
-
-**Monitoring Endpoints:**
-- `GET /api/v1/downlinks/queue/metrics` - Queue depth, throughput, success rate
-- `GET /api/v1/downlinks/queue/health` - Health status
-
-### Webhook Hardening (v5.3.0)
-
-**Production-grade webhook ingestion** with idempotency and back-pressure handling.
-
-**Key Features:**
-- **HMAC-SHA256 signature validation** - Per-tenant webhook secrets
-- **fcnt deduplication** - Unique constraint on (tenant_id, device_eui, fcnt)
-- **File spool for back-pressure** - Disk buffer when database unavailable
-- **Orphan device tracking** - Auto-discovery with uplink counter
-- **Exponential backoff** - Automatic retry with backoff on DB errors
-
-**Implementation:**
-- Database: `migrations/005_reservation_statuses.sql` (fcnt integration)
-- Code: `src/webhook_spool.py`, `src/main.py` (webhook validation)
-- Documentation: `docs/WEBHOOK_INGEST_IMPLEMENTATION.md`
-
-**Webhook Spool:**
-```
-/var/spool/parking-uplinks/
-├── pending/          # Queued for processing
-├── processing/       # Currently being processed
-└── dead-letter/      # Failed after 5 attempts
-```
-
-### Observability & Ops (v5.3.0)
-
-**Comprehensive monitoring** with Prometheus metrics and operational runbooks.
-
-**Prometheus Metrics (30+):**
-- **Ingest:** `uplink_requests_total`, `duplicate_uplinks_total`, `orphan_devices_gauge`
-- **Reservations:** `reservation_attempts_total`, `reservation_conflicts_total`, `active_reservations_gauge`
-- **Downlinks:** `downlink_queue_depth`, `downlink_sent_total`, `downlink_latency_seconds`
-- **Infrastructure:** `db_connection_pool_size`, `redis_latency_seconds`, `chirpstack_api_latency_seconds`
-- **Business:** `actuation_latency_seconds` (end-to-end SLO tracking)
-
-**Enhanced Health Checks:**
-- `GET /health/ready` - Readiness probe (DB, Redis, ChirpStack, workers)
-- `GET /health/live` - Liveness probe (worker heartbeats)
-- `GET /metrics` - Prometheus scraping endpoint
-
-**Operational Runbooks:**
-- ChirpStack down recovery
-- Redis OOM handling
-- PostgreSQL failover procedures
-- Downlink queue troubleshooting
-- Orphan device management
-- Rate limiting alerts
-- Backup & restore procedures
-
-**Implementation:**
-- Code: `src/metrics.py`, `src/routers/metrics.py`, `src/main.py`
-- Documentation: `docs/OPERATIONAL_RUNBOOKS.md`
-
-### Security & Tenancy (v5.3.0)
-
-**Enterprise-grade security** with audit logging and API key management.
-
-**Append-Only Audit Log:**
-- **Immutable trail** - Database trigger prevents UPDATE/DELETE
-- **Actor tracking** - Records user, API key, system, or webhook actions
-- **Change tracking** - Stores old_values → new_values for updates
-- **Request correlation** - request_id for distributed tracing
-- **Tenant-scoped** - All logs include tenant_id
-
-**Refresh Tokens:**
-- **30-day expiry** - Long-lived tokens for JWT rotation
-- **SHA-256 hashed storage** - Secure token storage
-- **Device fingerprinting** - IP address and user_agent tracking
-- **Revocation support** - Immediate token invalidation
-
-**API Key Revocation:**
-- **Immediate revocation** - revoked_at column with index
-- **Audit trail** - revoked_by tracks who revoked
-- **Quarterly rotation** - Best practice documentation
-
-**Implementation:**
-- Database: `migrations/007_audit_log.sql`
-- Code: `src/audit.py`
-- Documentation: `docs/SECURITY_TENANCY.md`
-
-**Penetration Testing Verified:**
-- ✅ Tenant isolation (cross-tenant access denied)
-- ✅ API key revocation is immediate
-- ✅ All admin actions traceable in audit log
-
-### Testing Strategy (v5.3.0)
-
-**Comprehensive test coverage** with property-based, integration, and load tests.
-
-**Property-Based Tests (Hypothesis):**
-- **8 invariant tests** - Time range validity, overlap detection, idempotency, state machine determinism
-- **Test data strategies** - Datetime generation, time ranges, reservations
-- **Automatic counterexample discovery** - Finds edge cases
-
-**Integration Tests (Docker-based):**
-- **13 end-to-end scenarios** - Full API lifecycle with real PostgreSQL, Redis, Mosquitto
-- **Tenant isolation testing** - Cross-tenant access prevention
-- **Webhook ingestion** - Signature validation and state changes
-- **Idempotent reservations** - Same request_id returns existing reservation
-
-**Load Tests (Locust):**
-- **500 spaces** with assigned devices
-- **50 concurrent users** - Simulated API usage and webhook uplinks
-- **SLO verification** - p95 actuation latency < 5s, error rate < 1%
-- **Burst handling** - 100 reservations in quick succession
-
-**CI/CD Pipeline (GitHub Actions):**
-- **unit-tests** - Every PR (< 1 min)
-- **lint** - black, isort, ruff, mypy
-- **security** - Trivy, Bandit
-- **integration-tests** - Nightly (~ 10 min)
-- **load-tests** - Nightly (~ 10 min)
-- **build** - Docker image push to Docker Hub
-
-**Implementation:**
-- Tests: `tests/test_reservation_properties.py`, `tests/integration/test_api_integration.py`, `tests/load/locustfile.py`
-- CI/CD: `.github/workflows/ci.yml`
-- Test environment: `docker-compose.test.yml`
-- Documentation: `docs/TESTING_STRATEGY_IMPLEMENTATION.md`
-
----
-
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
+- Python 3.11+
+- PostgreSQL 15+
+- Node.js 18+
+- Docker & Docker Compose (optional)
 
-- Docker 24+ and Docker Compose
-- Linux server (Ubuntu 22.04+ recommended)
-- Domain name with DNS configured
-- SSL certificate email for Let's Encrypt
-
-### 1. Clone and Configure
-
-```bash
-# Clone repository
-cd /opt
-git clone <repository-url> v5-smart-parking
-cd v5-smart-parking
-
-# Copy environment template
-cp .env.example .env
-
-# Edit environment variables
-nano .env
-```
-
-### 2. Required Environment Variables
-
-```bash
-# Database
-DATABASE_URL=postgresql://parking_user:YOUR_PASSWORD@postgres:5432/parking_v2
-DB_PASSWORD=YOUR_PASSWORD
-
-# Redis
-REDIS_URL=redis://redis:6379/0
-
-# ChirpStack
-CHIRPSTACK_HOST=chirpstack
-CHIRPSTACK_PORT=8080
-CHIRPSTACK_API_KEY=your-chirpstack-api-key
-
-# Domain
-DOMAIN=verdegris.eu
-TLS_EMAIL=admin@verdegris.eu
-
-# Security
-SECRET_KEY=generate-a-secure-32-character-key
-
-# Application
-LOG_LEVEL=INFO
-DEBUG=false
-CORS_ORIGINS=https://devices.verdegris.eu,https://www.verdegris.eu
-```
-
-### 3. Create Docker Volumes
-
-```bash
-# Create external volumes (preserves data across restarts)
-docker volume create smart-parking_postgres_data
-docker volume create smart-parking_redis_data
-docker volume create smart-parking_chirpstack_data
-docker volume create smart-parking_mosquitto_data
-docker volume create smart-parking_mosquitto_logs
-```
-
-### 4. Start Services
+### Option 1: Using Docker Compose
 
 ```bash
 # Start all services
-docker compose up -d
+cd v6_smart_parking/deployment
+docker-compose up -d
 
-# Check service status
-docker compose ps
+# Run migrations
+docker-compose exec postgres psql -U parking_user -d parking_v6 -f /migrations/001_v6_add_tenant_columns.sql
+docker-compose exec postgres psql -U parking_user -d parking_v6 -f /migrations/002_v6_backfill_tenant_data.sql
+docker-compose exec postgres psql -U parking_user -d parking_v6 -f /migrations/003_v6_create_new_tables.sql
+docker-compose exec postgres psql -U parking_user -d parking_v6 -f /migrations/004_v6_row_level_security.sql
 
-# View logs
-docker compose logs -f api
+# Access services
+# Backend API: http://localhost:8000
+# API Docs: http://localhost:8000/docs
+# Frontend: http://localhost:3000
 ```
 
-### 5. Initialize Database
+### Option 2: Manual Setup
+
+#### 1. Setup Database
 
 ```bash
-# The database schema is automatically created on first startup
-# via migrations/001_initial_schema.sql
+# Create database
+createdb parking_v6
 
-# Verify database is ready
-docker compose exec postgres psql -U parking_user -d parking_v2 -c "\dt"
+# Run migrations
+psql -U parking_user -d parking_v6 -f migrations/001_v6_add_tenant_columns.sql
+psql -U parking_user -d parking_v6 -f migrations/002_v6_backfill_tenant_data.sql
+psql -U parking_user -d parking_v6 -f migrations/003_v6_create_new_tables.sql
+psql -U parking_user -d parking_v6 -f migrations/004_v6_row_level_security.sql
+
+# Validate migration
+cd scripts
+python validate_migration.py
 ```
 
-### 6. Verify Deployment
+#### 2. Setup Backend
 
 ```bash
-# Check API health
-curl http://localhost:8000/health
+cd backend
 
-# Check API documentation
-curl http://localhost:8000/docs
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Expected output:
-{
-  "status": "healthy",
-  "version": "2.0.0",
-  "checks": {
-    "database": "healthy",
-    "redis": "healthy",
-    "chirpstack": "healthy"
-  }
-}
-```
-
-### 7. Access Services
-
-- **API:** https://api.verdegris.eu
-- **API Docs:** https://api.verdegris.eu/docs
-- **ChirpStack:** https://chirpstack.verdegris.eu
-- **Traefik Dashboard:** https://traefik.verdegris.eu
-- **Device Manager:** https://devices.verdegris.eu
-
----
-
-## Gateway Onboarding
-
-### LoRaWAN Gateway Setup
-
-This guide covers onboarding a new LoRaWAN gateway to the ChirpStack network server.
-
-### Step 1: Physical Installation
-
-1. **Mount gateway** in location with good network connectivity
-2. **Connect power** via PoE or DC adapter
-3. **Connect network** via Ethernet or cellular
-4. **Note Gateway EUI** from label (16 hex characters)
-
-### Step 2: Gateway Configuration
-
-#### For Semtech Packet Forwarder Gateways
-
-Edit `global_conf.json`:
-
-```json
-{
-  "gateway_conf": {
-    "gateway_ID": "YOUR_GATEWAY_EUI",
-    "server_address": "verdegris.eu",
-    "serv_port_up": 1700,
-    "serv_port_down": 1700,
-    "keepalive_interval": 10,
-    "stat_interval": 30,
-    "push_timeout_ms": 100,
-    "forward_crc_valid": true,
-    "forward_crc_error": false,
-    "forward_crc_disabled": false
-  }
-}
-```
-
-#### For LoRa Basics Station Gateways
-
-Edit `station.conf`:
-
-```json
-{
-  "radio_conf": {
-    "lorawan_public": true,
-    "clksrc": 0
-  },
-  "station_conf": {
-    "log_level": "INFO",
-    "log_size": 10000000,
-    "log_rotate": 3,
-    "CUPS_URI": "https://verdegris.eu:3001",
-    "CUPS_TRUST": "",
-    "TC_URI": "wss://verdegris.eu:3001",
-    "TC_TRUST": ""
-  }
-}
-```
-
-### Step 3: Register in ChirpStack
-
-1. **Access ChirpStack UI:** https://chirpstack.verdegris.eu
-2. **Login** with admin credentials
-3. **Navigate to:** Gateways → Add Gateway
-
-**Fill in gateway details:**
-
-```yaml
-Gateway name: Gateway Building A - Roof
-Gateway ID: YOUR_GATEWAY_EUI (16 hex chars)
-Description: Outdoor gateway covering parking zones A-D
-Network server: Default
-Service profile: Default
-Gateway profile: EU868
-
-Location:
-  Latitude: 51.5074
-  Longitude: -0.1278
-  Altitude: 15 (meters)
-
-Metadata:
-  installation_date: 2025-10-16
-  building: Building A
-  floor: Roof
-```
-
-4. **Save gateway**
-
-### Step 4: Verify Connectivity
-
-```bash
-# Check gateway logs
-docker compose logs -f gateway-bridge
-
-# Check ChirpStack logs for gateway connection
-docker compose logs -f chirpstack | grep -i gateway
-
-# Check gateway status in ChirpStack UI
-# Gateways → [Your Gateway] → Last seen should be recent
-```
-
-### Step 5: Test with Device
-
-1. **Add a test device** (see Device Onboarding below)
-2. **Send uplink** from device
-3. **Verify reception** in ChirpStack UI: Devices → [Device] → LoRaWAN Frames
-4. **Check RSSI/SNR** values to verify good signal strength
-
-### Troubleshooting Gateway Issues
-
-```bash
-# Gateway not appearing in ChirpStack
-# 1. Check gateway logs for connection errors
-docker compose logs gateway-bridge --tail 50
-
-# 2. Verify UDP port 1700 is open
-sudo netstat -ulnp | grep 1700
-
-# 3. Test gateway connectivity
-ping <gateway-ip>
-
-# 4. Check Mosquitto logs
-docker compose logs mosquitto | grep gateway
-
-# 5. Verify gateway EUI matches exactly (case-insensitive)
-```
-
----
-
-## Services
-
-### Core Services
-
-#### API Service (`api`)
-
-**Purpose:** Main application API handling all business logic
-**Port:** 8000 (internal)
-**Health Check:** `/health`
-**Technology:** Python 3.11, FastAPI, Uvicorn
-
-**Key Features:**
-- RESTful API with OpenAPI documentation
-- ChirpStack webhook processing
-- State management with Redis caching
-- PostgreSQL connection pooling
-- Background task processing
-- Request ID tracking
-- Comprehensive error handling
-
-**Environment Variables:**
-```bash
-DATABASE_URL=postgresql://parking_user:password@postgres:5432/parking_v2
-REDIS_URL=redis://redis:6379/0
-CHIRPSTACK_HOST=chirpstack
-CHIRPSTACK_PORT=8080
-CHIRPSTACK_API_KEY=your-api-key
-LOG_LEVEL=INFO
-DEBUG=false
-```
-
-**Logs:**
-```bash
-docker compose logs -f api
-```
-
----
-
-#### PostgreSQL (`postgres`)
-
-**Purpose:** Primary data store
-**Port:** 5432
-**Image:** `postgres:16-alpine`
-**Health Check:** `pg_isready`
-
-**Databases:**
-- `parking_v2` - v5 application data (current)
-- `parking_platform` - v4 legacy data
-- `chirpstack` - ChirpStack network server data
-
-**Connection:**
-```bash
-docker compose exec postgres psql -U parking_user -d parking_v2
-```
-
-**Key Configurations:**
-- Connection pooling: 20 connections
-- Checksums enabled for data integrity
-- Automatic backups to `/backups` volume
-- WAL archiving for point-in-time recovery
-
----
-
-#### Redis (`redis`)
-
-**Purpose:** Caching and session storage
-**Port:** 6379
-**Image:** `redis:7-alpine`
-**Persistence:** AOF (append-only file)
-
-**Configuration:**
-- Max memory: 256MB
-- Eviction policy: allkeys-lru
-- AOF fsync: everysec
-
-**Usage:**
-```bash
-# Connect to Redis
-docker compose exec redis redis-cli
-
-# Check cache stats
-INFO stats
-
-# Monitor commands
-MONITOR
-```
-
----
-
-#### ChirpStack (`chirpstack`)
-
-**Purpose:** LoRaWAN network server
-**Port:** 8080 (UI + API)
-**Image:** `chirpstack/chirpstack:4`
-**Region:** EU868
-
-**Key Features:**
-- Device management
-- Application server
-- Gateway monitoring
-- Webhook integration
-
-**Access:**
-```bash
-# Web UI
-https://chirpstack.verdegris.eu
-
-# API
-https://chirpstack.verdegris.eu/api
-```
-
-**Configuration Location:**
-```bash
-/opt/v5-smart-parking/config/chirpstack/chirpstack.toml
-```
-
----
-
-#### Mosquitto (`mosquitto`)
-
-**Purpose:** MQTT broker for ChirpStack
-**Ports:** 1883 (MQTT), 9001 (WebSocket)
-**Image:** `eclipse-mosquitto:2`
-
-**Purpose:** Message broker between gateway bridge and ChirpStack
-
-**Test Connection:**
-```bash
-# Subscribe to all topics
-docker compose exec mosquitto mosquitto_sub -t '#' -v
-
-# Publish test message
-docker compose exec mosquitto mosquitto_pub -t 'test' -m 'hello'
-```
-
----
-
-#### Traefik (`traefik`)
-
-**Purpose:** Reverse proxy and SSL termination
-**Ports:** 80 (HTTP), 443 (HTTPS), 8090 (Dashboard)
-**Image:** `traefik:v3.1`
-
-**Key Features:**
-- Automatic HTTPS via Let's Encrypt
-- Dynamic routing from Docker labels
-- HTTP → HTTPS redirect
-- Admin authentication for dashboard
-- Legacy domain compatibility
-
-**Dashboard:**
-```bash
-# Access dashboard (requires auth)
-https://traefik.verdegris.eu
-
-# Credentials stored in:
-cat /opt/v5-smart-parking/config/traefik/ADMIN-CREDENTIALS.txt
-```
-
----
-
-#### Gateway Bridge (`gateway-bridge`)
-
-**Purpose:** Convert UDP to MQTT for ChirpStack
-**Ports:** 1700/udp (Semtech), 3001 (Basics Station)
-**Image:** `chirpstack/chirpstack-gateway-bridge:4`
-
-**Function:** Receives packets from LoRaWAN gateways and forwards to ChirpStack via MQTT
-
----
-
-### Frontend Services
-
-#### Device Manager UI (`device-manager-ui`)
-
-**Purpose:** Web UI for device management
-**Technology:** React + Vite
-**URL:** https://devices.verdegris.eu
-
-**Features:**
-- Device list and search
-- Real-time status updates
-- Device onboarding wizard
-- Analytics dashboard
-
-**Configuration:**
-```bash
-# Frontend environment
-/opt/v5-smart-parking/frontend/device-manager/.env.production
-```
-
----
-
-#### Website (`website`)
-
-**Purpose:** Company website
-**URL:** https://www.verdegris.eu
-**Technology:** Static HTML/CSS/JS served by Nginx
-
----
-
-#### Contact API (`contact-api`)
-
-**Purpose:** Contact form submission
-**URL:** https://contact.verdegris.eu
-**Technology:** Python FastAPI
-
----
-
-### Admin Tools
-
-#### Adminer (`adminer`)
-
-**Purpose:** Database administration UI
-**URL:** https://adminer.verdegris.eu
-**Authentication:** Basic auth via Traefik
-
-**Quick Connect:**
-- System: PostgreSQL
-- Server: postgres
-- Username: parking_user
-- Password: (from .env)
-- Database: parking_v2
-
----
-
-## Documentation
-
-Comprehensive documentation is organized in the `docs/` directory:
-
-### 📚 [Documentation Hub](docs/README.md)
-
-- **[Architecture](docs/architecture/)** - System design, database schema, state machines, and IoT integration
-- **[API Reference](docs/api/)** - REST API endpoints, OpenAPI spec, and webhook integration
-- **[Operations](docs/operations/)** - Deployment guides, monitoring, runbooks, and testing
-- **[Security](docs/security/)** - Multi-tenancy, RBAC, and security policies
-- **[Changelog](docs/changelog/)** - Version history and implementation plans
-
-### Quick Links
-
-- [Database Schema](docs/architecture/database-schema.md) - Complete PostgreSQL v5 schema
-- [API Reference](docs/api/reference.md) - Full API endpoint documentation
-- [Deployment Guide](docs/operations/deployment.md) - Production deployment procedures
-- [Multi-Tenancy Security](docs/security/tenancy.md) - Row-level security and tenant isolation
-- [Current Implementation Plan](docs/changelog/IMPLEMENTATION_PLAN_v5.8.md) - v5.8 roadmap
-
----
-
-## API Documentation
-
-### Base URLs
-
-**Production:** `https://api.verdegris.eu`
-**Local Development:** `http://localhost:8000`
-
-### Authentication
-
-#### Multi-Tenancy Authentication (v5.3.0)
-
-The platform supports two authentication methods:
-
-1. **JWT Tokens** - For user authentication with RBAC
-2. **API Keys** - For service accounts with scope-based access
-
-**JWT Authentication:**
-```bash
-# Register tenant and owner user
-curl -X POST https://api.verdegris.eu/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tenant": {
-      "name": "Acme Corporation",
-      "slug": "acme"
-    },
-    "user": {
-      "email": "admin@acme.com",
-      "name": "Admin User",
-      "password": "secure-password"
-    }
-  }'
-
-# Login to get JWT token
-curl -X POST https://api.verdegris.eu/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@acme.com",
-    "password": "secure-password"
-  }'
-
-# Response:
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer",
-  "expires_in": 86400,
-  "user": {
-    "id": "user-uuid",
-    "email": "admin@acme.com",
-    "name": "Admin User"
-  }
-}
-
-# Use JWT token
-curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
-  https://api.verdegris.eu/api/v1/spaces
-```
-
-**API Key Authentication:**
-```bash
-curl -H "X-API-Key: your-api-key" https://api.verdegris.eu/api/v1/spaces
-```
-
-**Role-Based Access Control (RBAC):**
-
-| Role | Permissions |
-|------|-------------|
-| **Owner** | Full access: manage users, delete tenant, all admin operations |
-| **Admin** | Manage spaces, reservations, devices, API keys |
-| **Operator** | Create/update spaces and reservations, view all resources |
-| **Viewer** | Read-only access to spaces, reservations, and sensor data |
-
-**API Key Scopes:**
-
-| Scope | Permissions |
-|-------|-------------|
-| `read` | Read-only access to spaces and reservations |
-| `write` | Create/update spaces and reservations |
-| `manage` | Full resource management (spaces, reservations, devices) |
-| `admin` | Administrative operations (users, API keys, webhooks) |
-
-### Endpoints
-
-#### Authentication & Tenant Management
-
-##### `POST /api/v1/auth/register`
-
-Register a new tenant and owner user.
-
-**Request Body:**
-```json
-{
-  "tenant": {
-    "name": "Acme Corporation",
-    "slug": "acme",
-    "metadata": {"industry": "parking"},
-    "settings": {"timezone": "UTC"}
-  },
-  "user": {
-    "email": "admin@acme.com",
-    "name": "Admin User",
-    "password": "secure-password",
-    "metadata": {"phone": "+1234567890"}
-  }
-}
-```
-
-**Response:** `201 Created`
-```json
-{
-  "tenant": {
-    "id": "tenant-uuid",
-    "name": "Acme Corporation",
-    "slug": "acme",
-    "created_at": "2025-10-20T10:00:00Z"
-  },
-  "user": {
-    "id": "user-uuid",
-    "email": "admin@acme.com",
-    "name": "Admin User",
-    "role": "owner"
-  },
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer",
-  "expires_in": 86400
-}
-```
-
----
-
-##### `POST /api/v1/auth/login`
-
-Login and receive JWT access token.
-
-**Request Body:**
-```json
-{
-  "email": "admin@acme.com",
-  "password": "secure-password",
-  "tenant_slug": "acme"
-}
-```
-
-**Response:** `200 OK`
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer",
-  "expires_in": 86400,
-  "user": {
-    "id": "user-uuid",
-    "email": "admin@acme.com",
-    "name": "Admin User",
-    "tenant_id": "tenant-uuid",
-    "role": "owner"
-  }
-}
-```
-
----
-
-##### `GET /api/v1/tenants/{tenant_id}`
-
-Get tenant details (requires authentication).
-
-**Response:**
-```json
-{
-  "id": "tenant-uuid",
-  "name": "Acme Corporation",
-  "slug": "acme",
-  "is_active": true,
-  "metadata": {"industry": "parking"},
-  "settings": {"timezone": "UTC"},
-  "created_at": "2025-10-20T10:00:00Z",
-  "updated_at": "2025-10-20T10:00:00Z"
-}
-```
-
----
-
-##### `GET /api/v1/tenants/{tenant_id}/users`
-
-List users in tenant (requires Admin or Owner role).
-
-**Query Parameters:**
-- `limit` (int) - Results per page (default: 100)
-- `offset` (int) - Pagination offset
-
-**Response:**
-```json
-[
-  {
-    "id": "user-uuid",
-    "email": "admin@acme.com",
-    "name": "Admin User",
-    "role": "owner",
-    "is_active": true,
-    "email_verified": true,
-    "created_at": "2025-10-20T10:00:00Z"
-  }
-]
-```
-
----
-
-##### `POST /api/v1/tenants/{tenant_id}/users`
-
-Invite a new user to the tenant (requires Admin or Owner role).
-
-**Request Body:**
-```json
-{
-  "email": "operator@acme.com",
-  "name": "Operator User",
-  "password": "secure-password",
-  "role": "operator"
-}
-```
-
-**Response:** `201 Created` with user object
-
----
-
-#### Health & Monitoring
-
-##### `GET /health`
-
-Health check with component status.
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "version": "2.0.0",
-  "timestamp": "2025-10-16T10:30:00Z",
-  "checks": {
-    "database": "healthy",
-    "redis": "healthy",
-    "chirpstack": "healthy"
-  },
-  "stats": {
-    "db_pool": {"size": 20, "free_connections": 15},
-    "active_reservations": 5,
-    "connected_devices": 42
-  }
-}
-```
-
----
-
-#### Parking Spaces
-
-##### `GET /api/v1/spaces`
-
-List all parking spaces with optional filtering.
-
-**Query Parameters:**
-- `building` (string) - Filter by building
-- `floor` (string) - Filter by floor
-- `zone` (string) - Filter by zone
-- `state` (enum) - Filter by state: FREE, OCCUPIED, RESERVED, MAINTENANCE
-- `limit` (int) - Results per page (default: 100, max: 1000)
-- `offset` (int) - Pagination offset
-
-**Example:**
-```bash
-curl "https://api.verdegris.eu/api/v1/spaces?building=A&state=FREE&limit=10"
-```
-
-**Response:**
-```json
-[
-  {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "Parking A-001",
-    "code": "A001",
-    "building": "Building A",
-    "floor": "Ground",
-    "zone": "North",
-    "sensor_eui": "0004a30b001a2b3c",
-    "display_eui": "0004a30b001a2b3d",
-    "state": "FREE",
-    "gps_latitude": 51.5074,
-    "gps_longitude": -0.1278,
-    "metadata": {"capacity": "standard"},
-    "created_at": "2025-10-16T08:00:00Z",
-    "updated_at": "2025-10-16T10:30:00Z"
-  }
-]
-```
-
----
-
-##### `POST /api/v1/spaces`
-
-Create a new parking space.
-
-**Request Body:**
-```json
-{
-  "name": "Parking A-001",
-  "code": "A001",
-  "building": "Building A",
-  "floor": "Ground",
-  "zone": "North",
-  "sensor_eui": "0004a30b001a2b3c",
-  "display_eui": "0004a30b001a2b3d",
-  "gps_latitude": 51.5074,
-  "gps_longitude": -0.1278,
-  "state": "FREE",
-  "metadata": {"capacity": "standard"}
-}
-```
-
-**Response:** `201 Created` with space object
-
----
-
-##### `GET /api/v1/spaces/{space_id}`
-
-Get details of a single parking space.
-
-**Response:** Space object or `404 Not Found`
-
----
-
-##### `PATCH /api/v1/spaces/{space_id}`
-
-Update a parking space (partial update).
-
-**Request Body (all fields optional):**
-```json
-{
-  "state": "MAINTENANCE",
-  "sensor_eui": "0004a30b001a9999"
-}
-```
-
-**Response:** Updated space object
-
----
-
-##### `DELETE /api/v1/spaces/{space_id}`
-
-Soft delete a parking space.
-
-**Response:** `200 OK` or `409 Conflict` if active reservations exist
-
----
-
-#### Reservations
-
-##### `POST /api/v1/reservations`
-
-Create a parking reservation with **DB-level overlap prevention** and **idempotency guarantees**.
-
-**Request Body:**
-```json
-{
-  "space_id": "550e8400-e29b-41d4-a716-446655440000",
-  "start_time": "2025-10-16T14:00:00Z",
-  "end_time": "2025-10-16T16:00:00Z",
-  "user_email": "user@example.com",
-  "user_phone": "+1234567890",
-  "request_id": "optional-uuid-for-idempotency",
-  "metadata": {"vehicle": "ABC123"}
-}
-```
-
-**Key Features (v5.3):**
-- **Overlap Prevention:** PostgreSQL EXCLUDE constraint prevents double-booking even under concurrency
-- **Idempotency:** Provide `request_id` to ensure duplicate requests return existing reservation
-- **Automatic Expiry:** Background job expires reservations after `end_time`
-- **Tenant Scoping:** Reservations are tenant-isolated via `tenant_id`
-
-**Validations:**
-- Maximum reservation duration: 24 hours
-- Space must be available for time range (checked at DB level)
-- End time must be after start time
-
-**Response:** `201 Created` with reservation object
-
-**Error Responses:**
-- `409 Conflict` - Overlapping reservation exists (EXCLUDE constraint violation)
-- `404 Not Found` - Space does not exist
-
----
-
-##### `GET /api/v1/reservations`
-
-List reservations with filtering.
-
-**Query Parameters:**
-- `space_id` (UUID)
-- `user_email` (string)
-- `status` (enum): pending, confirmed, cancelled, expired
-- `date_from` (ISO datetime)
-- `date_to` (ISO datetime)
-- `limit` (int)
-- `offset` (int)
-
-**Status Values (v5.3):**
-- `pending` - Awaiting payment/approval
-- `confirmed` - Active reservation
-- `cancelled` - Cancelled by user/admin
-- `expired` - Past end_time (auto-expired by background job)
-
-**Example:**
-```bash
-curl "https://api.verdegris.eu/api/v1/reservations?status=confirmed&limit=10"
-```
-
----
-
-##### `GET /api/v1/spaces/{space_id}/availability`
-
-Check parking space availability for a given time range.
-
-**Query Parameters:**
-- `from` (ISO 8601 datetime, required) - Start of availability check period
-- `to` (ISO 8601 datetime, required) - End of availability check period
-
-**Response:**
-```json
-{
-  "space_id": "550e8400-e29b-41d4-a716-446655440000",
-  "space_code": "A001",
-  "space_name": "Parking A-001",
-  "query_start": "2025-10-21T10:00:00Z",
-  "query_end": "2025-10-21T12:00:00Z",
-  "is_available": true,
-  "reservations": [],
-  "current_state": "FREE",
-  "tenant_id": "tenant-uuid"
-}
-```
-
-**Features:**
-- Returns all overlapping reservations (pending/confirmed only)
-- `is_available: true` if no overlapping reservations exist
-- Queries DB truth directly (no cache correctness bugs)
-- Uses PostgreSQL range overlap operator `&&` for efficiency
-
-**Example:**
-```bash
-curl "https://api.verdegris.eu/api/v1/spaces/550e8400-e29b-41d4-a716-446655440000/availability?from=2025-10-21T10:00:00Z&to=2025-10-21T12:00:00Z"
-```
-
----
-
-##### `DELETE /api/v1/reservations/{reservation_id}`
-
-Cancel a reservation.
-
-**Response:** `200 OK` or `409 Conflict` if already cancelled/completed
-
----
-
-#### LoRaWAN Integration
-
-##### `POST /api/v1/uplink`
-
-Process uplink from ChirpStack webhook.
-
-**Purpose:** Receives sensor data from ChirpStack and updates space state
-
-**Request Body (from ChirpStack):**
-```json
-{
-  "deviceInfo": {
-    "devEui": "0004a30b001a2b3c",
-    "deviceName": "Sensor A-001"
-  },
-  "data": "AQIDBAUGBw==",
-  "rxInfo": [{
-    "gatewayId": "0004a30b001a0000",
-    "rssi": -85,
-    "snr": 7.5
-  }]
-}
-```
-
-**Response:**
-```json
-{
-  "status": "processed",
-  "space": "A001",
-  "state": "OCCUPIED",
-  "request_id": "req-12345"
-}
-```
-
----
-
-##### `POST /api/v1/downlink/{device_eui}`
-
-Send downlink to a device.
-
-**Request Body:**
-```json
-{
-  "command": "set_color",
-  "parameters": {"color": "green"},
-  "fport": 1,
-  "confirmed": false
-}
-```
-
-**Response:**
-```json
-{
-  "status": "queued",
-  "device_eui": "0004a30b001a2b3d",
-  "id": "downlink-67890"
-}
-```
-
----
-
-#### Admin Endpoints (ORPHAN Device Management)
-
-**Authentication Required:** All admin endpoints require an API key with admin privileges.
-
-##### `GET /api/v1/admin/devices/unassigned`
-
-List all unassigned devices (ORPHAN status).
-
-**Headers:**
-```
-X-API-Key: your-admin-api-key
-```
-
-**Response:**
-```json
-{
-  "sensors": [
-    {
-      "id": "uuid",
-      "dev_eui": "58a0cb000011590d",
-      "device_model": "Browan Sensor 590D",
-      "status": "orphan",
-      "type_code": "browan_tbms100_motion",
-      "device_type_name": "Browan TBMS100 TABS",
-      "type_status": "confirmed",
-      "last_seen_at": "2025-10-17T07:55:39Z",
-      "created_at": "2025-10-17T07:50:24Z"
-    }
-  ],
-  "displays": [
-    {
-      "id": "uuid",
-      "dev_eui": "2020203907290902",
-      "device_model": "Kuando Busylight",
-      "status": "orphan",
-      "type_code": "kuando_busylight",
-      "device_type_name": "Kuando Busylight IoT Omega",
-      "type_status": "confirmed",
-      "last_seen_at": "2025-10-17T07:55:01Z",
-      "created_at": "2025-10-17T07:55:01Z"
-    }
-  ],
-  "total": 2
-}
-```
-
----
-
-##### `POST /api/v1/admin/devices/sensor/{device_id}/assign`
-
-Assign a sensor device to a parking space.
-
-**Query Parameters:**
-- `space_id` (required): UUID of the space
-
-**Response:**
-```json
-{
-  "status": "assigned",
-  "sensor_id": "uuid",
-  "sensor_eui": "58a0cb000011590d",
-  "space_id": "space-uuid",
-  "space_code": "A001"
-}
-```
-
-**Actions:**
-- Updates sensor status from 'orphan' to 'active'
-- Sets space.sensor_device_id
-- Enables actuation processing for this device
-
----
-
-##### `POST /api/v1/admin/devices/display/{device_id}/assign`
-
-Assign a display device to a parking space.
-
-**Query Parameters:**
-- `space_id` (required): UUID of the space
-
-**Response:**
-```json
-{
-  "status": "assigned",
-  "display_id": "uuid",
-  "display_eui": "2020203907290902",
-  "space_id": "space-uuid",
-  "space_code": "A001"
-}
-```
-
----
-
-##### `POST /api/v1/admin/devices/sensor/{device_id}/unassign`
-
-Unassign a sensor from its space.
-
-**Response:**
-```json
-{
-  "status": "unassigned",
-  "sensor_id": "uuid",
-  "sensor_eui": "58a0cb000011590d",
-  "previous_space": "A001"
-}
-```
-
-**Actions:**
-- Updates sensor status from 'active' to 'inactive'
-- Removes sensor from space (sets sensor_device_id to NULL)
-- Preserves all historical sensor_readings
-
----
-
-##### `POST /api/v1/admin/devices/display/{device_id}/unassign`
-
-Unassign a display from its space.
-
-**Response:**
-```json
-{
-  "status": "unassigned",
-  "display_id": "uuid",
-  "display_eui": "2020203907290902",
-  "previous_space": "A001"
-}
-```
-
-**Actions:**
-- Updates display status from 'active' to 'inactive'
-- Removes display from space (sets display_device_id to NULL)
-- Device can be reassigned to different space
-
----
-
-**Device Lifecycle:**
-```
-New Device → ORPHAN (auto-discovered) → Admin Assigns → ACTIVE
-                                                        ↓
-                                                  Unassigned → INACTIVE
-                                                        ↓
-                                                  Reassigned → ACTIVE
-                                                        ↓
-                                                  Decommissioned
-```
-
-**For detailed documentation, see:** `/docs/ORPHAN_DEVICE_ARCHITECTURE.md`
-
----
-
-### Interactive API Documentation
-
-**Swagger UI:** https://api.verdegris.eu/docs
-**ReDoc:** https://api.verdegris.eu/redoc
-
----
-
-## Development
-
-### Local Development Setup
-
-#### 1. Clone Repository
-
-```bash
-git clone <repository-url>
-cd v5-smart-parking
-```
-
-#### 2. Create Virtual Environment
-
-```bash
-python3.11 -m venv venv
-source venv/bin/activate
-```
-
-#### 3. Install Dependencies
-
-```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-#### 4. Set Up Local Environment
+# Copy environment variables
+cp ../.env.example .env
+# Edit .env with your configuration
 
-```bash
-cp .env.example .env.local
-
-# Edit .env.local with local settings
-nano .env.local
-```
-
-**Local .env.local:**
-```bash
-DATABASE_URL=postgresql://parking:parking@localhost:5432/parking_dev
-REDIS_URL=redis://localhost:6379/0
-CHIRPSTACK_HOST=localhost
-CHIRPSTACK_PORT=8080
-CHIRPSTACK_API_KEY=test-key
-DEBUG=true
-LOG_LEVEL=DEBUG
-```
-
-#### 5. Start Dependencies
-
-```bash
-# Start only PostgreSQL and Redis
-docker compose up -d postgres redis
-
-# Create development database
-docker compose exec postgres createdb -U parking parking_dev
-```
-
-#### 6. Run Migrations
-
-```bash
-docker compose exec postgres psql -U parking -d parking_dev -f /docker-entrypoint-initdb.d/001_schema.sql
-```
-
-#### 7. Run Development Server
-
-```bash
-# With auto-reload
+# Run backend
 uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-
-# Or use the development script
-python -m src.main
 ```
 
-#### 8. Access Development Environment
-
-- **API:** http://localhost:8000
-- **API Docs:** http://localhost:8000/docs
-- **Health Check:** http://localhost:8000/health
-
----
-
-### Code Structure
-
-```
-src/
-├── main.py                 # FastAPI application entry point
-├── config.py              # Configuration management (Pydantic Settings)
-├── models.py              # Pydantic data models
-├── database.py            # Database connection pool
-├── exceptions.py          # Custom exceptions
-├── utils.py              # Utility functions
-├── device_handlers.py     # Device-specific parsers
-├── state_manager.py       # State transition logic
-├── chirpstack_client.py   # ChirpStack gRPC/REST client
-└── background_tasks.py    # Background job processing
-
-migrations/
-└── 001_initial_schema.sql # Database schema
-
-tests/                     # Tests (to be added)
-├── test_api.py
-├── test_state_manager.py
-└── test_device_handlers.py
-
-config/                    # Service configurations
-├── traefik/              # Traefik config
-├── chirpstack/           # ChirpStack config
-└── mosquitto/            # Mosquitto config
-
-frontend/                  # Frontend applications
-└── device-manager/       # Device management UI
-```
-
----
-
-### Testing
-
-**For comprehensive testing documentation, see:** `docs/TESTING_STRATEGY_IMPLEMENTATION.md`
-
-#### Run All Tests
+#### 3. Setup Frontend
 
 ```bash
-# Unit tests (fast, no external dependencies)
-pytest tests/ -m "not integration and not load"
+cd frontend
 
-# Property-based tests with hypothesis
-pytest tests/test_reservation_properties.py -m property
+# Install dependencies
+npm install
 
-# Integration tests (requires docker-compose.test.yml)
-docker compose -f docker-compose.test.yml up -d
-pytest tests/integration/ -m integration
-docker compose -f docker-compose.test.yml down -v
+# Copy environment variables
+cp ../.env.example .env
+# Edit .env with your configuration
 
-# Load tests with Locust
-docker compose -f docker-compose.test.yml up -d
-locust -f tests/load/locustfile.py --host http://localhost:8001 \
-  --users 50 --spawn-rate 10 --run-time 5m --headless
-docker compose -f docker-compose.test.yml down -v
-
-# With coverage
-pytest tests/ --cov=src --cov-report=html
-open htmlcov/index.html
+# Run frontend
+npm start
 ```
 
-#### CI/CD Pipeline
+## 📊 Database Schema
 
-Tests run automatically via GitHub Actions:
-- **Every PR:** unit-tests, lint, security, migration-check
-- **Nightly:** integration-tests, load-tests
-- **Manual trigger:** All jobs via workflow_dispatch
+### Key Tables
 
-See `.github/workflows/ci.yml` for pipeline configuration.
+#### `sensor_devices` / `display_devices`
+```sql
+- id: UUID (PK)
+- tenant_id: UUID (FK to tenants) -- NEW in v6
+- dev_eui: VARCHAR(16)
+- name: VARCHAR(255)
+- status: VARCHAR(50)
+- lifecycle_state: VARCHAR(50) -- NEW in v6
+- assigned_space_id: UUID -- NEW in v6
+- assigned_at: TIMESTAMP -- NEW in v6
+- chirpstack_device_id: UUID -- NEW in v6
+- chirpstack_sync_status: VARCHAR(50) -- NEW in v6
+```
 
-#### Manual API Testing
+#### `gateways` (NEW in v6)
+```sql
+- id: UUID (PK)
+- tenant_id: UUID (FK to tenants)
+- gateway_id: VARCHAR(16)
+- name: VARCHAR(255)
+- site_id: UUID (FK to sites)
+- status: VARCHAR(50)
+- chirpstack_gateway_id: VARCHAR(16)
+```
 
+#### `device_assignments` (NEW in v6)
+```sql
+- id: UUID (PK)
+- tenant_id: UUID (FK to tenants)
+- device_type: VARCHAR(50)
+- device_id: UUID
+- space_id: UUID
+- assigned_at: TIMESTAMP
+- unassigned_at: TIMESTAMP
+- assigned_by: UUID (FK to users)
+```
+
+#### `chirpstack_sync` (NEW in v6)
+```sql
+- id: UUID (PK)
+- tenant_id: UUID (FK to tenants)
+- entity_type: VARCHAR(50)
+- entity_id: UUID
+- chirpstack_id: VARCHAR(255)
+- sync_status: VARCHAR(50)
+- local_data: JSONB
+- remote_data: JSONB
+```
+
+## 🔒 Security - Row-Level Security (RLS)
+
+All tenant-scoped tables have RLS policies:
+
+```sql
+CREATE POLICY tenant_isolation_policy ON sensor_devices
+    FOR ALL
+    TO parking_user
+    USING (
+        tenant_id = current_setting('app.current_tenant_id')::uuid
+        OR current_setting('app.is_platform_admin')::boolean = true
+    );
+```
+
+This ensures:
+- Regular users only see their tenant's data
+- Platform admins can see all data when needed
+- Database-level enforcement (not just application-level)
+
+## 🎯 API Endpoints
+
+### v6 Devices API
+
+```
+GET    /api/v6/devices           # List devices (tenant-scoped)
+POST   /api/v6/devices/{id}/assign   # Assign device to space
+POST   /api/v6/devices/{id}/unassign # Unassign device
+GET    /api/v6/devices/pool/stats    # Device pool stats (admin only)
+```
+
+### v6 Dashboard API
+
+```
+GET    /api/v6/dashboard/data   # Get all dashboard data (single request)
+```
+
+### v6 Gateways API
+
+```
+GET    /api/v6/gateways          # List gateways (tenant-scoped)
+GET    /api/v6/gateways/{id}     # Get gateway details
+GET    /api/v6/gateways/{id}/stats # Gateway statistics
+```
+
+## 🎨 Frontend Components
+
+### Platform Admin Components
+
+#### TenantSwitcher
+Allows platform admins to switch between tenant contexts.
+
+```jsx
+import { TenantSwitcher } from '@/components/PlatformAdmin/TenantSwitcher';
+
+<TenantSwitcher />
+```
+
+#### DevicePoolManager
+Shows device distribution across all tenants.
+
+```jsx
+import { DevicePoolManager } from '@/components/PlatformAdmin/DevicePoolManager';
+
+<DevicePoolManager />
+```
+
+### Feature Flags
+
+```javascript
+import { shouldUseV6, FeatureFlags } from '@/config/featureFlags';
+
+if (shouldUseV6('devices')) {
+  // Use v6 API
+}
+```
+
+## 🔄 Migration from v5
+
+### Step 1: Backup
 ```bash
-# Test health endpoint
-curl http://localhost:8000/health
-
-# Test readiness (checks dependencies)
-curl http://localhost:8000/health/ready
-
-# Test metrics endpoint
-curl http://localhost:8000/metrics
-
-# Test spaces endpoint
-curl http://localhost:8000/api/v1/spaces
-
-# Test uplink processing
-curl -X POST http://localhost:8000/api/v1/uplink \
-  -H "Content-Type: application/json" \
-  -d '{
-    "deviceInfo": {"devEui": "0004a30b001a2b3c"},
-    "data": "AQIDBAUGBw=="
-  }'
+pg_dump -h localhost -U parking_user parking_v5 > backup_v5.sql
 ```
 
----
-
-### Database Migrations
-
+### Step 2: Run Migrations
 ```bash
-# Create new migration
-# 1. Edit new SQL file in migrations/
-# 2. Apply migration
-docker compose exec postgres psql -U parking_user -d parking_v2 -f /migrations/002_new_migration.sql
+psql -U parking_user -d parking_v6 -f migrations/001_v6_add_tenant_columns.sql
+psql -U parking_user -d parking_v6 -f migrations/002_v6_backfill_tenant_data.sql
+psql -U parking_user -d parking_v6 -f migrations/003_v6_create_new_tables.sql
+psql -U parking_user -d parking_v6 -f migrations/004_v6_row_level_security.sql
 ```
 
----
-
-### Code Quality
-
+### Step 3: Validate
 ```bash
-# Format code
-black src/
-
-# Lint code
-pylint src/
-
-# Type checking
-mypy src/
-
-# Sort imports
-isort src/
+python scripts/validate_migration.py
 ```
 
----
-
-## Deployment
-
-### Production Deployment Checklist
-
-#### Pre-Deployment
-
-- [ ] Review all environment variables in `.env`
-- [ ] Set strong passwords for all services
-- [ ] Generate secure SECRET_KEY (32+ characters)
-- [ ] Configure CORS_ORIGINS for production domains
-- [ ] Set LOG_LEVEL=INFO and DEBUG=false
-- [ ] Configure TLS_EMAIL for Let's Encrypt
-- [ ] Backup existing data if migrating from v4
-
-#### Initial Deployment
-
+### Step 4: Deploy
 ```bash
-# 1. Clone repository
-cd /opt
-git clone <repository-url> v5-smart-parking
-cd v5-smart-parking
+# Enable v6 feature flags
+export REACT_APP_USE_V6_API=true
 
-# 2. Configure environment
-cp .env.example .env
-nano .env  # Edit with production values
-
-# 3. Create volumes
-docker volume create smart-parking_postgres_data
-docker volume create smart-parking_redis_data
-docker volume create smart-parking_chirpstack_data
-docker volume create smart-parking_mosquitto_data
-docker volume create smart-parking_mosquitto_logs
-
-# 4. Start services
-docker compose up -d
-
-# 5. Check health
-docker compose ps
-curl http://localhost:8000/health
-
-# 6. View logs
-docker compose logs -f
+# Restart services
+docker-compose restart
 ```
 
-#### Post-Deployment
+## 📈 Performance Improvements
 
-- [ ] Verify all services are healthy
-- [ ] Test API endpoints
-- [ ] Configure ChirpStack webhook
-- [ ] Test sensor uplinks
-- [ ] Set up monitoring alerts
-- [ ] Configure backup scripts
-- [ ] Document admin credentials
+| Metric | v5 | v6 | Improvement |
+|--------|----|----|-------------|
+| Device list API | 800ms | <200ms | **75%** |
+| Device assignment | 400ms | <100ms | **75%** |
+| Dashboard load | 3s | <1s | **67%** |
+| Database CPU | 40% | <20% | **50%** |
 
----
+## 🧪 Testing
 
-### Zero-Downtime Updates
-
+### Backend Tests
 ```bash
-# 1. Pull latest code
-cd /opt/v5-smart-parking
-git pull
-
-# 2. Rebuild API service
-docker compose build api
-
-# 3. Rolling restart (minimal downtime)
-docker compose up -d --no-deps api
-
-# 4. Verify deployment
-curl http://localhost:8000/health
-
-# 5. Check logs
-docker compose logs -f api
+cd backend
+pytest tests/ -v
 ```
 
----
-
-### Rollback Procedure
-
+### Frontend Tests
 ```bash
-# 1. Stop current services
-docker compose down
-
-# 2. Checkout previous version
-git checkout <previous-commit-hash>
-
-# 3. Rebuild and start
-docker compose up -d --build
-
-# 4. Verify
-docker compose ps
-curl http://localhost:8000/health
+cd frontend
+npm test
 ```
 
----
-
-## Monitoring
-
-### Health Checks
-
+### Integration Tests
 ```bash
-# API health
-curl https://api.verdegris.eu/health
-
-# Service health
-docker compose ps
+pytest tests/e2e/ -v
 ```
 
-### Logs
+## 📝 Development Workflow
 
-```bash
-# View all logs
-docker compose logs -f
+1. **Create feature branch**
+   ```bash
+   git checkout -b feature/v6-your-feature
+   ```
 
-# View specific service
-docker compose logs -f api
-docker compose logs -f chirpstack
+2. **Make changes**
+   - Backend: Edit files in `backend/src/`
+   - Frontend: Edit files in `frontend/src/`
 
-# Follow logs with grep
-docker compose logs -f api | grep ERROR
+3. **Test locally**
+   ```bash
+   # Backend
+   pytest tests/
 
-# View last N lines
-docker compose logs --tail 100 api
-```
+   # Frontend
+   npm test
+   ```
 
-### Metrics
+4. **Commit with conventional commits**
+   ```bash
+   git commit -m "feat(devices): add bulk import endpoint"
+   ```
 
-```bash
-# Database connections
-docker compose exec postgres psql -U parking_user -d parking_v2 -c "SELECT count(*) FROM pg_stat_activity;"
-
-# Redis memory usage
-docker compose exec redis redis-cli INFO memory
-
-# API request rate
-docker compose logs api | grep "GET\|POST" | wc -l
-```
-
-### Alerts (To Be Configured)
-
-**Recommended monitoring:**
-- API /health endpoint every 60s
-- Database connection pool exhaustion
-- Redis memory usage > 80%
-- Disk space < 10% free
-- ChirpStack webhook failures
-
----
-
-## Troubleshooting
-
-### API Not Starting
-
-```bash
-# Check logs
-docker compose logs api --tail 100
-
-# Common issues:
-# 1. Database connection failed
-docker compose exec postgres pg_isready -U parking_user
-
-# 2. Redis connection failed
-docker compose exec redis redis-cli ping
-
-# 3. Port already in use
-sudo netstat -tulpn | grep 8000
-
-# 4. Environment variables missing
-docker compose exec api env | grep DATABASE_URL
-```
-
----
-
-### ChirpStack Webhook Not Working
-
-```bash
-# 1. Check ChirpStack logs
-docker compose logs chirpstack | grep -i webhook
-
-# 2. Check API uplink logs
-docker compose logs api | grep uplink
-
-# 3. Test webhook manually
-curl -X POST https://api.verdegris.eu/api/v1/uplink \
-  -H "Content-Type: application/json" \
-  -d '{"deviceInfo":{"devEui":"test"}}'
-
-# 4. Verify webhook URL in ChirpStack UI
-# Should be: https://api.verdegris.eu/api/v1/uplink
-```
-
----
+## 🐛 Troubleshooting
 
 ### Database Connection Issues
-
 ```bash
-# Check PostgreSQL is running
-docker compose ps postgres
+# Check if PostgreSQL is running
+sudo systemctl status postgresql
 
-# Check PostgreSQL logs
-docker compose logs postgres --tail 50
-
-# Test connection
-docker compose exec postgres psql -U parking_user -d parking_v2 -c "SELECT 1"
-
-# Check connection pool
-docker compose logs api | grep "pool"
+# Check connection
+psql -U parking_user -d parking_v6 -c "SELECT 1"
 ```
+
+### RLS Not Working
+```sql
+-- Verify RLS is enabled
+SELECT schemaname, tablename, rowsecurity
+FROM pg_tables
+WHERE tablename IN ('sensor_devices', 'display_devices', 'gateways');
+
+-- Check current RLS context
+SHOW app.current_tenant_id;
+SHOW app.is_platform_admin;
+```
+
+### Migration Failures
+```bash
+# Rollback if needed
+psql -U parking_user -d parking_v6 < rollback.sql
+
+# Re-run migration
+psql -U parking_user -d parking_v6 -f migrations/001_v6_add_tenant_columns.sql
+```
+
+## 📚 Documentation
+
+- [Architecture Document](../v5-smart-parking/docs/V6_IMPROVED_TENANT_ARCHITECTURE_V6.md)
+- [Implementation Plan](../v5-smart-parking/docs/V6_IMPLEMENTATION_PLAN.md)
+- [API Documentation](http://localhost:8000/docs) (when running)
+
+## 🤝 Contributing
+
+1. Follow the conventional commits format
+2. Add tests for new features
+3. Update documentation
+4. Ensure all tests pass
+
+## 📄 License
+
+[Your License Here]
+
+## 👥 Authors
+
+- Smart Parking Platform Team
+- Verdegris Solutions
 
 ---
 
-### Gateway Not Connecting
-
-```bash
-# Check gateway bridge logs
-docker compose logs gateway-bridge --tail 50
-
-# Check Mosquitto logs
-docker compose logs mosquitto | grep gateway
-
-# Verify UDP port 1700 is open
-sudo netstat -ulnp | grep 1700
-
-# Check ChirpStack gateway status
-# ChirpStack UI → Gateways → [Gateway] → Last seen
-```
-
----
-
-### SSL Certificate Issues
-
-```bash
-# Check certificate file
-ls -la /opt/v5-smart-parking/certs/acme.json
-
-# Should be: -rw------- (600)
-sudo chmod 600 /opt/v5-smart-parking/certs/acme.json
-
-# Check Traefik logs for ACME errors
-docker compose logs traefik | grep -i acme
-
-# Force certificate renewal
-docker compose restart traefik
-```
-
----
-
-### Performance Issues
-
-```bash
-# Check system resources
-htop
-df -h
-
-# Check database performance
-docker compose exec postgres psql -U parking_user -d parking_v2 -c "
-SELECT pid, usename, application_name, state, query, wait_event_type
-FROM pg_stat_activity
-WHERE state != 'idle';
-"
-
-# Check slow queries
-docker compose logs api | grep "slow query"
-
-# Check Redis performance
-docker compose exec redis redis-cli --latency
-```
-
----
-
-## Security
-
-### Authentication & Authorization
-
-#### API Key Authentication
-
-API keys are stored hashed in the `api_keys` table.
-
-**Generate API Key:**
-```bash
-docker compose exec postgres psql -U parking_user -d parking_v2 -c "
-INSERT INTO api_keys (key_hash, key_name)
-VALUES (crypt('your-secret-key', gen_salt('bf')), 'Production API Key');
-"
-```
-
-**Use API Key:**
-```bash
-curl -H "X-API-Key: your-secret-key" https://api.verdegris.eu/api/v1/spaces
-```
-
----
-
-### Network Security
-
-**Firewall Rules:**
-```bash
-# Allow HTTPS
-sudo ufw allow 443/tcp
-
-# Allow HTTP (for Let's Encrypt)
-sudo ufw allow 80/tcp
-
-# Allow LoRaWAN gateway
-sudo ufw allow 1700/udp
-
-# Allow MQTT (if external access needed)
-# sudo ufw allow 1883/tcp
-
-# Enable firewall
-sudo ufw enable
-```
-
-**Traefik HTTPS:**
-- Automatic HTTPS via Let's Encrypt
-- TLS 1.2+ enforced
-- HSTS headers enabled
-
----
-
-### Access Control
-
-**Admin Services Protected:**
-- `traefik.verdegris.eu` - Basic auth via `.htpasswd`
-- `adminer.verdegris.eu` - Basic auth via `.htpasswd`
-
-**Credentials Location:**
-```bash
-/opt/v5-smart-parking/config/traefik/ADMIN-CREDENTIALS.txt
-/opt/v5-smart-parking/config/traefik/.htpasswd
-```
-
----
-
-### Data Security
-
-**Database:**
-- Passwords in environment variables (never committed)
-- PostgreSQL checksums enabled for data integrity
-- Regular automated backups
-
-**Redis:**
-- Password protection (to be implemented)
-- Memory encryption (to be implemented)
-
-**Secrets Management:**
-- All secrets in `.env` file
-- `.env` never committed to Git
-- File permissions: 600 (owner read/write only)
-
-```bash
-chmod 600 /opt/v5-smart-parking/.env
-```
-
----
-
-### Security Best Practices
-
-**Recommended Actions:**
-
-1. **Change default passwords** in `.env`
-2. **Generate strong SECRET_KEY** (32+ chars)
-3. **Enable Redis password** authentication
-4. **Set up fail2ban** for SSH protection
-5. **Configure automated backups** (daily)
-6. **Enable PostgreSQL SSL** connections
-7. **Implement rate limiting** on API
-8. **Set up intrusion detection** (e.g., OSSEC)
-9. **Regular security updates** for Docker images
-10. **Audit logs** review weekly
-
----
-
-### Backup & Recovery
-
-**Database Backup:**
-```bash
-# Manual backup
-docker compose exec postgres pg_dump -U parking_user parking_v2 | gzip > backup_$(date +%Y%m%d).sql.gz
-
-# Automated daily backups (add to crontab)
-0 2 * * * cd /opt/v5-smart-parking && docker compose exec -T postgres pg_dumpall -U parking_user | gzip > /backups/daily_$(date +\%Y\%m\%d).sql.gz
-```
-
-**Full System Backup:**
-```bash
-# Backup entire deployment
-sudo tar -czf /backups/v5-smart-parking_$(date +%Y%m%d).tar.gz \
-  /opt/v5-smart-parking \
-  --exclude=/opt/v5-smart-parking/node_modules
-```
-
-**Restore Database:**
-```bash
-gunzip < backup.sql.gz | docker compose exec -T postgres psql -U parking_user parking_v2
-```
-
----
-
-## Support & Contributing
-
-### Getting Help
-
-- **Documentation:** See `docs/` directory
-- **Deployment Status:** See `DEPLOYMENT_STATUS.md`
-- **Quick Reference:** See `QUICK_REFERENCE.md`
-
-### Reporting Issues
-
-When reporting issues, include:
-1. Service logs (`docker compose logs [service]`)
-2. Error messages
-3. Steps to reproduce
-4. Expected vs actual behavior
-
-### Version History
-
-- **v5.3.0** (2025-10-21) - Multi-Tenancy + All Routers Enabled + Production Hardening
-
-  **Router Implementation (2025-10-21):**
-  - **All API routers enabled** - Display policies, devices, reservations, gateways now fully functional
-  - **Tenant scoping on devices** - Devices filtered by space assignment + orphan status
-  - **Tenant scoping on reservations** - All queries enforce tenant_id isolation
-  - **RBAC enforcement** - Proper role and scope validation on all endpoints
-  - **Pydantic 2.10 compatibility** - Updated regex → pattern for field validation
-  - **Prometheus metrics operational** - /metrics endpoint fully functional
-  - **60+ endpoints now available** - Complete API surface area accessible
-  - Documentation: `OPENAPI_VALIDATION_REPORT.md`, `OPENAPI_IMPLEMENTATION_SUMMARY.md`
-
-  **Multi-Tenancy & Authentication:**
-  - **Complete tenant isolation** - Database-level enforcement via `tenant_id` foreign keys
-  - **JWT authentication** - User sessions with 24-hour expiry, bcrypt password hashing (12 rounds)
-  - **4-level RBAC** - Owner → Admin → Operator → Viewer role hierarchy
-  - **API key scopes** - Least-privilege access control (read, write, manage, admin)
-  - **Per-tenant rate limiting** - Redis-based token bucket algorithm
-  - **Webhook signature validation** - HMAC-SHA256 infrastructure for external integrations
-  - **Registration endpoint** - Self-service tenant and owner user creation
-  - **Login endpoint** - Email/password authentication with JWT tokens
-  - **User management API** - Invite users, manage roles, list members
-
-  **Reservation Engine:**
-  - **PostgreSQL EXCLUDE constraint** prevents overlapping reservations at DB level
-  - **Idempotent reservation API** via `request_id` field
-  - **Automatic expiry** background job (runs every 60 seconds)
-  - **Availability endpoint** (`GET /spaces/{id}/availability`) queries DB truth
-  - **Updated status values**: `pending` → `confirmed` → `expired` (or `cancelled`)
-  - **Tenant scoping** for multi-tenant reservation isolation
-
-  **Display State Machine & Downlink Queue:**
-  - **Policy-driven display control** - Active policy per tenant with Redis cache invalidation
-  - **State machine** - Deterministic FREE ↔ OCCUPIED ↔ RESERVED transitions
-  - **Durable downlink queue** - Redis-backed FIFO with exactly-once delivery
-  - **Rate limiting** - Per-gateway (30/min) and per-tenant (100/min) limits
-  - **Automatic coalescing** - Newer commands replace pending ones
-  - **Dead-letter queue** - Failed commands after 5 attempts
-  - **Exponential backoff** - 2s, 4s, 8s, 16s, 32s retry delays
-  - Migrations: `006_display_state_machine.sql`
-
-  **Webhook Hardening:**
-  - **HMAC-SHA256 signature validation** - Per-tenant webhook secrets
-  - **fcnt deduplication** - Unique constraint on (tenant_id, device_eui, fcnt)
-  - **File spool for back-pressure** - Disk buffer when DB unavailable (/var/spool/parking-uplinks)
-  - **Orphan device tracking** - Auto-discovery with uplink counter
-  - **Exponential backoff** - Automatic retry with backoff on DB errors
-  - Migration: `005_reservation_statuses.sql` (fcnt integration)
-
-  **Observability & Operations:**
-  - **Prometheus metrics (30+)** - Ingest, reservations, downlinks, infrastructure, business SLOs
-  - **Enhanced health checks** - /health/ready (readiness), /health/live (liveness)
-  - **Metrics endpoint** - GET /metrics for Prometheus scraping
-  - **Operational runbooks** - ChirpStack down, Redis OOM, PostgreSQL failover, etc.
-  - **SLO tracking** - actuation_latency_seconds (p95 < 5s target)
-
-  **Security Hardening:**
-  - **Append-only audit log** - Immutable trail with database trigger
-  - **Actor tracking** - User, API key, system, webhook actions
-  - **Change tracking** - old_values → new_values for updates
-  - **Refresh tokens** - 30-day JWT refresh with SHA-256 hashing
-  - **API key revocation** - Immediate revocation with revoked_at/revoked_by columns
-  - **Device fingerprinting** - IP address and user_agent tracking
-  - Migration: `007_audit_log.sql`
-
-  **Testing Infrastructure:**
-  - **Property-based tests** - 8 invariant tests with hypothesis library
-  - **Integration tests** - 13 end-to-end scenarios with docker-compose.test.yml
-  - **Load tests** - Locust-based with 500 spaces, 50 concurrent users
-  - **SLO verification** - p95 latency < 5s, error rate < 1%
-  - **CI/CD pipeline** - GitHub Actions with unit, lint, security, integration, load tests
-  - **Test coverage** - Property, integration, load tests with comprehensive scenarios
-
-  **Database Schema:**
-  - **Multi-tenancy tables:** `tenants`, `sites`, `users`, `user_memberships`, `webhook_secrets`, `orphan_devices`
-  - **Display & downlink:** `display_policies`, `display_state_cache`, `sensor_debounce_state`
-  - **Security:** `audit_log`, `refresh_tokens`, `api_keys` (added revoked_at)
-  - **Updated tables:** `spaces`, `reservations`, `sensor_readings` (fcnt deduplication)
-  - **Migrations:** `002` through `007` (multi-tenancy, reservations, display, audit)
-
-  **Documentation:**
-  - `docs/CLASS_C_DOWNLINK_QUEUE.md` - Downlink queue implementation
-  - `docs/WEBHOOK_INGEST_IMPLEMENTATION.md` - Webhook hardening guide
-  - `docs/OPERATIONAL_RUNBOOKS.md` - Incident response procedures
-  - `docs/SECURITY_TENANCY.md` - Security and tenancy isolation
-  - `docs/TESTING_STRATEGY_IMPLEMENTATION.md` - Comprehensive testing guide
-  - `HARDENING_FIXES_v5.3.md` - Production hardening checklist
-
-  **Deployment:**
-  - Dockerfile updated to use `main_tenanted:app`
-  - Added PyJWT, hypothesis, locust dependencies
-  - JSON serialization fixes for PostgreSQL JSONB columns
-  - Added `get_db()` FastAPI dependency
-  - Integrated downlink queue, metrics, audit logging into main app
-
-- **v5.7.0** (2025-10-21) - EUI Case Sensitivity Hotfix + Trigger Bug Fix
-  - **Critical trigger bug fix:** Rewrote `enforce_eui_uppercase()` to use CASE statement instead of IF/AND conditions
-  - **Root cause:** PostgreSQL evaluates field access before AND conditions can short-circuit, causing "field does not exist" errors when trigger is called on different tables
-  - **Solution:** Use `CASE TG_TABLE_NAME` to check table name FIRST, then access only fields that exist in that table
-  - **EUI data normalization:** Normalized ALL existing EUI data to UPPERCASE across entire database
-  - **Tables updated:** spaces (sensor_eui, display_eui), sensor_devices (dev_eui), display_devices (dev_eui), sensor_readings (device_eui), actuations (display_eui), gateways (gw_eui)
-  - **Trigger updates:** Recreated all EUI normalization triggers using fixed function
-  - **Verification:** Added migration verification to count affected rows and confirm triggers created
-  - **Migration:** `011_normalize_euis_to_uppercase.sql`
-  - **Status:** PRINTER and WINDOW spaces now working correctly with proper EUI matching
-  - **Impact:** Fixes issue where lowercase EUIs from ChirpStack webhook didn't match uppercase EUIs in database
-
-- **v5.2.0** (2025-10-17) - ORPHAN device auto-discovery + Admin API endpoints
-  - Auto-discovery of LoRaWAN devices from ChirpStack
-  - Device lifecycle management (orphan → active → inactive → decommissioned)
-  - Admin API endpoints for device assignment
-  - Database views for unassigned device management
-
-- **v2.0.0** (2025-10-16) - Initial v5 production release
-
-- **v1.x** - Legacy v4 platform (deprecated)
-
----
-
-**Last Updated:** 2025-10-21
-**Maintained By:** Verdegris Engineering Team
+**Version**: 6.0.0
+**Last Updated**: 2025-10-23

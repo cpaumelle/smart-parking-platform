@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: parking_v6_db
+    environment:
+      POSTGRES_USER: parking_user
+      POSTGRES_PASSWORD: parking_password
+      POSTGRES_DB: parking_v6
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../migrations:/migrations
+    networks:
+      - parking_network
+
+  # Backend API
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: parking_v6_backend
+    environment:
+      DATABASE_URL: postgresql://parking_user:parking_password@postgres:5432/parking_v6
+      ENV: development
+      DEBUG: "true"
+      ENABLE_V6_API: "true"
+      ENABLE_ROW_LEVEL_SECURITY: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    volumes:
+      - ../backend:/app
+    networks:
+      - parking_network
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Frontend
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: parking_v6_frontend
+    environment:
+      REACT_APP_API_URL: http://localhost:8000
+      REACT_APP_USE_V6_API: "true"
+      REACT_APP_SHOW_PLATFORM_ADMIN: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    networks:
+      - parking_network
+
+volumes:
+  postgres_data:
+
+networks:
+  parking_network:
+    driver: bridge
