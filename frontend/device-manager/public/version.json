@@ -1,11 +1,10 @@
 {
-  "version": "5.3.1",
-  "build": "23.3",
-  "buildNumber": "20251021.23.3",
-  "buildTimestamp": "2025-10-21T23:45:00Z",
-  "buildDate": "2025-10-21T23:45:00Z",
-  "gitCommit": "fix-reservation-display",
-  "commit": "fix-reservation-display",
-  "description": "Fixed reservation display (status='confirmed' not 'active') and effective state calculation",
+  "version": "5.4.0",
+  "build": 38,
+  "buildTimestamp": "2025-10-25 16:00:00 UTC",
+  "buildDate": "20251025",
+  "buildTime": "160000",
+  "buildNumber": "20251025.38",
+  "gitCommit": "pending",
   "environment": "production"
 }
